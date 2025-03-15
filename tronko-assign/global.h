@@ -176,6 +176,10 @@ typedef struct Options{
 	int print_leave_seqs;
 	double score_constant;
 	int print_all_nodes;
+	/* Discard logging options */
+	int enable_discard_logging;         /* -D flag */
+	char discard_log_file[BUFFER_SIZE]; /* -L flag */
+	int discard_log_level;              /* -V flag */
 }Options;
 
 //extern node *tree;

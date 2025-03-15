@@ -31,7 +31,10 @@ static struct Options long_options[]=
 	{"print-node-info",required_argument, 0, '5'},
 	{"skip-bwa-build",no_argument,0, '6'},
 	{"score-constant",required_argument,0, 'u'},
-	{"print-all-scores",no_argument,0,'7'}
+	{"print-all-scores",no_argument,0,'7'},
+	{"enable-discard-log",no_argument,0,'D'},
+	{"discard-log-file",required_argument,0,'G'},
+	{"discard-log-level",required_argument,0,'V'}
 };
 
 char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF FASTA FILE] -o [OUTPUT FILE]\n\
@@ -60,6 +63,9 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-6, Skip the bwa build if database already exists\n\
 	-u, Score constant [default: 0.01]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
+	-D, Enable discarded reads logging\n\
+	-G [FILE], Path to write discarded reads log [default: tronko_discarded_reads.log]\n\
+	-V [INT], Verbosity level for discarded reads log (0-3, default: 1)\n\
 	\n";
 
 void print_help_statement(){
@@ -70,12 +76,18 @@ void print_help_statement(){
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
 	char c;
+	
+	// Set defaults for discard logging options
+	opt->enable_discard_logging = 0;
+	strcpy(opt->discard_log_file, "tronko_discarded_reads.log");
+	opt->discard_log_level = 1;  // Default to basic logging
+	
 	if (argc==1){
 		print_help_statement();
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hpsrqw6yevUzP75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hpsrqw6yevUzP75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:DG:V:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
@@ -211,6 +223,21 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%d", &(opt->number_of_lines_to_read));
 				if (!success)
 					fprintf(stderr, "Invalid number");
+				break;
+			case 'D': // Enable discard logging
+				opt->enable_discard_logging = 1;
+				break;
+			case 'G': // Discard log file path
+				success = sscanf(optarg, "%s", opt->discard_log_file);
+				if (!success)
+					fprintf(stderr, "Invalid discard log file path");
+				break;
+			case 'V': // Discard log verbosity level
+				success = sscanf(optarg, "%d", &(opt->discard_log_level));
+				if (!success || opt->discard_log_level < 0 || opt->discard_log_level > 3) {
+					fprintf(stderr, "Invalid discard log level (must be 0-3), using default (1)");
+					opt->discard_log_level = 1;
+				}
 				break;
 		}
 	}

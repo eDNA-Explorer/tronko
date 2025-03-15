@@ -21,6 +21,7 @@
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
 #include "hashmap_base.h"
+#include "discard_logger.h"
 //int numspec, numbase, root/***seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
 char ****taxonomyArr;
 struct node **treeArr;
@@ -764,6 +765,17 @@ int main(int argc, char **argv){
 	opt.score_constant = 0.01;
 	opt.print_all_nodes=0;
 	parse_options(argc, argv, &opt);
+	
+	// Initialize discard logger if enabled
+	if (opt.enable_discard_logging) {
+		if (!init_discard_logger(opt.discard_log_file, opt.discard_log_level)) {
+			fprintf(stderr, "Warning: Failed to initialize discard logger. Continuing without logging.\n");
+		} else {
+			fprintf(stderr, "Discard logging enabled: Writing to %s (level %d)\n", 
+			        opt.discard_log_file, opt.discard_log_level);
+		}
+	}
+	
 	struct stat st = {0};
 	if ( stat(opt.reference_file, &st) == -1 ){
 		printf("Cannot find reference_tree.txt file. Exiting...\n");
@@ -1202,4 +1214,13 @@ int main(int argc, char **argv){
 	free(numbaseArr);
 	free(rootArr);
 	free(numspecArr);
+	
+	// Close discard logger and write summary if enabled
+	if (opt.enable_discard_logging) {
+		// Write summary to stderr as well as log file
+		summarize_discarded_reads(stderr);
+		
+		// Close the logger (will also write summary to log file)
+		close_discard_logger();
+	}
 }
