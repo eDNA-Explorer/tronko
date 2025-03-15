@@ -1,5 +1,7 @@
 # Sequence Alignment Methods in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Assignment Algorithm](assignment_algorithm.md) | [▶ Next: Scoring System](scoring_system.md)
+
 This document explains the sequence alignment methods used in `tronko-assign` and their impact on taxonomic classification.
 
 ## Overview of Alignment in Tronko

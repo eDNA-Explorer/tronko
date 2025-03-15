@@ -24,6 +24,27 @@ docs/
 └── README.md - This file
 ```
 
+## Quick Navigation
+
+### Overview
+- [Architecture Overview](overview/architecture.md)
+- [Workflow Overview](overview/workflow.md)
+
+### tronko-build
+- [Database Format](tronko-build/database_format.md)
+- [Likelihood Calculation](tronko-build/likelihood_calculation.md)
+- [Tree Partitioning](tronko-build/tree_partitioning.md)
+
+### tronko-assign
+- [Alignment Methods](tronko-assign/alignment_methods.md)
+- [Assignment Algorithm](tronko-assign/assignment_algorithm.md)
+- [Filtering Criteria](tronko-assign/filtering_criteria.md)
+- [Scoring System](tronko-assign/scoring_system.md)
+
+### Example Workflows
+- [Single Tree Workflow](examples/single_tree_workflow.md)
+- [Multiple Tree Workflow](examples/multiple_tree_workflow.md)
+
 ## Key Topics
 
 ### Information Flow

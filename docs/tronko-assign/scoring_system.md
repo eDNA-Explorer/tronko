@@ -1,5 +1,7 @@
 # Scoring System in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Alignment Methods](alignment_methods.md) | [▶ Next: Filtering Criteria](filtering_criteria.md)
+
 This document explains the scoring mechanisms used in Tronko for taxonomic assignment, including how scores are calculated, interpreted, and used for filtering.
 
 ## Overview of Scoring in Tronko

@@ -1,5 +1,7 @@
 # Tronko Architecture Overview
 
+[◀ Back to Documentation Home](../README.md) | [▶ Next: Workflow Overview](workflow.md)
+
 ## Introduction
 
 Tronko is a phylogeny-based method for taxonomic classification of metabarcoding data. It consists of two main components: `tronko-build` and `tronko-assign`. This document provides a high-level overview of the system architecture, component relationships, and data flow.

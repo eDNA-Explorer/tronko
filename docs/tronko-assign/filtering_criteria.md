@@ -1,5 +1,7 @@
 # Filtering Criteria in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Scoring System](scoring_system.md) | [▶ Next: Single Tree Workflow](../examples/single_tree_workflow.md)
+
 This document describes the filtering mechanisms used in Tronko to determine which reads are assigned taxonomic classifications and which are discarded. It explains the various filtering points, criteria, and parameters that affect filtering decisions.
 
 ## Overview of Filtering in Tronko

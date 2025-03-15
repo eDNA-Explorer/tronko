@@ -1,5 +1,7 @@
 # Tree Partitioning in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Likelihood Calculation](likelihood_calculation.md) | [▶ Next: Assignment Algorithm](../tronko-assign/assignment_algorithm.md)
+
 This document explains the tree partitioning process in `tronko-build`, which is a critical feature for handling large and diverse reference datasets.
 
 ## Purpose of Tree Partitioning

@@ -1,5 +1,7 @@
 # Taxonomic Assignment Algorithm in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Tree Partitioning](../tronko-build/tree_partitioning.md) | [▶ Next: Alignment Methods](alignment_methods.md)
+
 This document explains the core taxonomic assignment algorithm used in `tronko-assign`, including the workflow, scoring mechanisms, and decision points.
 
 ## Algorithm Overview

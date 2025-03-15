@@ -1,5 +1,7 @@
 # Single Tree Workflow Example
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Filtering Criteria](../tronko-assign/filtering_criteria.md) | [▶ Next: Multiple Tree Workflow](multiple_tree_workflow.md)
+
 This document walks through a complete workflow for taxonomic assignment using Tronko with a single reference tree, following the data flow from database building to assignment.
 
 ## Overview

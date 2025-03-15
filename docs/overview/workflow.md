@@ -1,5 +1,7 @@
 # Tronko Workflow
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Architecture Overview](architecture.md) | [▶ Next: Database Format](../tronko-build/database_format.md)
+
 This document describes the end-to-end workflow of Tronko, from database building to taxonomic assignment, with a focus on data flow and processing steps.
 
 ## Overall Workflow

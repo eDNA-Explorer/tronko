@@ -1,5 +1,7 @@
 # Multiple Tree Workflow Example
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Single Tree Workflow](single_tree_workflow.md)
+
 This document walks through a complete workflow for taxonomic assignment using Tronko with multiple trees (partitioning), focusing on the data flow and key decision points.
 
 ## Overview

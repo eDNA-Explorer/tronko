@@ -1,5 +1,7 @@
 # Likelihood Calculation in Tronko
 
+[◀ Back to Documentation Home](../README.md) | [◀ Previous: Database Format](database_format.md) | [▶ Next: Tree Partitioning](tree_partitioning.md)
+
 This document explains the likelihood calculation process used in Tronko, a key differentiator from other taxonomic assignment methods.
 
 ## Conceptual Overview
