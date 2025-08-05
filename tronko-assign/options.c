@@ -1,6 +1,7 @@
 #include "options.h"
+#include <getopt.h>
 
-static struct Options long_options[]=
+static struct option long_options[]=
 {
 	{"help", no_argument, 0, 'h'},
 	{"paired", no_argument, 0, 'p'},
@@ -31,7 +32,14 @@ static struct Options long_options[]=
 	{"print-node-info",required_argument, 0, '5'},
 	{"skip-bwa-build",no_argument,0, '6'},
 	{"score-constant",required_argument,0, 'u'},
-	{"print-all-scores",no_argument,0,'7'}
+	{"print-all-scores",no_argument,0,'7'},
+	{"print-alignments-dir",required_argument,0,'3'},
+	{"tree-dir",required_argument,0,'4'},
+	{"verbose",optional_argument,0,'V'},
+	{"log-file",required_argument,0,'l'},
+	{"enable-resource-monitoring",no_argument,0,'R'},
+	{"enable-timing",no_argument,0,'T'},
+	{0, 0, 0, 0}  // Terminating entry required by getopt_long
 };
 
 char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF FASTA FILE] -o [OUTPUT FILE]\n\
@@ -60,6 +68,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-6, Skip the bwa build if database already exists\n\
 	-u, Score constant [default: 0.01]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
+	-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]\n\
+	-l [FILE], Log file path [default: stderr only]\n\
+	-R, Enable resource monitoring (memory/CPU usage)\n\
+	-T, Enable timing information\n\
 	\n";
 
 void print_help_statement(){
@@ -69,14 +81,25 @@ void print_help_statement(){
 
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
-	char c;
+	int c;  // getopt_long returns int, not char
+	
 	if (argc==1){
 		print_help_statement();
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hpsrqw6yevUzP75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:",long_options, &option_index);
-		if (c==-1) break;
+		c=getopt_long(argc,argv,"hpsrqw6yevUzP:75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:V::l:RT",long_options, &option_index);
+		
+		// Handle end of options and errors
+		if (c == -1) {
+			break;
+		}
+		if (c == '?' || c == 255) {
+			fprintf(stderr, "Unknown option or missing argument\n");
+			print_help_statement();
+			exit(1);
+		}
+		
 		switch(c){
 			case 'h':
 				print_help_statement();
@@ -211,6 +234,30 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%d", &(opt->number_of_lines_to_read));
 				if (!success)
 					fprintf(stderr, "Invalid number");
+				break;
+			case 'V':
+				if (optarg) {
+					success = sscanf(optarg, "%d", &(opt->verbose_level));
+					if (!success || opt->verbose_level < 0 || opt->verbose_level > 3) {
+						fprintf(stderr, "Invalid verbose level (0-3)\n");
+						opt->verbose_level = 2;  // Default to INFO
+					}
+				} else {
+					opt->verbose_level = 2;  // Default to INFO if no level specified
+				}
+				break;
+			case 'l':
+				strncpy(opt->log_file, optarg, sizeof(opt->log_file) - 1);
+				opt->log_file[sizeof(opt->log_file) - 1] = '\0';
+				break;
+			case 'R':
+				opt->enable_resource_monitoring = 1;
+				break;
+			case 'T':
+				opt->enable_timing = 1;
+				break;
+			default:
+				// Ignore unknown options, getopt will handle them
 				break;
 		}
 	}

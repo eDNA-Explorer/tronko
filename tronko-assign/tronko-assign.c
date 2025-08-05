@@ -21,6 +21,8 @@
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
 #include "hashmap_base.h"
+#include "logger.h"
+#include "resource_monitor.h"
 //int numspec, numbase, root/***seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
 char ****taxonomyArr;
 struct node **treeArr;
@@ -763,10 +765,48 @@ int main(int argc, char **argv){
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
 	opt.print_all_nodes=0;
+	opt.verbose_level = -1;  // Disabled by default
+	opt.log_file[0] = '\0';
+	opt.enable_resource_monitoring = 0;
+	opt.enable_timing = 0;
+	
 	parse_options(argc, argv, &opt);
+	
+	// Initialize logging based on options
+	if (opt.verbose_level >= 0) {
+		log_level_t level = (log_level_t)(3 - opt.verbose_level);  // Convert to our enum (3=DEBUG, 2=INFO, etc.)
+		const char* log_file = (opt.log_file[0] != '\0') ? opt.log_file : NULL;
+		logger_init(level, log_file, 1);  // Always log to stderr
+		
+		if (opt.enable_resource_monitoring) {
+			logger_enable_resource_monitoring(1);
+			init_resource_monitoring();
+		}
+		
+		if (opt.enable_timing) {
+			logger_enable_timing(1);
+		}
+		
+		// Log program startup (now that logging is initialized)
+		LOG_MILESTONE_TIMED(MILESTONE_STARTUP);
+		
+		char milestone_info[256];
+		snprintf(milestone_info, sizeof(milestone_info), 
+			"Verbose logging enabled, level=%d, cores=%d, lines=%d", 
+			opt.verbose_level, opt.number_of_cores, opt.number_of_lines_to_read);
+		log_milestone_with_timing(MILESTONE_OPTIONS_PARSED, milestone_info);
+		
+		LOG_INFO("Full logging system initialized successfully");
+	}
+	// Check if reference file is specified and exists
+	if (opt.reference_file[0] == '\0') {
+		printf("Error: Reference file not specified. Use -f to specify reference file. Exiting...\n");
+		exit(-1);
+	}
+	
 	struct stat st = {0};
 	if ( stat(opt.reference_file, &st) == -1 ){
-		printf("Cannot find reference_tree.txt file. Exiting...\n");
+		printf("Cannot find reference_tree.txt file: %s. Exiting...\n", opt.reference_file);
 		exit(-1);
 	}
 	if ( opt.fastq == 1 && opt.number_of_lines_to_read%4 != 0 ){
@@ -777,6 +817,10 @@ int main(int argc, char **argv){
 		printf("You chose FASTA for your queries but the number of lines to read are not divisible by 2. Change -L to be divisible by 2. Exiting...\n");
 		exit(-1);
 	}
+	if (opt.verbose_level >= 0) {
+		LOG_INFO("Loading reference database: %s", opt.reference_file);
+	}
+	
 	gzFile referenceTree = Z_NULL;
 	referenceTree = gzopen(opt.reference_file,"r");
 	assert(Z_NULL!=referenceTree);
@@ -790,6 +834,14 @@ int main(int argc, char **argv){
 	int max_taxname = name_specs[1];
 	int max_lineTaxonomy = name_specs[2];
 	free(name_specs);
+	
+	if (opt.verbose_level >= 0) {
+		char ref_info[256];
+		snprintf(ref_info, sizeof(ref_info), 
+			"Loaded %d trees, max_nodename=%d, max_taxname=%d", 
+			numberOfTrees, max_nodename, max_taxname);
+		log_milestone_with_timing(MILESTONE_REFERENCE_LOADED, ref_info);
+	}
 	if ( opt.print_node_info[0] != '\0' ){
 		printf("Printing Accession IDs, Tree numbers, and leaf numbers...\n");
 		FILE* tree_info = fopen(opt.print_node_info,"w");
@@ -869,7 +921,17 @@ int main(int argc, char **argv){
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
 	if ( strcmp("single",opt.paired_or_single)==0){
 		if (opt.skip_build==0){
+			if (opt.verbose_level >= 0) {
+				LOG_INFO("Building BWA index for: %s", opt.fasta_file);
+			}
 			bwa_index(2,opt.fasta_file);
+			if (opt.verbose_level >= 0) {
+				LOG_MILESTONE_TIMED(MILESTONE_BWA_INDEX_BUILT);
+			}
+		} else {
+			if (opt.verbose_level >= 0) {
+				LOG_INFO("Skipping BWA index build");
+			}
 		}
 		gzFile *reads_file =gzopen(opt.read1_file,"r");
 		if ( reads_file == (gzFile) Z_NULL ){
@@ -880,6 +942,14 @@ int main(int argc, char **argv){
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
+		
+		if (opt.verbose_level >= 0) {
+			char specs_info[256];
+			snprintf(specs_info, sizeof(specs_info), 
+				"Read specs detected: max_name=%d, max_query=%d", 
+				max_name_length, max_query_length);
+			log_milestone_with_timing(MILESTONE_READ_SPECS_DETECTED, specs_info);
+		}
 		singleQueryMat = malloc(sizeof(struct queryMatSingle));
 		if ( opt.fastq == 0 ){
 			singleQueryMat->queryMat = (char **)malloc(sizeof(char *)*(numberOfLinesToRead/2));
@@ -932,7 +1002,29 @@ int main(int argc, char **argv){
 			mstr[i].number_of_total_nodes = number_of_total_nodes;
 			mstr[i].print_all_nodes = opt.print_all_nodes;
 		}
+		
+		if (opt.verbose_level >= 0) {
+			char mem_info[256];
+			snprintf(mem_info, sizeof(mem_info), 
+				"Memory allocated: threads=%d, lines_per_batch=%d, total_nodes=%d", 
+				opt.number_of_cores, numberOfLinesToRead, number_of_total_nodes);
+			log_milestone_with_timing(MILESTONE_MEMORY_ALLOCATED, mem_info);
+			
+			char thread_info[256];
+			snprintf(thread_info, sizeof(thread_info), 
+				"Thread structures initialized for %d cores", opt.number_of_cores);
+			log_milestone_with_timing(MILESTONE_THREADS_INITIALIZED, thread_info);
+		}
+		
+		int batch_count = 0;
 		while (1){
+			batch_count++;
+			if (opt.verbose_level >= 0) {
+				char start_info[128];
+				snprintf(start_info, sizeof(start_info), "Starting batch %d", batch_count);
+				log_milestone_with_timing(MILESTONE_BATCH_START, start_info);
+			}
+			
 			if (opt.fastq==0){
 				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile,0,opt,max_query_length,max_name_length);
 			}else{
@@ -940,6 +1032,13 @@ int main(int argc, char **argv){
 			}
 			if (returnLineNumber==0){
 				break;
+			}
+			
+			if (opt.verbose_level >= 0) {
+				char batch_info[256];
+				snprintf(batch_info, sizeof(batch_info), 
+					"Batch %d loaded: %d reads", batch_count, returnLineNumber);
+				log_milestone_with_timing(MILESTONE_BATCH_LOADED, batch_info);
 			}
 			divideFile = returnLineNumber/opt.number_of_cores;
 			first_iter=0;
@@ -961,16 +1060,38 @@ int main(int argc, char **argv){
 					mstr[i].str->taxonPath[k] = malloc((max_name_length+max_lineTaxonomy+120)*(sizeof(char)));
 				}
 			}
+			
+			if (opt.verbose_level >= 0) {
+				LOG_DEBUG("Creating %d threads for batch processing", opt.number_of_cores);
+			}
+			
 			for(i=0; i<opt.number_of_cores;i++){
 				pthread_create(&threads[i], NULL, runAssignmentOnChunk_WithBWA, &mstr[i]);
 			}
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
 			}
+			
+			if (opt.verbose_level >= 0) {
+				LOG_MILESTONE_TIMED(MILESTONE_PLACEMENT_COMPLETE);
+			}
+			
 			for ( i=0; i<opt.number_of_cores; i++){
 				for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
 					fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
 				}
+			}
+			
+			if (opt.verbose_level >= 0) {
+				char results_info[256];
+				snprintf(results_info, sizeof(results_info), 
+					"Batch %d results written", batch_count);
+				log_milestone_with_timing(MILESTONE_RESULTS_WRITTEN, results_info);
+				
+				char complete_info[256];
+				snprintf(complete_info, sizeof(complete_info), 
+					"Batch %d completed: %d reads processed", batch_count, returnLineNumber);
+				log_milestone_with_timing(MILESTONE_BATCH_COMPLETE, complete_info);
 			}
 			for ( i=0; i<opt.number_of_cores; i++){
 				for(j=0; j<mstr[i].end-mstr[i].start; j++){
@@ -979,6 +1100,14 @@ int main(int argc, char **argv){
 				free(mstr[i].str->taxonPath);
 			}
 		}
+		
+		if (opt.verbose_level >= 0) {
+			char cleanup_info[256];
+			snprintf(cleanup_info, sizeof(cleanup_info), 
+				"Processing completed. Processed %d batches", batch_count);
+			log_milestone_with_timing(MILESTONE_CLEANUP_START, cleanup_info);
+		}
+		
 		fclose(results);
 		gzclose(seqinfile);
 		if ( opt.fastq == 0 ){
@@ -995,6 +1124,13 @@ int main(int argc, char **argv){
 		free(singleQueryMat->queryMat);
 		free(singleQueryMat->name);
 		free(singleQueryMat);
+		
+		if (opt.verbose_level >= 0) {
+			LOG_MILESTONE_TIMED(MILESTONE_CLEANUP_COMPLETE);
+			LOG_MILESTONE_TIMED(MILESTONE_PROGRAM_END);
+			logger_cleanup();
+			cleanup_resource_monitoring();
+		}
 	}else{
 		gzFile *seqinfile_1 = gzopen(opt.read1_file,"r");
 		gzFile *seqinfile_2 = gzopen(opt.read2_file,"r");

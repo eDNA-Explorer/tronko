@@ -61,6 +61,62 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		-5 [FILE], Print tree number and leaf number and exit
 		-6, Skip the bwa build if database already exists
 		-u, Score constant [default: 0.01]
+		-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]
+		-l [FILE], Log file path [default: stderr only]
+		-R, Enable resource monitoring (memory/CPU usage)
+		-T, Enable timing information
+
+## Verbose Logging and Performance Monitoring
+
+`tronko-assign` includes comprehensive logging capabilities to monitor performance and troubleshoot issues:
+
+### Basic Verbose Logging
+```bash
+# Enable INFO level logging to stderr
+tronko-assign -V2 [other options...]
+
+# Enable DEBUG level logging with maximum detail
+tronko-assign -V3 [other options...]
+```
+
+### Logging to File
+```bash
+# Write logs to a file (also logs to stderr)
+tronko-assign -V2 -l assignment.log [other options...]
+```
+
+### Resource Monitoring
+```bash
+# Monitor memory and CPU usage at each milestone
+tronko-assign -V2 -R [other options...]
+```
+
+### Timing Information
+```bash
+# Include timing information between processing milestones
+tronko-assign -V2 -T [other options...]
+```
+
+### Comprehensive Monitoring
+```bash
+# Enable all logging features for detailed performance analysis
+tronko-assign -V3 -T -R -l comprehensive.log [other options...]
+```
+
+The logging system tracks 18 key milestones throughout the assignment process including:
+- Program startup and option parsing
+- Reference database loading 
+- BWA index creation
+- Memory allocation
+- Batch processing start/completion
+- Sequence alignment and placement
+- Results writing and cleanup
+
+Log levels:
+- `-V0`: ERROR messages only
+- `-V1`: WARN and ERROR messages  
+- `-V2`: INFO, WARN, and ERROR messages (recommended)
+- `-V3`: DEBUG, INFO, WARN, and ERROR messages (most verbose)
 
 Tronko uses the <a href="https://github.com/smarco/WFA2-lib">Wavefront Alignment Algorithm (version 2)</a> or <a href="https://github.com/noporpoise/seq-align">Needleman-Wunsch Algorithm</a> for semi-global alignments. It uses <a href="https://github.com/lh3/bwa">bwa</a> for alignment to leaf nodes, and uses <a href="https://github.com/DavidLeeds/hashmap">David Leeds' hashmap</a> for hashmap implementation in C. `tronko-assign` does not reverse complement your reads automatically. You must use options `-v` or `-z` to reverse complement your read for better alignment to the reference database. For more information on the direction of your reads based on your library prep, please refer to this helpful blog here: <a href="http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html">http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html</a>.
 
