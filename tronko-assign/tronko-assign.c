@@ -1108,8 +1108,13 @@ int main(int argc, char **argv){
 			log_milestone_with_timing(MILESTONE_CLEANUP_START, cleanup_info);
 		}
 		
+		// Close files
 		fclose(results);
 		gzclose(seqinfile);
+		
+		if (opt.verbose_level >= 0) {
+			log_current_resource_usage("After closing files");
+		}
 		if ( opt.fastq == 0 ){
 			for(i=0; i<numberOfLinesToRead/2; i++){
 				free(singleQueryMat->queryMat[i]);
@@ -1124,6 +1129,10 @@ int main(int argc, char **argv){
 		free(singleQueryMat->queryMat);
 		free(singleQueryMat->name);
 		free(singleQueryMat);
+		
+		if (opt.verbose_level >= 0) {
+			log_current_resource_usage("After freeing query matrices");
+		}
 		
 		if (opt.verbose_level >= 0) {
 			LOG_MILESTONE_TIMED(MILESTONE_CLEANUP_COMPLETE);
@@ -1307,6 +1316,11 @@ int main(int argc, char **argv){
 		free(pairedQueryMat->reverse_name);
 		free(pairedQueryMat);
 	}
+	// Free thread result structures
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("Before freeing thread structures");
+	}
+	
 	for(i=0; i<opt.number_of_cores; i++){
 		if (opt.fastq == 0){
 			if (strcmp("single",opt.paired_or_single)==0){
@@ -1322,6 +1336,18 @@ int main(int argc, char **argv){
 			}
 		}
 	}
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing thread structures");
+	}
+	
+	// Free tree data structures - this is where major memory should be freed
+	if (opt.verbose_level >= 0) {
+		char tree_info[256];
+		snprintf(tree_info, sizeof(tree_info), "Before freeing tree data (%d trees)", numberOfTrees);
+		log_current_resource_usage(tree_info);
+	}
+	
 	for(i=0; i<numberOfTrees; i++){
 		for(j=0; j<2*numspecArr[i]-1; j++){
 			for(k=0; k<numbaseArr[i]; k++){
@@ -1335,7 +1361,40 @@ int main(int argc, char **argv){
 		free(treeArr[i]);
 	}
 	free(treeArr);
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing tree arrays");
+	}
+	
+	// Free taxonomyArr - 4-dimensional array [trees][species][taxonomy_levels][taxonomy_names]
+	if (taxonomyArr) {
+		for(i=0; i<numberOfTrees; i++){
+			if (taxonomyArr[i]) {
+				for(j=0; j<numspecArr[i]; j++){
+					if (taxonomyArr[i][j]) {
+						for(k=0; k<7; k++){  // 7 phylogeny levels
+							if (taxonomyArr[i][j][k]) {
+								free(taxonomyArr[i][j][k]);
+							}
+						}
+						free(taxonomyArr[i][j]);
+					}
+				}
+				free(taxonomyArr[i]);
+			}
+		}
+		free(taxonomyArr);
+	}
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing taxonomy arrays");
+	}
+	
 	free(numbaseArr);
 	free(rootArr);
 	free(numspecArr);
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing all tree data");
+	}
 }
