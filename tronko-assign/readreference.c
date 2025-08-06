@@ -1,4 +1,5 @@
 #include "readreference.h"
+#include "crash_debug.h"
 int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int whichPair, Options opt, int max_query_length, int max_readname_length,int first_iter){
 	char* buffer;
 	char* query;
@@ -23,7 +24,10 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 		query[i] = '\0';
 		reverse[i] = '\0';
 	}
+	int line_number_fastq = 0;
 	while(gzgets(query_reads,buffer,buffer_size)!=NULL){
+		line_number_fastq++;
+		crash_set_current_file_line(NULL, line_number_fastq);  // Update current line number
 		s = strtok(buffer,"\n");
 		size = strlen(s);
 		if ( first_iter == 1 ){
@@ -166,7 +170,10 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 		reverse[i]='\0';
 	}
 	int first_iter=1;
+	int line_number = 0;
 	while(gzgets(query_reads,buffer,buffer_size)!=NULL){
+		line_number++;
+		crash_set_current_file_line(NULL, line_number);  // Update current line number
 		s = strtok(buffer,"\n");
 		size = strlen(s);
 		if (first_iter==1){

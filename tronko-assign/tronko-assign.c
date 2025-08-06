@@ -23,6 +23,8 @@
 #include "hashmap_base.h"
 #include "logger.h"
 #include "resource_monitor.h"
+#include "crash_debug.h"
+#include "symbol_resolver.h"
 //int numspec, numbase, root/***seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
 char ****taxonomyArr;
 struct node **treeArr;
@@ -272,6 +274,12 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	struct leafMap *leaf_map;	
 	run_bwa(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name);
 	for ( lineNumber=mstr->start; lineNumber<end; lineNumber++){
+		// Set crash context for current read processing
+		char read_info[64];
+		snprintf(read_info, sizeof(read_info), "read_%d", lineNumber);
+		crash_set_current_read(read_info, 1, lineNumber);
+		crash_set_processing_stage("BWA alignment and tree search");
+		
 		for(i=0; i<mstr->ntree; i++){
 			trees_search[i]=-1;
 		}
@@ -508,6 +516,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int minLevel=0;
 		int taxRoot,taxIndex0,taxIndex1,taxNode;
 		if ( count == 1 ){
+			// Set context for tree processing
+			crash_set_current_tree(maxRoot);
+			crash_set_processing_stage("LCA calculation and taxonomic assignment");
 			clock_gettime(CLOCK_MONOTONIC, &tstart);
 			//LCA=getLCAofArray_Arr(minNodes,maxRoot,maxNumSpec,number_of_total_nodes);
 			LCA = LCA_of_nodes(maxRoot,rootArr[maxRoot],minNodes,numMinNodes);
@@ -787,6 +798,33 @@ int main(int argc, char **argv){
 			logger_enable_timing(1);
 		}
 		
+		// Initialize crash debugging system
+		crash_clear_context();  // Initialize context tracking
+		crash_config_t crash_config = {0};
+		crash_config.enable_stack_trace = 1;
+		crash_config.enable_register_dump = 1;
+		crash_config.enable_memory_dump = 1;
+		crash_config.enable_core_dump = 1;
+		crash_config.enable_crash_log = 1;
+		strcpy(crash_config.crash_log_directory, "/tmp");
+		strcpy(crash_config.crash_log_prefix, "tronko_assign_crash");
+		
+		if (crash_debug_init(&crash_config) == 0) {
+			LOG_DEBUG("Crash debugging system initialized");
+		}
+		
+		// Initialize symbol resolver for enhanced crash reports
+		symbol_resolver_config_t symbol_config = {0};
+		symbol_config.enable_addr2line = 1;
+		symbol_config.enable_source_lookup = 1;
+		symbol_config.cache_symbols = 1;
+		strcpy(symbol_config.debug_info_path, "/usr/lib/debug");
+		strcpy(symbol_config.addr2line_path, "addr2line");
+		
+		if (symbol_resolver_init(&symbol_config) == 0) {
+			LOG_DEBUG("Enhanced symbol resolution initialized");
+		}
+		
 		// Log program startup (now that logging is initialized)
 		LOG_MILESTONE_TIMED(MILESTONE_STARTUP);
 		
@@ -797,6 +835,10 @@ int main(int argc, char **argv){
 		log_milestone_with_timing(MILESTONE_OPTIONS_PARSED, milestone_info);
 		
 		LOG_INFO("Full logging system initialized successfully");
+		
+		// Set crash context for reference file loading
+		crash_set_processing_stage("Loading reference database");
+		crash_set_current_file(opt.reference_file);
 	}
 	// Check if reference file is specified and exists
 	if (opt.reference_file[0] == '\0') {
@@ -1137,6 +1179,11 @@ int main(int argc, char **argv){
 		if (opt.verbose_level >= 0) {
 			LOG_MILESTONE_TIMED(MILESTONE_CLEANUP_COMPLETE);
 			LOG_MILESTONE_TIMED(MILESTONE_PROGRAM_END);
+			
+			// Cleanup crash debugging systems
+			crash_debug_cleanup();
+			symbol_resolver_cleanup();
+			
 			logger_cleanup();
 			cleanup_resource_monitoring();
 		}
@@ -1242,6 +1289,8 @@ int main(int argc, char **argv){
 			mstr[i].print_all_nodes = opt.print_all_nodes;
 		}
 		while (1){
+			crash_set_processing_stage("Reading paired-end input files");
+			crash_set_current_file(opt.read1_file);
 			if (opt.fastq==0){
 				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile_1,1,opt,max_query_length,max_name_length);
 			}else{
@@ -1249,6 +1298,7 @@ int main(int argc, char **argv){
 			}
 			if (returnLineNumber==0)
 				break;
+			crash_set_current_file(opt.read2_file);
 			if (opt.fastq==0){
 				returnLineNumber2 = readInXNumberOfLines ( numberOfLinesToRead/2, seqinfile_2, 2, opt,max_query_length,max_name_length);
 			}else{

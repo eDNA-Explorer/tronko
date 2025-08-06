@@ -123,7 +123,7 @@ fi
 echo ""
 
 # Test 5: Full logging features test
-echo "6. Testing all logging features together (-V 3 -R -T -l)..."
+echo "5. Testing all logging features together (-V 3 -R -T -l)..."
 ./tronko-assign -r \
     -f ../tronko-build/example_datasets/single_tree/reference_tree.txt \
     -a ../tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
@@ -150,8 +150,53 @@ else
 fi
 echo ""
 
+# Test 6: Crash testing with corrupted paired-end data
+echo "6. Testing crash debugging with corrupted paired-end data..."
+echo "This test is expected to potentially crash to verify our crash debugging system works!"
+
+# Check if the paired-end files exist
+if [ ! -f "../example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta" ]; then
+    echo "❌ Corrupted paired-end read1 file not found!"
+else
+    echo "✅ Found corrupted paired-end read1 file"
+    
+    # Test with corrupted data and full crash debugging enabled
+    echo "Running with corrupted data and full crash debugging..."
+    ./tronko-assign -r \
+        -f ../tronko-build/example_datasets/single_tree/reference_tree.txt \
+        -a ../tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
+        -p \
+        -1 ../example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta \
+        -2 ../example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read2.fasta \
+        -o test_results_crash_test.txt \
+        -w \
+        -V 3 \
+        -R \
+        -T \
+        -l crash_test.log
+    
+    crash_exit_code=$?
+    if [ $crash_exit_code -eq 0 ]; then
+        echo "✅ Corrupted data test completed successfully (no crash occurred)"
+        echo "Results written to test_results_crash_test.txt"
+        wc -l test_results_crash_test.txt
+    else
+        echo "💥 Process crashed with exit code $crash_exit_code (this was expected!)"
+        echo "Checking for crash reports..."
+        ls -la /tmp/tronko_assign_crash_*.crash 2>/dev/null || echo "No crash reports found"
+        
+        if [ -f "crash_test.log" ]; then
+            echo ""
+            echo "=== Crash Test Log Contents (last 20 lines) ==="
+            tail -20 crash_test.log
+            echo "==============================================="
+        fi
+    fi
+fi
+echo ""
+
 # Verify all results are consistent
-echo "7. Verifying result consistency across different logging levels..."
+echo "8. Verifying result consistency across different logging levels..."
 if diff test_results_baseline.txt test_results_info.txt > /dev/null; then
     echo "✅ Baseline and INFO results are identical"
 else
