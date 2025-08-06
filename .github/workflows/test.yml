@@ -84,6 +84,13 @@ jobs:
           zlib1g-dev \
           valgrind
     
+    - name: Setup Unity testing framework
+      run: |
+        cd tests
+        if [ ! -d "unity" ]; then
+          git clone https://github.com/ThrowTheSwitch/Unity.git unity
+        fi
+    
     - name: Build tronko-build
       run: |
         cd tronko-build
