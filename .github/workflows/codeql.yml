@@ -1,0 +1,68 @@
+name: "CodeQL Security Analysis"
+
+on:
+  push:
+    branches: [ "main", "experimental", "develop" ]
+  pull_request:
+    branches: [ "main", "experimental" ]
+  schedule:
+    - cron: '30 1 * * 0'  # Weekly on Sundays at 1:30 AM UTC
+
+jobs:
+  analyze:
+    name: Analyze C/C++
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'c-cpp' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          zlib1g-dev \
+          cmake
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        config: |
+          name: "CodeQL Config"
+          disable-default-queries: false
+          queries:
+            - uses: security-and-quality
+
+    - name: Manual C/C++ Build
+      run: |
+        echo "Building tronko-build..."
+        cd tronko-build
+        make clean
+        make
+        
+        echo "Building tronko-assign..."
+        cd ../tronko-assign
+        make clean
+        make
+        
+        echo "Build completed successfully"
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        upload: true
