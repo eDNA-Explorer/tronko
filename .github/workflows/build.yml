@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: print gcc version
         run: gcc -v
       - name: tronko-assign make clean
@@ -41,7 +41,7 @@ jobs:
       - name: rename tronko-build debug
         run: mv tronko-build/tronko-build bin/tronko-build
       - name: Upload tronko.zip
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tronko
           path: bin
