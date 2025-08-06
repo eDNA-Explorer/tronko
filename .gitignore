@@ -28,4 +28,4 @@ tronko-build/tronko-build
 
 # Example/test data outputs
 test_results_*.txt
-missingreads_*_results.txt
+missingreads_*_results.txttests/unity/

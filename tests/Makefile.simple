@@ -1,0 +1,68 @@
+# Simple Makefile for Tronko Tests
+# Focuses on testable components without complex dependencies
+
+CC = gcc
+CFLAGS = -std=gnu99 -Wall -Wextra -g -O0 -D_GNU_SOURCE
+INCLUDES = -I../tronko-assign -Iunity/src
+LIBS = -lm -pthread -lrt
+
+# Unity framework
+UNITY_SRC = unity/src/unity.c
+UNITY_OBJ = unity.o
+
+# Specific source files for testing (minimal dependencies)
+CRASH_DEBUG_SOURCES = ../tronko-assign/crash_debug.c \
+                     ../tronko-assign/symbol_resolver.c \
+                     ../tronko-assign/logger.c \
+                     ../tronko-assign/resource_monitor.c
+
+CRASH_DEBUG_OBJECTS = $(CRASH_DEBUG_SOURCES:.c=.o)
+
+# Test executables
+TEST_TARGETS = test_crash_debug_simple test_simple_workflows
+
+.PHONY: all clean test smoke
+
+all: $(TEST_TARGETS)
+
+# Unity framework
+$(UNITY_OBJ): $(UNITY_SRC)
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Crash debug test (minimal dependencies)
+test_crash_debug_simple: unit/test_crash_debug_simple.c $(UNITY_OBJ) $(CRASH_DEBUG_OBJECTS)
+	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+
+# Simple integration test (no source dependencies)
+test_simple_workflows: integration/test_simple_workflows.c $(UNITY_OBJ)
+	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+
+# Compile source files with minimal flags
+%.o: %.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Run simple tests
+test: $(TEST_TARGETS)
+	@echo "Running simple crash debug tests..."
+	@for test in $(TEST_TARGETS); do \
+		echo "Running $$test..."; \
+		./$$test || exit 1; \
+	done
+	@echo "Simple tests passed!"
+
+# Quick smoke test
+smoke: test_crash_debug_simple
+	@echo "Running smoke test..."
+	./test_crash_debug_simple
+	@echo "Smoke test passed!"
+
+# Clean build artifacts
+clean:
+	rm -f $(TEST_TARGETS) $(UNITY_OBJ) $(CRASH_DEBUG_OBJECTS)
+	rm -f *.gcda *.gcno *.gcov
+
+# Install test dependencies (Unity framework)
+setup:
+	@if [ ! -d "unity" ]; then \
+		git clone https://github.com/ThrowTheSwitch/Unity.git unity; \
+	fi

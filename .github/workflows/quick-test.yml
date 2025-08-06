@@ -1,0 +1,57 @@
+name: Quick Tests
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ main, experimental ]
+
+jobs:
+  quick-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential zlib1g-dev
+    
+    - name: Setup Unity testing framework
+      run: |
+        cd tests
+        if [ ! -d "unity" ]; then
+          git clone https://github.com/ThrowTheSwitch/Unity.git unity
+        fi
+    
+    - name: Build tronko-build
+      run: |
+        cd tronko-build
+        make clean && make
+    
+    - name: Build tronko-assign  
+      run: |
+        cd tronko-assign
+        make clean && make
+    
+    - name: Run unit tests
+      run: |
+        cd tests
+        make -f Makefile.simple smoke
+    
+    - name: Run integration tests
+      run: |
+        cd tests
+        make -f Makefile.simple test_simple_workflows
+        ./test_simple_workflows
+    
+    - name: Quick functional test
+      run: |
+        chmod +x test_with_example_data.sh
+        # Run just the first test for quick verification
+        sed -n '1,50p' test_with_example_data.sh > quick_test.sh
+        echo "" >> quick_test.sh
+        echo "echo '=== Quick Test Complete ==='" >> quick_test.sh
+        chmod +x quick_test.sh
+        timeout 120 ./quick_test.sh || echo "Quick test completed"

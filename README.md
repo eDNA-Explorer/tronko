@@ -1,8 +1,12 @@
 # tronko
+
+![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)
+![Comprehensive Tests](https://github.com/lpipes/tronko/workflows/Tests/badge.svg)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg)](https://doi.org/10.5281/zenodo.7407318)
+
 A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets
 
-In the tronko package there are two modules: `tronko-build` and `tronko-assign`. `tronko-build` is for building custom reference databases that tronko-assign uses as input. We have two reference databases currently available for download with `tronko-assign`. Cytochrome oxidase I (COI) which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GGWACWGGWTGAACWGTWTAYCCYCC` and reverse primer `TANACYTCnGGRTGNCCRAARAAYCA`. 16S which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GTGCCAGCMGCCGCGGTAA` and reverse primer `GACTACHVGGGTATCTAATCC`. 
-<a href="https://doi.org/10.5281/zenodo.7407318"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg" alt="DOI"></a>
+In the tronko package there are two modules: `tronko-build` and `tronko-assign`. `tronko-build` is for building custom reference databases that tronko-assign uses as input. We have two reference databases currently available for download with `tronko-assign`. Cytochrome oxidase I (COI) which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GGWACWGGWTGAACWGTWTAYCCYCC` and reverse primer `TANACYTCnGGRTGNCCRAARAAYCA`. 16S which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GTGCCAGCMGCCGCGGTAA` and reverse primer `GACTACHVGGGTATCTAATCC`.
 
 Alignment-based and composition-based assignment methods calculate the lowest common ancestor (LCA) using data only in the leaf nodes of a phylogeny (A). The advantage of Tronko is that it stores fractional likelihoods in all nodes of a phylogeny and calculates the LCA based on all nodes in the tree (B).
 <img src="https://github.com/lpipes/tronko/blob/main/Overview_Figure.jpg?raw=true">
@@ -303,6 +307,125 @@ With the CO1 database and same parameters:
 ```
 tronko-assign -r -q -p -z -w -C 16 -c 5 -f CO1_tronko_build.txt.gz -a CO1.fasta -1 CO1_TW-DR-1-S88_F_filt.fastq.gz -2 CO1_TW-DR-1-S88_R_filt.fastq.gz -o CO1_TW-DR-1-S88_results.txt
 ```
+
+# Testing
+
+Tronko includes a comprehensive testing suite to ensure reliability and help with development.
+
+## Quick Testing
+
+### Unit Tests
+Test core functionality including crash debugging, signal handling, and corruption detection:
+```bash
+cd tests
+make -f Makefile.simple smoke
+```
+
+### Integration Tests  
+Test binary functionality, command-line interfaces, and data validation:
+```bash
+cd tests
+make -f Makefile.simple test_simple_workflows
+./test_simple_workflows
+```
+
+### Functional Tests
+Test end-to-end workflows with real datasets:
+```bash
+./test_with_example_data.sh
+```
+
+## Comprehensive Testing
+
+### Full Test Suite
+Run all tests (unit, integration, and functional):
+```bash
+cd tests
+make -f Makefile.simple test
+```
+
+### Using the Test Runner
+The test runner provides convenient options for different testing scenarios:
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run only unit tests  
+./run_tests.sh --unit-only
+
+# Run only integration tests
+./run_tests.sh --integration-only
+
+# Generate code coverage report
+./run_tests.sh --coverage
+
+# Run with memory leak detection
+./run_tests.sh --valgrind
+
+# Verbose output for debugging
+./run_tests.sh --verbose
+```
+
+## Docker Testing
+
+Test in a consistent containerized environment:
+```bash
+# Build and run tests in Docker
+docker compose up -d
+docker compose exec tronko-dev bash -c "cd /app/tests && make -f Makefile.simple test"
+
+# Or use the test runner in Docker
+docker compose exec tronko-dev bash -c "cd /app && ./run_tests.sh"
+```
+
+## Continuous Integration
+
+Tests run automatically on every push via GitHub Actions:
+- **Quick Tests**: Fast validation on all branches (~2-3 minutes)
+- **Comprehensive Tests**: Full validation on main/experimental/develop branches (~10-15 minutes)
+- **Performance Tests**: Benchmarking on main/experimental branches
+
+View test status: [![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)](https://github.com/lpipes/tronko/actions)
+
+## Test Categories
+
+### Unit Tests
+- **Framework**: Unity (lightweight C testing framework)
+- **Coverage**: Crash debugging system, corruption detection, signal handling
+- **Location**: `tests/unit/`
+
+### Integration Tests
+- **Coverage**: Binary existence, command-line interfaces, error handling
+- **Location**: `tests/integration/`
+
+### Functional Tests  
+- **Coverage**: End-to-end workflows, real data processing, crash testing
+- **Location**: `test_with_example_data.sh`
+
+For detailed testing documentation, see [`tests/README.md`](tests/README.md).
+
+## Advanced Features
+
+Tronko includes comprehensive logging and debugging capabilities:
+
+### Performance Monitoring
+```bash
+# Enable performance logging with resource monitoring
+tronko-assign -V2 -R -T -l performance.log [options...]
+```
+
+### Crash Debugging
+Automatic crash detection with root cause analysis:
+```bash
+# Crash debugging is always enabled
+# View crash reports in /tmp/tronko_assign_crash_*.crash
+tronko-assign -V2 [options...]  # Enhanced context capture
+```
+
+### Documentation
+- **[Performance Logging Guide](docs/performance-logging.md)**: Comprehensive performance monitoring, resource tracking, and optimization
+- **[Crash Debugging Guide](docs/crash-debugging.md)**: Advanced crash detection, root cause analysis, and debugging workflows
+- **[Complete Documentation Index](docs/index.md)**: Full documentation overview and quick reference
 
 # Performance
 
