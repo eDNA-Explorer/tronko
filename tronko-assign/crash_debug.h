@@ -71,6 +71,11 @@ typedef struct {
     int current_read_index;           // Read index within batch
     int current_tree;                 // Tree being processed
     char processing_stage[128];       // BWA, alignment, placement, LCA, etc.
+    
+    // Data corruption tracking
+    char corrupted_file[512];         // File that contained corrupted data
+    int corrupted_line;               // Line number of corrupted data
+    char corruption_type[128];        // Type of corruption detected
 } crash_info_t;
 
 // Crash handler configuration
@@ -122,6 +127,10 @@ void crash_set_current_read(const char* read_name, int batch, int read_index);
 void crash_set_current_tree(int tree_number);
 void crash_set_processing_stage(const char* stage);
 void crash_clear_context(void);
+
+// Data corruption tracking functions
+void crash_flag_corruption(const char* filename, int line_number, const char* corruption_type);
+void crash_clear_corruption_flags(void);
 
 // Utility functions
 const char* crash_signal_name(int signal);

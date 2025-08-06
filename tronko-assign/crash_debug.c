@@ -36,6 +36,12 @@ static struct {
     int current_read_index;
     int current_tree;
     char processing_stage[128];
+    
+    // Data corruption tracking
+    char corrupted_file[512];
+    int corrupted_line;
+    char corruption_type[128];
+    
     pthread_mutex_t context_mutex;
 } g_app_context = {0};
 
@@ -192,6 +198,12 @@ void crash_signal_handler(int sig, siginfo_t* info, void* context) {
     crash_info.current_batch = g_app_context.current_batch;
     crash_info.current_read_index = g_app_context.current_read_index;
     crash_info.current_tree = g_app_context.current_tree;
+    
+    // Capture corruption tracking
+    crash_safe_string_copy(crash_info.corrupted_file, g_app_context.corrupted_file, sizeof(crash_info.corrupted_file));
+    crash_info.corrupted_line = g_app_context.corrupted_line;
+    crash_safe_string_copy(crash_info.corruption_type, g_app_context.corruption_type, sizeof(crash_info.corruption_type));
+    
     pthread_mutex_unlock(&g_app_context.context_mutex);
     
     // Create crash message
@@ -430,6 +442,20 @@ void crash_generate_report(const crash_info_t* crash_info, const char* filename)
     if (crash_info->current_tree >= 0) {
         fprintf(report_file, "  Current Tree: %d\n", crash_info->current_tree);
     }
+    
+    // Write corruption information if available
+    if (strlen(crash_info->corrupted_file) > 0) {
+        fprintf(report_file, "  *** DATA CORRUPTION DETECTED ***\n");
+        if (crash_info->corrupted_line > 0) {
+            fprintf(report_file, "  Corrupted File: %s (line %d)\n", crash_info->corrupted_file, crash_info->corrupted_line);
+        } else {
+            fprintf(report_file, "  Corrupted File: %s\n", crash_info->corrupted_file);
+        }
+        if (strlen(crash_info->corruption_type) > 0) {
+            fprintf(report_file, "  Corruption Type: %s\n", crash_info->corruption_type);
+        }
+    }
+    
     fprintf(report_file, "\n");
     
     // Write stack trace
@@ -616,5 +642,24 @@ void crash_clear_context(void) {
     g_app_context.current_batch = -1;
     g_app_context.current_read_index = -1;
     g_app_context.current_tree = -1;
+    pthread_mutex_unlock(&g_app_context.context_mutex);
+}
+
+// Data corruption tracking functions
+void crash_flag_corruption(const char* filename, int line_number, const char* corruption_type) {
+    if (!filename || !corruption_type) return;
+    
+    pthread_mutex_lock(&g_app_context.context_mutex);
+    crash_safe_string_copy(g_app_context.corrupted_file, filename, sizeof(g_app_context.corrupted_file));
+    g_app_context.corrupted_line = line_number;
+    crash_safe_string_copy(g_app_context.corruption_type, corruption_type, sizeof(g_app_context.corruption_type));
+    pthread_mutex_unlock(&g_app_context.context_mutex);
+}
+
+void crash_clear_corruption_flags(void) {
+    pthread_mutex_lock(&g_app_context.context_mutex);
+    memset(g_app_context.corrupted_file, 0, sizeof(g_app_context.corrupted_file));
+    g_app_context.corrupted_line = -1;
+    memset(g_app_context.corruption_type, 0, sizeof(g_app_context.corruption_type));
     pthread_mutex_unlock(&g_app_context.context_mutex);
 }

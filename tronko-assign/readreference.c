@@ -25,9 +25,20 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 		reverse[i] = '\0';
 	}
 	int line_number_fastq = 0;
+	// Set the current file being processed based on whichPair
+	const char* current_filename = NULL;
+	if (whichPair == 1) {
+		current_filename = opt.read1_file;
+	} else if (whichPair == 2) {
+		current_filename = opt.read2_file;
+	}
+	if (current_filename) {
+		crash_set_current_file(current_filename);
+	}
+	
 	while(gzgets(query_reads,buffer,buffer_size)!=NULL){
 		line_number_fastq++;
-		crash_set_current_file_line(NULL, line_number_fastq);  // Update current line number
+		crash_set_current_file_line(current_filename, line_number_fastq);  // Update current file and line number
 		s = strtok(buffer,"\n");
 		size = strlen(s);
 		if ( first_iter == 1 ){
@@ -36,6 +47,22 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 				exit(-1);
 			}
 			first_iter=0;
+		}
+		
+		// Check for data corruption patterns in FASTQ
+		if (buffer[0] == '@') {
+			// Header line - validate format
+			if (size < 2) {
+				crash_flag_corruption(current_filename, line_number_fastq, "Empty FASTQ header");
+			}
+		} else if (buffer[0] != '+' && buffer[0] != '>') {
+			// Sequence or quality line - check for corruption patterns
+			if (buffer[0] == ' ' || buffer[0] == '\t') {
+				crash_flag_corruption(current_filename, line_number_fastq, "FASTQ line starts with whitespace");
+			}
+			if (size > 0 && size < 10) {  // Very short sequences are suspicious
+				crash_flag_corruption(current_filename, line_number_fastq, "Suspiciously short FASTQ sequence");
+			}
 		}
 		if ( buffer[0] == '@' && whichPair==1){
 			for(i=1; i<size; i++){
@@ -171,9 +198,20 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 	}
 	int first_iter=1;
 	int line_number = 0;
+	// Set the current file being processed based on whichPair
+	const char* current_filename = NULL;
+	if (whichPair == 1) {
+		current_filename = opt.read1_file;
+	} else if (whichPair == 2) {
+		current_filename = opt.read2_file;
+	}
+	if (current_filename) {
+		crash_set_current_file(current_filename);
+	}
+	
 	while(gzgets(query_reads,buffer,buffer_size)!=NULL){
 		line_number++;
-		crash_set_current_file_line(NULL, line_number);  // Update current line number
+		crash_set_current_file_line(current_filename, line_number);  // Update current file and line number
 		s = strtok(buffer,"\n");
 		size = strlen(s);
 		if (first_iter==1){
@@ -182,6 +220,22 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 				exit(-1);
 			}
 			first_iter=0;
+		}
+		
+		// Check for data corruption patterns
+		if (buffer[0] == '>') {
+			// Header line - validate format
+			if (size < 2) {
+				crash_flag_corruption(current_filename, line_number, "Empty FASTA header");
+			}
+		} else {
+			// Sequence line - check for corruption patterns
+			if (buffer[0] == ' ' || buffer[0] == '\t') {
+				crash_flag_corruption(current_filename, line_number, "Sequence line starts with whitespace");
+			}
+			if (size > 0 && size < 10) {  // Very short sequences are suspicious
+				crash_flag_corruption(current_filename, line_number, "Suspiciously short sequence");
+			}
 		}
 		if ( buffer[0] == '>' && whichPair==1 ){
 			for(i=1; i<size; i++){
