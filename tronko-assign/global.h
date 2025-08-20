@@ -6,7 +6,7 @@
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/
 #define MAXNUMBEROFINDINSPECIES 500 /*maximum number of individuals belonging to a species*/
 #define MAXQUERYLENGTH 30000
-#define MAX_CIGAR 100
+#define MAX_CIGAR 1000
 #define NUMCAT 1/*number of categories in the discretization of the gamma for the nucleotide substituion model*/
 #define MINBL 0.000001
 #define MAXBL 2.0
