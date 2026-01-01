@@ -426,6 +426,7 @@ tronko-assign -V2 [options...]  # Enhanced context capture
 - **[Performance Logging Guide](docs/performance-logging.md)**: Comprehensive performance monitoring, resource tracking, and optimization
 - **[Crash Debugging Guide](docs/crash-debugging.md)**: Advanced crash detection, root cause analysis, and debugging workflows
 - **[Complete Documentation Index](docs/index.md)**: Full documentation overview and quick reference
+- **[Experiments Log](EXPERIMENTS_LOG.md)**: Benchmark results and optimization experiments (memory vs accuracy tradeoffs)
 
 # Performance
 

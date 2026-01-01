@@ -10,7 +10,37 @@ STACKPROTECT = -fno-stack-protector
 # -lm links the math library
 #LIBS = -lm -lpthread -lz
 LIBS = -lm -pthread -lz -lrt -std=gnu99
+
+# Base optimization
 OPTIMIZATION = -O3
+
+# Architecture-specific optimization (use: make NATIVE_ARCH=1)
+ifdef NATIVE_ARCH
+    ARCH_FLAGS = -march=native -mtune=native
+else
+    ARCH_FLAGS =
+endif
+
+# Fast math optimization (use: make FAST_MATH=1)
+ifdef FAST_MATH
+    MATH_FLAGS = -ffast-math
+else
+    MATH_FLAGS =
+endif
+
+# OpenMP support for WFA2 (use: make ENABLE_OPENMP=1)
+ifdef ENABLE_OPENMP
+    OPENMP_FLAGS = -fopenmp
+else
+    OPENMP_FLAGS =
+endif
+
+# Memory optimization flag (use: make OPTIMIZE_MEMORY=1)
+ifdef OPTIMIZE_MEMORY
+    MEMOPT_FLAGS = -DOPTIMIZE_MEMORY
+else
+    MEMOPT_FLAGS =
+endif
 #sources
 SOURCES = tronko-assign.c readreference.c assignment.c allocateMemoryForResults.c allocatetreememory.c getSequenceinRoot.c placement.c options.c printAlignments.c logger.c resource_monitor.c crash_debug.c symbol_resolver.c
 NEEDLEMANWUNSCH = needleman_wunsch.c alignment.c alignment_scoring.c
@@ -23,9 +53,9 @@ TARGET = tronko-assign
 
 all: $(TARGET)
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS)
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS) $(OPENMP_FLAGS)
 debug: $(TARGET).c
-	$(CC) $(DBGCFLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS)
+	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS) $(OPENMP_FLAGS)
 
 clean:
 	$(RM) $(TARGET)

@@ -41,8 +41,16 @@ static struct {
     char corrupted_file[512];
     int corrupted_line;
     char corruption_type[128];
-    
+
     pthread_mutex_t context_mutex;
+
+    // BWA bounds tracking
+    int bwa_leaf_iter;
+    int bwa_max_matches;
+    int bwa_concordant_count;
+    int bwa_discordant_count;
+    int bwa_unique_trees;
+    int bwa_dropped_matches;
 } g_app_context = {0};
 
 // Signal information mapping
@@ -203,7 +211,15 @@ void crash_signal_handler(int sig, siginfo_t* info, void* context) {
     crash_safe_string_copy(crash_info.corrupted_file, g_app_context.corrupted_file, sizeof(crash_info.corrupted_file));
     crash_info.corrupted_line = g_app_context.corrupted_line;
     crash_safe_string_copy(crash_info.corruption_type, g_app_context.corruption_type, sizeof(crash_info.corruption_type));
-    
+
+    // Capture BWA context
+    crash_info.bwa_leaf_iter = g_app_context.bwa_leaf_iter;
+    crash_info.bwa_max_matches = g_app_context.bwa_max_matches;
+    crash_info.bwa_concordant_count = g_app_context.bwa_concordant_count;
+    crash_info.bwa_discordant_count = g_app_context.bwa_discordant_count;
+    crash_info.bwa_unique_trees = g_app_context.bwa_unique_trees;
+    crash_info.bwa_dropped_matches = g_app_context.bwa_dropped_matches;
+
     pthread_mutex_unlock(&g_app_context.context_mutex);
     
     // Create crash message
@@ -455,13 +471,27 @@ void crash_generate_report(const crash_info_t* crash_info, const char* filename)
             fprintf(report_file, "  Corruption Type: %s\n", crash_info->corruption_type);
         }
     }
-    
+
+    // Write BWA bounds information if relevant
+    if (crash_info->bwa_leaf_iter > 0 || crash_info->bwa_dropped_matches > 0) {
+        fprintf(report_file, "\nBWA Bounds Context:\n");
+        fprintf(report_file, "  leaf_iter: %d (max: %d)\n",
+                crash_info->bwa_leaf_iter, crash_info->bwa_max_matches);
+        fprintf(report_file, "  Concordant matches: %d\n", crash_info->bwa_concordant_count);
+        fprintf(report_file, "  Discordant matches: %d\n", crash_info->bwa_discordant_count);
+        fprintf(report_file, "  Unique trees: %d\n", crash_info->bwa_unique_trees);
+        if (crash_info->bwa_dropped_matches > 0) {
+            fprintf(report_file, "  *** MATCHES DROPPED: %d (bounds exceeded) ***\n",
+                    crash_info->bwa_dropped_matches);
+        }
+    }
+
     fprintf(report_file, "\n");
-    
+
     // Write stack trace
     if (crash_info->stack_depth > 0) {
         fprintf(report_file, "Stack Trace:\n");
-        crash_print_stack_trace(crash_info->stack_trace, crash_info->stack_depth, report_file);
+        crash_print_stack_trace((const void* const*)crash_info->stack_trace, crash_info->stack_depth, report_file);
         fprintf(report_file, "\n");
     }
     
@@ -491,7 +521,7 @@ void crash_write_crash_log(const crash_info_t* crash_info) {
     LOG_ERROR("Message: %s", crash_info->crash_message);
     
     if (crash_info->stack_depth > 0) {
-        crash_log_stack_trace(crash_info->stack_trace, crash_info->stack_depth);
+        crash_log_stack_trace((const void* const*)crash_info->stack_trace, crash_info->stack_depth);
     }
     
     // Generate detailed report file
@@ -661,5 +691,34 @@ void crash_clear_corruption_flags(void) {
     memset(g_app_context.corrupted_file, 0, sizeof(g_app_context.corrupted_file));
     g_app_context.corrupted_line = -1;
     memset(g_app_context.corruption_type, 0, sizeof(g_app_context.corruption_type));
+    pthread_mutex_unlock(&g_app_context.context_mutex);
+}
+
+// BWA bounds tracking functions
+void crash_set_bwa_context(int leaf_iter, int concordant_count, int discordant_count) {
+    pthread_mutex_lock(&g_app_context.context_mutex);
+    g_app_context.bwa_leaf_iter = leaf_iter;
+    g_app_context.bwa_concordant_count = concordant_count;
+    g_app_context.bwa_discordant_count = discordant_count;
+    g_app_context.bwa_unique_trees = leaf_iter;  // leaf_iter tracks unique trees
+    pthread_mutex_unlock(&g_app_context.context_mutex);
+}
+
+void crash_set_bwa_bounds_violation(int leaf_iter, int max_matches, int dropped) {
+    pthread_mutex_lock(&g_app_context.context_mutex);
+    g_app_context.bwa_leaf_iter = leaf_iter;
+    g_app_context.bwa_max_matches = max_matches;
+    g_app_context.bwa_dropped_matches = dropped;
+    pthread_mutex_unlock(&g_app_context.context_mutex);
+}
+
+void crash_clear_bwa_context(void) {
+    pthread_mutex_lock(&g_app_context.context_mutex);
+    g_app_context.bwa_leaf_iter = 0;
+    g_app_context.bwa_max_matches = 0;
+    g_app_context.bwa_concordant_count = 0;
+    g_app_context.bwa_discordant_count = 0;
+    g_app_context.bwa_unique_trees = 0;
+    g_app_context.bwa_dropped_matches = 0;
     pthread_mutex_unlock(&g_app_context.context_mutex);
 }

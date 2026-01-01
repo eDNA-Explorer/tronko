@@ -21,47 +21,76 @@
 		assignScores_Arr(rootNum, child1, locQuery, positions, scores, alength);
 	}*/
 /*}*/
-void assignScores_Arr_paired( int rootNum, int node, char *locQuery, int *positions, type_of_PP ***scores, int alength, int search_number, int print_all_nodes, FILE* site_scores_file, char* readname){
-	//if (positions[0]==-1){
-	//	return;
-	//}
+void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positions,
+    type_of_PP ***scores, int alength, int search_number, int print_all_nodes,
+    FILE* site_scores_file, char* readname,
+    int early_termination, type_of_PP *best_score, int *strikes,
+    type_of_PP strike_box, int max_strikes,
+    int enable_pruning, type_of_PP pruning_threshold) {
+
 	int child0 = treeArr[rootNum][node].up[0];
 	int child1 = treeArr[rootNum][node].up[1];
-	if (child0 == -1 && child1 == -1){
-		scores[search_number][rootNum][node] += getscore_Arr(alength,node,rootNum,locQuery,positions,print_all_nodes,site_scores_file,readname);
-		//scores[search_number][rootNum].nodeNumber = node;
-		//if ( pair == 1 ){
-		//	scores[search_number][rootNum].score1 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}else{
-		//	scores[search_number][rootNum].score2 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}
-		//treeArr[rootNum][node].score += getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//printf("node %d, score %lf, tree %d\n",node,scores[search_number][rootNum][node],rootNum);
-	}else if(child0 != -1 && child1 != -1){
-		scores[search_number][rootNum][node] += getscore_Arr(alength,node,rootNum,locQuery,positions,print_all_nodes,site_scores_file,readname);
-		//treeArr[rootNum][node].score += getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//printf("node %d, score %lf, tree %d\n",node,scores[search_number][rootNum][node],rootNum);
-		//scores[search_number][rootNum].nodeNumber = node;
-		//if ( pair == 1 ){
-		//	scores[search_number][rootNum].score1 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}else{
-		//	scores[search_number][rootNum].score2 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}
-		assignScores_Arr_paired(rootNum, child0,locQuery, positions, scores, alength, search_number,print_all_nodes,site_scores_file,readname);
-		assignScores_Arr_paired(rootNum, child1, locQuery, positions,scores,alength, search_number,print_all_nodes,site_scores_file,readname);
+
+	// Calculate score for this node
+	type_of_PP node_score = getscore_Arr(alength, node, rootNum, locQuery, positions,
+	                                      print_all_nodes, site_scores_file, readname);
+
+	if (child0 == -1 && child1 == -1) {
+		// Leaf node
+		scores[search_number][rootNum][node] += node_score;
+
+		// Update best score tracking
+		if (early_termination && node_score > *best_score) {
+			*best_score = node_score;
+			*strikes = 0;
+		}
+	} else if (child0 != -1 && child1 != -1) {
+		// Internal node
+		scores[search_number][rootNum][node] += node_score;
+
+		// Subtree pruning check (only if enabled)
+		// If this node is too bad, skip entire subtree
+		if (enable_pruning && *best_score > -9999999999999998) {
+			if (node_score < *best_score - pruning_threshold) {
+				// This subtree cannot contain nodes within Cinterval of best
+				// Skip children entirely
+				return;
+			}
+		}
+
+		// FIXME: Early termination is BROKEN - produces incorrect results (0.0 scores, wrong nodes)
+		// The algorithm terminates too aggressively, stopping before reaching leaf nodes.
+		// TODO: Remove this feature or completely redesign the approach.
+		// See validation report: baseline vs early_termination outputs differ significantly.
+		// Disabled pending fix - the flag is accepted but ignored.
+		/*
+		if (early_termination) {
+			// Higher score is better in tronko (log probabilities, less negative = better)
+			if (node_score < *best_score - strike_box) {
+				// This node is significantly worse than best
+				(*strikes)++;
+				if (*strikes >= max_strikes) {
+					// Stop exploring this subtree
+					return;
+				}
+			} else if (node_score > *best_score) {
+				// Found a better score, reset strikes
+				*best_score = node_score;
+				*strikes = 0;
+			}
+		}
+		*/
+
+		// Recurse to children
+		assignScores_Arr_paired(rootNum, child0, locQuery, positions, scores, alength,
+		    search_number, print_all_nodes, site_scores_file, readname,
+		    early_termination, best_score, strikes, strike_box, max_strikes,
+		    enable_pruning, pruning_threshold);
+		assignScores_Arr_paired(rootNum, child1, locQuery, positions, scores, alength,
+		    search_number, print_all_nodes, site_scores_file, readname,
+		    early_termination, best_score, strikes, strike_box, max_strikes,
+		    enable_pruning, pruning_threshold);
 	}
-	/*if(child1 != -1 ){
-		scores[search_number][rootNum][node] +=  getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//treeArr[rootNum][node].score += getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//printf("node %d, score %lf, tree %d\n",node,scores[search_number][rootNum][node],rootNum);
-		//scores[search_number][rootNum].nodeNumber = node;
-		//if ( pair == 1 ){
-		//	scores[search_number][rootNum].score1 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}else{
-		//	scores[search_number][rootNum].score2 = getscore_Arr(alength,node,rootNum,locQuery,positions);
-		//}
-		assignScores_Arr_paired(rootNum, child1, locQuery, positions,scores,alength, search_number);
-	}*/
 }
 /*type_of_PP getscore(int alength, int node, int rootNum){
 	type_of_PP score;
@@ -120,7 +149,7 @@ int checkPolyA(int rootNum, int node, int position){
 	int i,j;
 	int isPolyA = 0;
 	for(i=0; i<position; i++){
-		if ( treeArr[rootNum][node].posteriornc[i][0] == 1 ){
+		if ( treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] == 1 ){
 			isPolyA = 1;
 		}else{
 			isPolyA = 0;
@@ -131,7 +160,7 @@ int checkPolyA(int rootNum, int node, int position){
 		return 1;
 	}
 	for(i=numbaseArr[rootNum]-1; i>=position; i--){
-		if ( treeArr[rootNum][node].posteriornc[i][0] == 1 ){
+		if ( treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] == 1 ){
 			isPolyA = 1;
 		}else{
 			isPolyA = 0;
@@ -162,37 +191,37 @@ type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int 
 					fprintf(site_scores_file,"%lf\n",log(0.01));
 				}
 			}else{
-				if ( treeArr[rootNum][node].posteriornc[positions[i]][0]==1 && locQuery[i]=='-' ){
-					score=score+0; 
+				if ( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)]==1 && locQuery[i]=='-' ){
+					score=score+0;
 					if ( print_all_nodes == 1){
 						fprintf(site_scores_file,"%lf\n",0);
 					}
 				}else{
-					if( treeArr[rootNum][node].posteriornc[positions[i]][0] == 1){
+					if( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)] == 1){
 						score = score + log(0.01);
 						if ( print_all_nodes == 1){
 							fprintf(site_scores_file,"%lf\n",log(0.01));
 						}
 					}else{
 						if (locQuery[i]=='a' || locQuery[i]=='A'){
-							score += treeArr[rootNum][node].posteriornc[positions[i]][0];
+							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)];
 							if ( print_all_nodes == 1){
-								fprintf(site_scores_file,"%lf\n",treeArr[rootNum][node].posteriornc[positions[i]][0]);
+								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)]);
 							}
 						}else if (locQuery[i]=='c' || locQuery[i]=='C'){
-							score += treeArr[rootNum][node].posteriornc[positions[i]][1];
+							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 1)];
 							if ( print_all_nodes == 1){
-								fprintf(site_scores_file,"%lf\n",treeArr[rootNum][node].posteriornc[positions[i]][1]);
+								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 1)]);
 							}
 						}else if (locQuery[i]=='g' || locQuery[i]=='G'){
-							score += treeArr[rootNum][node].posteriornc[positions[i]][2];
+							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 2)];
 							if ( print_all_nodes == 1){
-								fprintf(site_scores_file,"%lf\n",treeArr[rootNum][node].posteriornc[positions[i]][2]);
+								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 2)]);
 							}
 						}else if (locQuery[i]=='t' || locQuery[i]=='T'){
-							score += treeArr[rootNum][node].posteriornc[positions[i]][3];
+							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 3)];
 							if ( print_all_nodes == 1){
-								fprintf(site_scores_file,"%lf\n",treeArr[rootNum][node].posteriornc[positions[i]][3]);
+								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 3)]);
 							}
 						}else if (locQuery[i]=='-'){
 							score += log(0.25);
@@ -205,6 +234,6 @@ type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int 
 			}
 			//printf("Node: %d Position: %d Score: %lf\n",node,pos,score);
 	}
-	
+
 	return score;
 }

@@ -4,126 +4,91 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Tronko is a phylogeny-based method for taxonomic classification of metabarcoding datasets. It consists of two main C programs:
-- `tronko-build`: Creates reference databases from phylogenetic trees and sequence alignments
-- `tronko-assign`: Assigns taxonomic classifications to query sequences using the reference databases
+Tronko is a phylogeny-based method for accurate community profiling of metabarcoding datasets. It consists of two C modules:
+
+- **tronko-build**: Builds custom reference databases from phylogenetic trees, MSAs, and taxonomy files
+- **tronko-assign**: Assigns species to query sequences using a tronko-build database
+
+The key innovation is calculating LCA (Lowest Common Ancestor) using fractional likelihoods stored in all nodes of a phylogeny, not just leaf nodes.
 
 ## Build Commands
 
-### Building the binaries
 ```bash
 # Build tronko-build
-cd tronko-build
-make
+cd tronko-build && make
 
-# Build tronko-assign  
-cd ../tronko-assign
-make
+# Build tronko-assign
+cd tronko-assign && make
 
-# Build both (clean builds)
-cd tronko-build && make clean && make
-cd ../tronko-assign && make clean && make
-
-# Debug builds
+# Debug builds (with -g flag)
 cd tronko-build && make debug
-cd ../tronko-assign && make debug
+cd tronko-assign && make debug
+
+# Clean builds
+cd tronko-build && make clean
+cd tronko-assign && make clean
 ```
 
-### Installation
-```bash
-# Copy binaries to PATH after building
-cp tronko-build/tronko-build /usr/local/bin/
-cp tronko-assign/tronko-assign /usr/local/bin/
-```
+Both use gcc with `-O3` optimization. tronko-assign links pthread, zlib, and rt libraries.
 
-## Testing Commands
+## Architecture
 
-### Running example datasets
-```bash
-# Single tree example with tronko-build
-tronko-build -l \
-  -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta \
-  -x tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt \
-  -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot \
-  -d /full/path/to/output/directory
+### tronko-build
+Main source: `tronko-build/tronko-build.c`
+- Reads phylogenetic trees (Newick), MSAs (FASTA), and taxonomy files
+- Can operate in single-tree mode (`-l`) or partition mode (`-y`)
+- Partitioning uses sum-of-pairs scoring or minimum leaf node thresholds
+- Output: `reference_tree.txt` database file
 
-# Single-end read assignment example
-tronko-assign -r \
-  -f tronko-build/example_datasets/single_tree/reference_tree.txt \
-  -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
-  -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
-  -o results.txt -w
+Key modules:
+- `likelihood.c` - Likelihood calculations for phylogenetic placement
+- `readfasta.c` - FASTA file parsing
+- `readreference.c` - Reference database I/O
+- `opt.c` / `math.c` - Optimization and mathematical functions
 
-# Paired-end read assignment example
-tronko-assign -r \
-  -f tronko-build/example_datasets/single_tree/reference_tree.txt \
-  -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
-  -p -1 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read1.fasta \
-  -2 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read2.fasta \
-  -o results.txt -w
-```
+### tronko-assign
+Main source: `tronko-assign/tronko-assign.c`
+- Uses BWA for alignment to leaf nodes (embedded in `bwa_source_files/`)
+- Supports Wavefront Alignment (`WFA2/`) or Needleman-Wunsch alignment
+- Handles paired-end (`-p`) or single-end (`-s`) reads
+- Supports FASTA (default) or FASTQ (`-q`) input
 
-## Code Architecture
-
-### Core Components
-
-**tronko-build/**
-- `tronko-build.c`: Main program for database building
-- `readfasta.c`, `readreference.c`: Input file parsers
-- `likelihood.c`: Node probability calculations  
-- `getclade.c`: Taxonomic information management
-- `printtree.c`: Output generation
-
-**tronko-assign/**
-- `tronko-assign.c`: Main program for sequence assignment
-- `alignment.c`, `needleman_wunsch.c`: Sequence alignment modules
-- `assignment.c`: Taxonomic classification logic
-- `placement.c`: Phylogenetic tree placement
-- BWA integration for initial sequence mapping
-- WFA2 library for efficient alignment
-
-### Memory Management
-- Custom allocators in `allocatetreememory.c` and `allocateMemoryForResults.c`
-- Manual memory management for C structures
-- Thread-safe allocation for parallel processing
+Key modules:
+- `placement.c` - Phylogenetic placement logic
+- `assignment.c` - Species assignment
+- `alignment.c`, `needleman_wunsch.c` - Sequence alignment
+- `WFA2/` - Wavefront Alignment Algorithm v2 (third-party)
 
 ### External Dependencies
-- **BWA**: Burrows-Wheeler Aligner (embedded source in `bwa_source_files/`)
-- **WFA2**: Wavefront Alignment Algorithm (embedded in `WFA2/`)
-- **HashMaps**: Custom implementation in `hashmap.c`
+For partitioning in tronko-build (bundled in `bin/`):
+- `raxmlHPC-PTHREADS` - Tree estimation
+- `famsa` - Multiple sequence alignment
+- `nw_reroot` - Newick utilities
+- `fasta2phyml.pl` - Format conversion (also in `scripts/`)
 
-### Threading Model
-- `tronko-build`: Single-threaded
-- `tronko-assign`: Multi-threaded with `-C` parameter for thread count
+## Testing
 
-## Key Configuration Files
+Example datasets are provided for testing builds:
 
-### Input File Formats
-- **MSA**: FASTA format multiple sequence alignment
-- **Tree**: Newick format phylogenetic tree (must be rooted)
-- **Taxonomy**: Tab-delimited format: `FASTA_header\tdomain;phylum;class;order;family;genus;species`
+```bash
+# Single tree test
+tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta \
+  -x tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt \
+  -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot \
+  -d tronko-build/example_datasets/single_tree
 
-### Global Configuration
-- Constants defined in `global.h`:
-  - `MAXQUERYLENGTH 30000`: Maximum query sequence length
-  - `MAX_NUMBEROFROOTS 20000`: Maximum number of reference trees
-  - `STATESPACE 20`: Likelihood calculation categories
+# Test assignment with single-end reads
+tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt \
+  -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
+  -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
+  -o /tmp/test_results.txt -w
+```
 
-## Development Workflow
+## File Naming Conventions
 
-### Making Changes
-1. Understand the two-phase workflow: database building → sequence assignment
-2. Check existing documentation in `docs/` for detailed algorithm explanations
-3. Both programs use custom data structures for trees and sequences
-4. Memory allocation patterns follow manual C management
-5. Thread safety required for any changes to `tronko-assign`
+For multi-cluster builds, files must follow this naming:
+- MSA: `[Number]_MSA.fasta`
+- Taxonomy: `[Number]_taxonomy.txt`
+- Tree: `RAxML_bestTree.[Number].reroot`
 
-### Important Parameters
-- **LCA cutoff** (`-c`): Score threshold for taxonomic assignment (default: 5)
-- **Alignment method**: WFA2 (default) or Needleman-Wunsch (`-w`)
-- **Score constant** (`-u`): Affects likelihood calculations (default: 0.01)
-
-### File Dependencies
-- Reference database format is binary and specific to tronko
-- FASTA reference sequences required separately from database file
-- Tree partitioning affects memory usage and performance
+Taxonomy file format: `FASTA_header\tdomain;phylum;class;order;family;genus;species`

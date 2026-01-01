@@ -42,7 +42,7 @@ int getStartPosition(int start, int rootNum, int node, int padding){
 	}
 	for(i=0; i<numbaseArr[rootNum]; i++){
 		if (j==start){ break; }
-		if ( treeArr[rootNum][node].posteriornc[i][0] == 1 ){
+		if ( treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] == 1 ){
 			k++;
 		}else{
 			j++;
@@ -90,7 +90,7 @@ int getEndPosition(char* s, int rootNum, int node, int start, int padding){
 	}
 	for(i=start; i<numbaseArr[rootNum]; i++){
 		if (j==alignment_length){ break; }
-		if (treeArr[rootNum][node].posteriornc[i][0] == 1){
+		if (treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] == 1){
 			k++;
 		}else{
 			j++;
@@ -106,19 +106,19 @@ void getSequenceInNode(int rootNum, int node, char *sequenceInNode){
 	//	fprintf(stderr, "malloc failed\n");
 	//	exit(1);
 	//}
-	for(i=0;i<numbaseArr[rootNum];i++){	
+	for(i=0;i<numbaseArr[rootNum];i++){
 		//maximum=PP_Arr[rootNum][node][i][0];
-		maximum=treeArr[rootNum][node].posteriornc[i][0];
+		maximum=treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)];
 		//minimum=0;
 		index=0;
 		char base;
 		//if (PP_Arr[rootNum][node][i][0] != 1 ){
-		if (treeArr[rootNum][node].posteriornc[i][0] != 1 ){
+		if (treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] != 1 ){
 		for(j=0;j<4;j++){
 			//if (maximum < PP_Arr[rootNum][node][i][j]){
-			if (maximum < treeArr[rootNum][node].posteriornc[i][j]){
+			if (maximum < treeArr[rootNum][node].posteriornc[PP_IDX(i, j)]){
 				//maximum=PP_Arr[rootNum][node][i][j];
-				maximum=treeArr[rootNum][node].posteriornc[i][j];
+				maximum=treeArr[rootNum][node].posteriornc[PP_IDX(i, j)];
 				index=j;
 			}
 		}
@@ -142,16 +142,16 @@ void getSequenceInNodeWithoutNs(int rootNum, int node, char *sequenceInNode, int
 	//for(i=0; i<numbaseArr[rootNum];i++){
 	for(i=start_position; i<end_position; i++){
 		//maximum=PP_Arr[rootNum][node][i][0];
-		maximum=treeArr[rootNum][node].posteriornc[i][0];
+		maximum=treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)];
 		index=0;
 		char base;
 		//if (PP_Arr[rootNum][node][i][0] != 1 ){
-		if (treeArr[rootNum][node].posteriornc[i][0] != 1 ){
+		if (treeArr[rootNum][node].posteriornc[PP_IDX(i, 0)] != 1 ){
 			for(j=0; j<4; j++){
 				//if (maximum < PP_Arr[rootNum][node][i][j]){
-				if (maximum < treeArr[rootNum][node].posteriornc[i][j]){
+				if (maximum < treeArr[rootNum][node].posteriornc[PP_IDX(i, j)]){
 					//maximum=PP_Arr[rootNum][node][i][j];
-					maximum=treeArr[rootNum][node].posteriornc[i][j];
+					maximum=treeArr[rootNum][node].posteriornc[PP_IDX(i, j)];
 					index=j;
 				}
 			}

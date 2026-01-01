@@ -39,6 +39,14 @@ static struct option long_options[]=
 	{"log-file",required_argument,0,'l'},
 	{"enable-resource-monitoring",no_argument,0,'R'},
 	{"enable-timing",no_argument,0,'T'},
+	{"tsv-log",required_argument,0,0},  // Long option only, no short form
+	{"early-termination",no_argument,0,0},
+	{"no-early-termination",no_argument,0,0},
+	{"strike-box",required_argument,0,0},
+	{"max-strikes",required_argument,0,0},
+	{"enable-pruning",no_argument,0,0},
+	{"disable-pruning",no_argument,0,0},
+	{"pruning-factor",required_argument,0,0},
 	{0, 0, 0, 0}  // Terminating entry required by getopt_long
 };
 
@@ -72,6 +80,16 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-l [FILE], Log file path [default: stderr only]\n\
 	-R, Enable resource monitoring (memory/CPU usage)\n\
 	-T, Enable timing information\n\
+	--tsv-log [FILE], Export memory stats to TSV file for analysis\n\
+	\n\
+	Optimization Options:\n\
+	--early-termination, Enable early termination during tree traversal\n\
+	--no-early-termination, Disable early termination (default)\n\
+	--strike-box [FLOAT], Strike box size as multiplier of Cinterval [default: 1.0]\n\
+	--max-strikes [INT], Maximum strikes before termination [default: 6]\n\
+	--enable-pruning, Enable subtree pruning\n\
+	--disable-pruning, Disable subtree pruning (default)\n\
+	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
 	\n";
 
 void print_help_statement(){
@@ -101,6 +119,43 @@ void parse_options(int argc, char **argv, Options *opt){
 		}
 		
 		switch(c){
+			case 0:
+				// Handle long options without short equivalents
+				if (strcmp(long_options[option_index].name, "tsv-log") == 0) {
+					strncpy(opt->tsv_log_file, optarg, sizeof(opt->tsv_log_file) - 1);
+					opt->tsv_log_file[sizeof(opt->tsv_log_file) - 1] = '\0';
+				}
+				else if (strcmp(long_options[option_index].name, "early-termination") == 0) {
+					opt->early_termination = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "no-early-termination") == 0) {
+					opt->early_termination = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "strike-box") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->strike_box)) != 1) {
+						fprintf(stderr, "Invalid strike-box value\n");
+						opt->strike_box = 1.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "max-strikes") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_strikes)) != 1) {
+						fprintf(stderr, "Invalid max-strikes value\n");
+						opt->max_strikes = 6;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "enable-pruning") == 0) {
+					opt->enable_pruning = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "disable-pruning") == 0) {
+					opt->enable_pruning = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "pruning-factor") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->pruning_factor)) != 1) {
+						fprintf(stderr, "Invalid pruning-factor value\n");
+						opt->pruning_factor = 2.0;
+					}
+				}
+				break;
 			case 'h':
 				print_help_statement();
 				exit(0);

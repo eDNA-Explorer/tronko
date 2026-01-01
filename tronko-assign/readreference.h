@@ -18,4 +18,14 @@ void shiftUp(int iter, int jump, int numberOfLinesToRead);
 int readReferenceTree( gzFile referenceTree,int* name_specs);
 int setNumbase_setNumspec(int numberOfPartitions,int* specs);
 void find_specs_for_reads(int* specs, gzFile file, int format);
+
+// Format detection for reference files
+int detect_reference_format(const char *filename);
+
+// Binary format reader (mirrors readReferenceTree but for .trkb files)
+int readReferenceBinary(const char *filename, int *name_specs);
+
+// Gzipped binary format reader
+int readReferenceBinaryGzipped(const char *filename, int *name_specs);
+
 #endif /* _READ_REF_ */

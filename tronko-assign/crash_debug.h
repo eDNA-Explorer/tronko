@@ -76,6 +76,14 @@ typedef struct {
     char corrupted_file[512];         // File that contained corrupted data
     int corrupted_line;               // Line number of corrupted data
     char corruption_type[128];        // Type of corruption detected
+
+    // BWA bounds tracking (added for 16S_Bacteria segfault analysis)
+    int bwa_leaf_iter;                // Current leaf_iter value
+    int bwa_max_matches;              // MAX_NUM_BWA_MATCHES constant
+    int bwa_concordant_count;         // Concordant matches for current read
+    int bwa_discordant_count;         // Discordant matches for current read
+    int bwa_unique_trees;             // Unique trees matched
+    int bwa_dropped_matches;          // Matches dropped due to bounds
 } crash_info_t;
 
 // Crash handler configuration
@@ -131,6 +139,11 @@ void crash_clear_context(void);
 // Data corruption tracking functions
 void crash_flag_corruption(const char* filename, int line_number, const char* corruption_type);
 void crash_clear_corruption_flags(void);
+
+// BWA bounds tracking functions
+void crash_set_bwa_context(int leaf_iter, int concordant_count, int discordant_count);
+void crash_set_bwa_bounds_violation(int leaf_iter, int max_matches, int dropped);
+void crash_clear_bwa_context(void);
 
 // Utility functions
 const char* crash_signal_name(int signal);
