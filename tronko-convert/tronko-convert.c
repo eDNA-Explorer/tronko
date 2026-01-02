@@ -12,26 +12,42 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "Usage: %s [options]\n", prog);
     fprintf(stderr, "  -i <file>   Input file (required)\n");
     fprintf(stderr, "  -o <file>   Output file (required)\n");
-    fprintf(stderr, "  -t          Output as text (default: binary)\n");
+    fprintf(stderr, "  -t          Output as text (default: zstd-compressed binary)\n");
+    fprintf(stderr, "  -u          Output as uncompressed binary\n");
+    fprintf(stderr, "  -c <level>  Zstd compression level 1-19 (default: 19, max compression)\n");
+    fprintf(stderr, "              Lower = faster compression, larger file\n");
+    fprintf(stderr, "              Higher = slower compression, smaller file\n");
     fprintf(stderr, "  -v          Verbose output\n");
     fprintf(stderr, "  -h          Show this help\n\n");
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "  %s -i reference_tree.txt -o reference_tree.trkb\n", prog);
     fprintf(stderr, "  %s -i reference_tree.trkb -o reference_tree.txt -t\n", prog);
+    fprintf(stderr, "  %s -i reference_tree.txt -o reference_tree.trkb -u  # uncompressed\n", prog);
+    fprintf(stderr, "  %s -i reference_tree.txt -o reference_tree.trkb -c 3  # fast compression\n", prog);
 }
 
 int main(int argc, char *argv[]) {
     char *input_file = NULL;
     char *output_file = NULL;
     int output_text = 0;
+    int output_uncompressed = 0;
+    int compression_level = ZSTD_COMPRESSION_LEVEL;
     int verbose = 0;
     int opt;
 
-    while ((opt = getopt(argc, argv, "i:o:tvh")) != -1) {
+    while ((opt = getopt(argc, argv, "i:o:tuc:vh")) != -1) {
         switch (opt) {
             case 'i': input_file = optarg; break;
             case 'o': output_file = optarg; break;
             case 't': output_text = 1; break;
+            case 'u': output_uncompressed = 1; break;
+            case 'c':
+                compression_level = atoi(optarg);
+                if (compression_level < 1 || compression_level > 19) {
+                    fprintf(stderr, "Error: Compression level must be 1-19\n");
+                    return 1;
+                }
+                break;
             case 'v': verbose = 1; break;
             case 'h': print_usage(argv[0]); return 0;
             default: print_usage(argv[0]); return 1;
@@ -53,15 +69,20 @@ int main(int argc, char *argv[]) {
 
     if (verbose) {
         fprintf(stderr, "Input format: %s\n",
-                input_format == FORMAT_BINARY ? "binary (.trkb)" : "text");
+                input_format == FORMAT_BINARY ? "binary (.trkb)" :
+                input_format == FORMAT_BINARY_ZSTD ? "zstd binary (.trkb)" : "text");
         fprintf(stderr, "Output format: %s\n",
-                output_text ? "text" : "binary (.trkb)");
+                output_text ? "text" :
+                output_uncompressed ? "uncompressed binary (.trkb)" :
+                "zstd binary (.trkb)");
     }
 
     // Load database
     tronko_db_t *db = NULL;
     if (input_format == FORMAT_BINARY) {
         db = load_binary(input_file, verbose);
+    } else if (input_format == FORMAT_BINARY_ZSTD) {
+        db = load_binary_zstd(input_file, verbose);
     } else {
         db = load_text(input_file, verbose);
     }
@@ -83,8 +104,10 @@ int main(int argc, char *argv[]) {
     int result;
     if (output_text) {
         result = write_text(db, output_file, verbose);
-    } else {
+    } else if (output_uncompressed) {
         result = write_binary(db, output_file, verbose);
+    } else {
+        result = write_binary_zstd(db, output_file, compression_level, verbose);
     }
 
     if (result != 0) {

@@ -17,6 +17,10 @@
 #define FORMAT_TEXT            1
 #define FORMAT_BINARY          2
 #define FORMAT_BINARY_GZIPPED  3  // Gzipped binary format (.trkb.gz)
+#define FORMAT_BINARY_ZSTD     4  // Zstd-compressed binary format
+
+// Default compression level (max compression - write-once, read-many use case)
+#define ZSTD_COMPRESSION_LEVEL 19
 
 // Taxonomy levels (fixed at 7: domain, phylum, class, order, family, genus, species)
 #define TAXONOMY_LEVELS 7

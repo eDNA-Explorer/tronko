@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <zstd.h>
 
 int detect_format(const char *filename) {
     FILE *fp = fopen(filename, "rb");
@@ -22,6 +23,47 @@ int detect_format(const char *filename) {
     // Check for gzip magic (text files may be gzipped)
     if (magic[0] == 0x1f && magic[1] == 0x8b) {
         return FORMAT_TEXT;  // Gzipped text
+    }
+
+    // Check for zstd magic: 0x28 0xb5 0x2f 0xfd
+    if (magic[0] == 0x28 && magic[1] == 0xb5 && magic[2] == 0x2f && magic[3] == 0xfd) {
+        // Zstd compressed - use streaming decompression to check for TRKB magic
+        fp = fopen(filename, "rb");
+        if (fp) {
+            ZSTD_DCtx *dctx = ZSTD_createDCtx();
+            if (dctx) {
+                size_t in_buf_size = ZSTD_DStreamInSize();
+                size_t out_buf_size = ZSTD_DStreamOutSize();
+                uint8_t *in_buf = malloc(in_buf_size);
+                uint8_t *out_buf = malloc(out_buf_size);
+
+                if (in_buf && out_buf) {
+                    size_t n_read = fread(in_buf, 1, in_buf_size, fp);
+                    if (n_read > 0) {
+                        ZSTD_inBuffer in = { in_buf, n_read, 0 };
+                        ZSTD_outBuffer out = { out_buf, out_buf_size, 0 };
+
+                        size_t ret = ZSTD_decompressStream(dctx, &out, &in);
+                        if (!ZSTD_isError(ret) && out.pos >= 4) {
+                            if (out_buf[0] == TRONKO_MAGIC_0 && out_buf[1] == TRONKO_MAGIC_1 &&
+                                out_buf[2] == TRONKO_MAGIC_2 && out_buf[3] == TRONKO_MAGIC_3) {
+                                free(in_buf);
+                                free(out_buf);
+                                ZSTD_freeDCtx(dctx);
+                                fclose(fp);
+                                return FORMAT_BINARY_ZSTD;
+                            }
+                        }
+                    }
+                }
+
+                if (in_buf) free(in_buf);
+                if (out_buf) free(out_buf);
+                ZSTD_freeDCtx(dctx);
+            }
+            fclose(fp);
+        }
+        return FORMAT_UNKNOWN;  // Zstd file but not TRKB data
     }
 
     // Assume text (first bytes should be ASCII digits)

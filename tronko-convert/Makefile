@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O3
 DEBUG_CFLAGS = -Wall -Wextra -g -DDEBUG
-LDFLAGS = -lz -lm
+LDFLAGS = -lz -lm -lzstd
 
 SRCS = tronko-convert.c format_common.c format_text.c format_binary.c crc32.c utils.c
 OBJS = $(SRCS:.c=.o)
