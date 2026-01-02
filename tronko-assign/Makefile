@@ -9,7 +9,7 @@ DBGCFLAGS = -g -w
 STACKPROTECT = -fno-stack-protector
 # -lm links the math library
 #LIBS = -lm -lpthread -lz
-LIBS = -lm -pthread -lz -lrt -std=gnu99
+LIBS = -lm -pthread -lz -lzstd -lrt -std=gnu99
 
 # Base optimization
 OPTIMIZATION = -O3
@@ -41,6 +41,17 @@ ifdef OPTIMIZE_MEMORY
 else
     MEMOPT_FLAGS =
 endif
+
+# Parquet support via Carquet (use: make ENABLE_PARQUET=1)
+ifdef ENABLE_PARQUET
+    PARQUET_FLAGS = -DENABLE_PARQUET -Icarquet/include
+    PARQUET_SOURCES = parquet_writer.c
+    PARQUET_LIBS = -Lcarquet/build -lcarquet
+else
+    PARQUET_FLAGS =
+    PARQUET_SOURCES =
+    PARQUET_LIBS =
+endif
 #sources
 SOURCES = tronko-assign.c readreference.c assignment.c allocateMemoryForResults.c allocatetreememory.c getSequenceinRoot.c placement.c options.c printAlignments.c logger.c resource_monitor.c crash_debug.c symbol_resolver.c
 NEEDLEMANWUNSCH = needleman_wunsch.c alignment.c alignment_scoring.c
@@ -51,11 +62,22 @@ OBJECTS = (SOURCES: .c = .o)
 # the build target executable:
 TARGET = tronko-assign
 
-all: $(TARGET)
+all: carquet_lib $(TARGET)
+
+# Build Carquet library if ENABLE_PARQUET is set
+carquet_lib:
+ifdef ENABLE_PARQUET
+	@if [ ! -f carquet/build/libcarquet.a ]; then \
+		echo "Building Carquet library..."; \
+		cd carquet && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$$(nproc); \
+	fi
+endif
+
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS) $(OPENMP_FLAGS)
-debug: $(TARGET).c
-	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(LIBS) $(OPENMP_FLAGS)
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
+
+debug: carquet_lib $(TARGET).c
+	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 clean:
 	$(RM) $(TARGET)

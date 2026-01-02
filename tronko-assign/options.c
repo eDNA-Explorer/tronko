@@ -47,6 +47,9 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+#ifdef ENABLE_PARQUET
+	{"parquet",required_argument,0,0},
+#endif
 	{0, 0, 0, 0}  // Terminating entry required by getopt_long
 };
 
@@ -90,6 +93,9 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	\n\
+	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
+	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
 	\n";
 
 void print_help_statement(){
@@ -155,6 +161,13 @@ void parse_options(int argc, char **argv, Options *opt){
 						opt->pruning_factor = 2.0;
 					}
 				}
+#ifdef ENABLE_PARQUET
+				else if (strcmp(long_options[option_index].name, "parquet") == 0) {
+					strncpy(opt->parquet_prefix, optarg, BUFFER_SIZE - 1);
+					opt->parquet_prefix[BUFFER_SIZE - 1] = '\0';
+					opt->parquet_enabled = 1;
+				}
+#endif
 				break;
 			case 'h':
 				print_help_statement();

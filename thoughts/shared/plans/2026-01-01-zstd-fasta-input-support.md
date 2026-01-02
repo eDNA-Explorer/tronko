@@ -104,12 +104,12 @@ LIBS = -lm -pthread -lz -lzstd -lrt -std=gnu99
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] `pkg-config --exists libzstd && echo "zstd found"` returns success
-- [ ] `make clean && make` compiles without errors
-- [ ] Existing gzip and uncompressed FASTA tests still work
+- [x] `pkg-config --exists libzstd && echo "zstd found"` returns success
+- [x] `make clean && make` compiles without errors
+- [x] Existing gzip and uncompressed FASTA tests still work
 
 #### Manual Verification:
-- [ ] Verify libzstd-dev is documented in build instructions
+- [x] Verify libzstd-dev is documented in build instructions
 
 ---
 
@@ -288,11 +288,11 @@ static inline int cf_close(CompressedFile* cf) {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] Header compiles without errors: `gcc -c -x c -fsyntax-only compressed_io.h`
-- [ ] No memory leaks with valgrind test
+- [x] Header compiles without errors: `gcc -c -x c -fsyntax-only compressed_io.h`
+- [x] No memory leaks with valgrind test
 
 #### Manual Verification:
-- [ ] Code review for edge cases (NULL handling, error paths)
+- [x] Code review for edge cases (NULL handling, error paths)
 
 ---
 
@@ -398,16 +398,16 @@ int readInXNumberOfLines_cf(CompressedFile *seqinfile, ...) {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] `make clean && make` compiles without errors
-- [ ] Test with uncompressed FASTA: `./tronko-assign -f ref.txt -s -g test.fasta -o /tmp/out.txt`
-- [ ] Test with gzip FASTA: `./tronko-assign -f ref.txt -s -g test.fasta.gz -o /tmp/out.txt`
-- [ ] Test with zstd FASTA: `./tronko-assign -f ref.txt -s -g test.fasta.zst -o /tmp/out.txt`
-- [ ] Output matches for all three formats
+- [x] `make clean && make` compiles without errors
+- [x] Test with uncompressed FASTA: `./tronko-assign -f ref.txt -s -g test.fasta -o /tmp/out.txt`
+- [x] Test with gzip FASTA: `./tronko-assign -f ref.txt -s -g test.fasta.gz -o /tmp/out.txt`
+- [x] Test with zstd FASTA: `./tronko-assign -f ref.txt -s -g test.fasta.zst -o /tmp/out.txt`
+- [x] Output matches for all three formats
 
 #### Manual Verification:
-- [ ] Test with paired-end reads (both files compressed)
-- [ ] Test with mixed compression (read1.fasta.zst, read2.fasta.gz)
-- [ ] Verify memory usage stays constant during large file processing
+- [x] Test with paired-end reads (both files compressed)
+- [x] Test with mixed compression (read1.fasta.zst, read2.fasta.gz)
+- [x] Verify memory usage stays constant during large file processing
 
 ---
 
@@ -447,12 +447,12 @@ Compression format is auto-detected from file magic bytes, not file extension.
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] GitHub Actions build passes
-- [ ] `make` works on fresh Ubuntu with only documented dependencies
+- [x] GitHub Actions build passes
+- [x] `make` works on fresh Ubuntu with only documented dependencies
 
 #### Manual Verification:
-- [ ] README accurately describes the feature
-- [ ] Build instructions are complete
+- [x] README accurately describes the feature
+- [x] Build instructions are complete
 
 ---
 

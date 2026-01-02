@@ -52,6 +52,7 @@
 #define FORMAT_TEXT            1
 #define FORMAT_BINARY          2
 #define FORMAT_BINARY_GZIPPED  3  // Gzipped binary format (.trkb.gz)
+#define FORMAT_BINARY_ZSTD     4  // Zstd-compressed binary format (.trkb)
 
 // Binary format magic bytes
 #define TRONKO_MAGIC_0 0x89
@@ -132,6 +133,22 @@ typedef struct resultsStruct{
 	char **cigars_reverse;
 }resultsStruct;
 
+#ifdef ENABLE_PARQUET
+/*
+ * Structured assignment result for Parquet output
+ * Stores typed fields instead of pre-formatted TSV string
+ */
+typedef struct assignmentResult {
+    char *readname;
+    char *taxonomic_path;
+    double score;
+    double forward_mismatch;
+    double reverse_mismatch;
+    int tree_number;
+    int node_number;
+} assignmentResult;
+#endif
+
 typedef struct mystruct{
 	char **rootSeqs;
 	int ntree;
@@ -162,6 +179,10 @@ typedef struct mystruct{
 	int max_strikes;
 	int enable_pruning;
 	type_of_PP pruning_factor;
+#ifdef ENABLE_PARQUET
+	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
+	int thread_id;         // Thread index for filename
+#endif
 }mystruct;
 
 typedef struct bwaMatches{
@@ -235,6 +256,10 @@ typedef struct Options{
 	int max_strikes;            // Maximum strikes before termination (default: 6)
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
+#ifdef ENABLE_PARQUET
+	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
+	int parquet_enabled;               // 1 if Parquet output enabled
+#endif
 }Options;
 
 //extern node *tree;

@@ -130,6 +130,49 @@ int detect_reference_format(const char *filename) {
         return FORMAT_TEXT;  // Gzipped text
     }
 
+    // Check for zstd magic: 0x28 0xb5 0x2f 0xfd
+    if (magic[0] == 0x28 && magic[1] == 0xb5 && magic[2] == 0x2f && magic[3] == 0xfd) {
+        // Zstd compressed - use streaming decompression to check for TRKB magic
+        FILE *zfp = fopen(filename, "rb");
+        if (zfp) {
+            ZSTD_DCtx *dctx = ZSTD_createDCtx();
+            if (dctx) {
+                size_t in_buf_size = ZSTD_DStreamInSize();
+                size_t out_buf_size = ZSTD_DStreamOutSize();
+                uint8_t *in_buf = malloc(in_buf_size);
+                uint8_t *out_buf = malloc(out_buf_size);
+
+                if (in_buf && out_buf) {
+                    size_t n_read = fread(in_buf, 1, in_buf_size, zfp);
+                    if (n_read > 0) {
+                        ZSTD_inBuffer in = { in_buf, n_read, 0 };
+                        ZSTD_outBuffer out = { out_buf, out_buf_size, 0 };
+
+                        size_t ret = ZSTD_decompressStream(dctx, &out, &in);
+                        if (!ZSTD_isError(ret) && out.pos >= 4) {
+                            if (out_buf[0] == TRONKO_MAGIC_0 && out_buf[1] == TRONKO_MAGIC_1 &&
+                                out_buf[2] == TRONKO_MAGIC_2 && out_buf[3] == TRONKO_MAGIC_3) {
+                                LOG_DEBUG("Detected zstd-compressed binary format: %s", filename);
+                                free(in_buf);
+                                free(out_buf);
+                                ZSTD_freeDCtx(dctx);
+                                fclose(zfp);
+                                return FORMAT_BINARY_ZSTD;
+                            }
+                        }
+                    }
+                }
+
+                if (in_buf) free(in_buf);
+                if (out_buf) free(out_buf);
+                ZSTD_freeDCtx(dctx);
+            }
+            fclose(zfp);
+        }
+        LOG_WARN("Zstd file does not contain TRKB data: %s", filename);
+        return FORMAT_UNKNOWN;
+    }
+
     // Assume text if first byte is ASCII digit (numberOfTrees line)
     if (magic[0] >= '0' && magic[0] <= '9') {
         LOG_DEBUG("Detected plain text format: %s", filename);
@@ -1312,6 +1355,428 @@ int readReferenceBinaryGzipped(const char *filename, int *name_specs) {
     return numberOfTrees;
 }
 
+// === Zstd streaming reader implementation ===
+
+typedef struct {
+    FILE *file;
+    ZSTD_DCtx *dctx;
+    uint8_t *in_buf;
+    uint8_t *out_buf;
+    size_t in_buf_size;
+    size_t out_buf_size;
+    size_t in_pos;
+    size_t in_end;
+    size_t out_pos;
+    size_t out_end;
+    int eof;
+} zstd_reader_t;
+
+static zstd_reader_t *zstd_reader_open(const char *filename) {
+    zstd_reader_t *r = calloc(1, sizeof(zstd_reader_t));
+    if (!r) return NULL;
+
+    r->file = fopen(filename, "rb");
+    if (!r->file) { free(r); return NULL; }
+
+    r->dctx = ZSTD_createDCtx();
+    if (!r->dctx) { fclose(r->file); free(r); return NULL; }
+
+    r->in_buf_size = ZSTD_DStreamInSize();
+    r->out_buf_size = ZSTD_DStreamOutSize();
+    r->in_buf = malloc(r->in_buf_size);
+    r->out_buf = malloc(r->out_buf_size);
+
+    if (!r->in_buf || !r->out_buf) {
+        if (r->in_buf) free(r->in_buf);
+        if (r->out_buf) free(r->out_buf);
+        ZSTD_freeDCtx(r->dctx);
+        fclose(r->file);
+        free(r);
+        return NULL;
+    }
+
+    return r;
+}
+
+static int zstd_reader_refill(zstd_reader_t *r) {
+    if (r->eof) return 0;
+
+    // Move remaining input data to start
+    if (r->in_pos > 0 && r->in_pos < r->in_end) {
+        memmove(r->in_buf, r->in_buf + r->in_pos, r->in_end - r->in_pos);
+        r->in_end -= r->in_pos;
+        r->in_pos = 0;
+    } else {
+        r->in_pos = 0;
+        r->in_end = 0;
+    }
+
+    // Read more compressed data
+    size_t space = r->in_buf_size - r->in_end;
+    if (space > 0) {
+        size_t n = fread(r->in_buf + r->in_end, 1, space, r->file);
+        r->in_end += n;
+        if (n == 0 && r->in_end == 0) {
+            r->eof = 1;
+            return 0;
+        }
+    }
+
+    ZSTD_inBuffer in = { r->in_buf, r->in_end, r->in_pos };
+    ZSTD_outBuffer out = { r->out_buf, r->out_buf_size, 0 };
+
+    size_t ret = ZSTD_decompressStream(r->dctx, &out, &in);
+    if (ZSTD_isError(ret)) {
+        LOG_ERROR("ZSTD decompression error: %s", ZSTD_getErrorName(ret));
+        return -1;
+    }
+
+    r->in_pos = in.pos;
+    r->out_pos = 0;
+    r->out_end = out.pos;
+
+    return (int)out.pos;
+}
+
+static size_t zstd_reader_read(zstd_reader_t *r, void *buf, size_t size) {
+    size_t total = 0;
+    uint8_t *dst = buf;
+
+    while (total < size) {
+        if (r->out_pos >= r->out_end) {
+            int ret = zstd_reader_refill(r);
+            if (ret <= 0) break;
+        }
+
+        size_t avail = r->out_end - r->out_pos;
+        size_t need = size - total;
+        size_t copy = (avail < need) ? avail : need;
+
+        memcpy(dst + total, r->out_buf + r->out_pos, copy);
+        r->out_pos += copy;
+        total += copy;
+    }
+
+    return total;
+}
+
+static void zstd_reader_close(zstd_reader_t *r) {
+    if (!r) return;
+    ZSTD_freeDCtx(r->dctx);
+    free(r->in_buf);
+    free(r->out_buf);
+    fclose(r->file);
+    free(r);
+}
+
+// Little-endian read helpers for zstd reader
+static uint16_t zstd_read_u16(zstd_reader_t *r) {
+    uint8_t b[2];
+    if (zstd_reader_read(r, b, 2) != 2) {
+        LOG_ERROR("Unexpected end of file reading uint16 (zstd)");
+        return 0;
+    }
+    return (uint16_t)b[0] | ((uint16_t)b[1] << 8);
+}
+
+static uint32_t zstd_read_u32(zstd_reader_t *r) {
+    uint8_t b[4];
+    if (zstd_reader_read(r, b, 4) != 4) {
+        LOG_ERROR("Unexpected end of file reading uint32 (zstd)");
+        return 0;
+    }
+    return (uint32_t)b[0] | ((uint32_t)b[1] << 8) |
+           ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24);
+}
+
+static int32_t zstd_read_i32(zstd_reader_t *r) {
+    return (int32_t)zstd_read_u32(r);
+}
+
+static uint64_t zstd_read_u64(zstd_reader_t *r) {
+    uint8_t b[8];
+    if (zstd_reader_read(r, b, 8) != 8) {
+        LOG_ERROR("Unexpected end of file reading uint64 (zstd)");
+        return 0;
+    }
+    uint64_t v = 0;
+    for (int i = 0; i < 8; i++) {
+        v |= ((uint64_t)b[i] << (i * 8));
+    }
+    return v;
+}
+
+/**
+ * Read reference database from zstd-compressed binary format (.trkb)
+ * Populates the same global structures as readReferenceTree()
+ *
+ * @param filename Path to zstd-compressed .trkb file
+ * @param name_specs Output array: [max_nodename, max_tax_name, max_line_taxonomy]
+ * @return Number of trees loaded, or -1 on error
+ */
+int readReferenceBinaryZstd(const char *filename, int *name_specs) {
+    zstd_reader_t *r = zstd_reader_open(filename);
+    if (!r) {
+        LOG_ERROR("Cannot open zstd-compressed binary reference file: %s", filename);
+        return -1;
+    }
+
+    // === Validate Header ===
+    uint8_t magic[4];
+    if (zstd_reader_read(r, magic, 4) != 4) {
+        LOG_ERROR("Failed to read magic number (zstd)");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    if (magic[0] != TRONKO_MAGIC_0 || magic[1] != TRONKO_MAGIC_1 ||
+        magic[2] != TRONKO_MAGIC_2 || magic[3] != TRONKO_MAGIC_3) {
+        LOG_ERROR("Invalid binary format magic number (zstd)");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    // Read version
+    uint8_t version_bytes[2];
+    zstd_reader_read(r, version_bytes, 2);
+    uint8_t version_major = version_bytes[0];
+    uint8_t version_minor = version_bytes[1];
+    LOG_DEBUG("Binary format version: %d.%d (zstd)", version_major, version_minor);
+
+    if (version_major > 1) {
+        LOG_ERROR("Unsupported binary format version: %d.%d", version_major, version_minor);
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    // Read flags
+    uint8_t flags[2];
+    zstd_reader_read(r, flags, 2);
+    uint8_t endianness = flags[0];
+    uint8_t precision = flags[1];
+
+    if (endianness != 0x01) {
+        LOG_ERROR("Only little-endian binary format is supported");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    if (precision != 0x01) {
+        LOG_ERROR("Only float precision binary format is supported");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    // Skip header CRC and reserved
+    zstd_read_u32(r);  // header_crc
+    zstd_read_u32(r);  // reserved
+
+    // Read section offsets (for validation/logging only - we read sequentially)
+    uint64_t taxonomy_offset = zstd_read_u64(r);
+    uint64_t node_offset = zstd_read_u64(r);
+    uint64_t posterior_offset = zstd_read_u64(r);
+    uint64_t total_size = zstd_read_u64(r);
+
+    LOG_DEBUG("Section offsets: taxonomy=%lu, nodes=%lu, posteriors=%lu, total=%lu",
+              (unsigned long)taxonomy_offset, (unsigned long)node_offset,
+              (unsigned long)posterior_offset, (unsigned long)total_size);
+
+    // Skip reserved bytes (16 bytes to complete 64-byte header)
+    uint8_t skip[16];
+    zstd_reader_read(r, skip, 16);
+
+    // === Read Global Metadata (16 bytes) ===
+    int32_t numberOfTrees = zstd_read_i32(r);
+    int32_t max_nodename = zstd_read_i32(r);
+    int32_t max_tax_name = zstd_read_i32(r);
+    int32_t max_lineTaxonomy = zstd_read_i32(r);
+
+    name_specs[0] = max_nodename;
+    name_specs[1] = max_tax_name;
+    name_specs[2] = max_lineTaxonomy;
+
+    LOG_DEBUG("Database: %d trees, max_nodename=%d, max_tax=%d (zstd)",
+              numberOfTrees, max_nodename, max_tax_name);
+
+    // === Allocate Global Arrays ===
+    numbaseArr = (int*)malloc(numberOfTrees * sizeof(int));
+    rootArr = (int*)malloc(numberOfTrees * sizeof(int));
+    numspecArr = (int*)malloc(numberOfTrees * sizeof(int));
+
+    if (!numbaseArr || !rootArr || !numspecArr) {
+        LOG_ERROR("Failed to allocate tree metadata arrays");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    // === Read Tree Metadata (12 bytes per tree) ===
+    for (int i = 0; i < numberOfTrees; i++) {
+        numbaseArr[i] = zstd_read_i32(r);
+        rootArr[i] = zstd_read_i32(r);
+        numspecArr[i] = zstd_read_i32(r);
+
+        LOG_DEBUG("Tree %d: numbase=%d, root=%d, numspec=%d",
+                  i, numbaseArr[i], rootArr[i], numspecArr[i]);
+    }
+
+    // === Read Taxonomy Section ===
+    allocateMemoryForTaxArr(numberOfTrees, max_tax_name);
+
+    for (int t = 0; t < numberOfTrees; t++) {
+        uint32_t tree_tax_size = zstd_read_u32(r);
+        zstd_read_u32(r);  // reserved
+        (void)tree_tax_size;
+
+        for (int s = 0; s < numspecArr[t]; s++) {
+            for (int l = 0; l < 7; l++) {
+                uint16_t len = zstd_read_u16(r);
+                if (len > 0 && len <= (uint16_t)(max_tax_name + 1)) {
+                    zstd_reader_read(r, taxonomyArr[t][s][l], len);
+                } else if (len > 0) {
+                    LOG_WARN("Taxonomy string length %d exceeds max %d", len, max_tax_name);
+                    // Skip oversized string
+                    char *skip_buf = malloc(len);
+                    if (skip_buf) {
+                        zstd_reader_read(r, skip_buf, len);
+                        free(skip_buf);
+                    }
+                }
+            }
+        }
+
+        LOG_DEBUG("Tree %d: read %d taxonomy entries (zstd)", t, numspecArr[t]);
+    }
+
+    // === Read Node Section ===
+    treeArr = malloc(numberOfTrees * sizeof(struct node *));
+    if (!treeArr) {
+        LOG_ERROR("Failed to allocate tree array");
+        zstd_reader_close(r);
+        return -1;
+    }
+
+    for (int t = 0; t < numberOfTrees; t++) {
+        uint32_t num_nodes = zstd_read_u32(r);
+        int expected_nodes = 2 * numspecArr[t] - 1;
+
+        if ((int)num_nodes != expected_nodes) {
+            LOG_ERROR("Node count mismatch for tree %d: got %d, expected %d",
+                      t, num_nodes, expected_nodes);
+            zstd_reader_close(r);
+            return -1;
+        }
+
+        allocateTreeArrMemory(t, max_nodename);
+
+        uint32_t *name_offsets = calloc(num_nodes, sizeof(uint32_t));
+        if (!name_offsets) {
+            LOG_ERROR("Failed to allocate name offset array");
+            zstd_reader_close(r);
+            return -1;
+        }
+
+        // Read node records
+        for (int n = 0; n < (int)num_nodes; n++) {
+            treeArr[t][n].up[0] = zstd_read_i32(r);
+            treeArr[t][n].up[1] = zstd_read_i32(r);
+            treeArr[t][n].down = zstd_read_i32(r);
+            treeArr[t][n].depth = zstd_read_i32(r);
+            treeArr[t][n].taxIndex[0] = zstd_read_i32(r);
+            treeArr[t][n].taxIndex[1] = zstd_read_i32(r);
+            name_offsets[n] = zstd_read_u32(r);
+            zstd_read_u32(r);  // reserved
+        }
+
+        // For zstd, we read names sequentially (can't seek)
+        // Names are stored in order after node records
+        for (int n = 0; n < (int)num_nodes; n++) {
+            if (name_offsets[n] > 0) {
+                uint16_t len = zstd_read_u16(r);
+                if (len > 0 && len <= (uint16_t)(max_nodename + 1)) {
+                    zstd_reader_read(r, treeArr[t][n].name, len);
+                }
+            }
+        }
+
+        free(name_offsets);
+
+        LOG_DEBUG("Tree %d: read %d node structures (zstd)", t, num_nodes);
+
+        if (g_tsv_log_file) {
+            resource_stats_t stats;
+            get_resource_stats(&stats);
+            fprintf(g_tsv_log_file, "%.3f\tTREE_ALLOCATED\t%.1f\t%.1f\t%.1f\t%.3f\t%.3f\ttree=%d,nodes=%d,bases=%d\n",
+                    stats.wall_time_sec,
+                    stats.memory_rss_kb / 1024.0,
+                    stats.memory_vm_size_kb / 1024.0,
+                    stats.memory_vm_rss_peak_kb / 1024.0,
+                    stats.user_time_sec,
+                    stats.system_time_sec,
+                    t, (int)num_nodes, numbaseArr[t]);
+            fflush(g_tsv_log_file);
+        }
+    }
+
+    // === Read Posterior Section ===
+    LOG_INFO("Loading posteriors from zstd-compressed binary format...");
+
+    for (int t = 0; t < numberOfTrees; t++) {
+        int num_nodes = 2 * numspecArr[t] - 1;
+        int numbase = numbaseArr[t];
+
+        for (int n = 0; n < num_nodes; n++) {
+            size_t count = numbase * 4;
+
+#ifdef OPTIMIZE_MEMORY
+            if (zstd_reader_read(r, treeArr[t][n].posteriornc, count * sizeof(float)) != count * sizeof(float)) {
+                LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
+                zstd_reader_close(r);
+                return -1;
+            }
+#else
+            float *temp = malloc(count * sizeof(float));
+            if (!temp) {
+                LOG_ERROR("Failed to allocate temp buffer for posterior conversion");
+                zstd_reader_close(r);
+                return -1;
+            }
+            if (zstd_reader_read(r, temp, count * sizeof(float)) != count * sizeof(float)) {
+                LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
+                free(temp);
+                zstd_reader_close(r);
+                return -1;
+            }
+            for (size_t i = 0; i < count; i++) {
+                treeArr[t][n].posteriornc[i] = (double)temp[i];
+            }
+            free(temp);
+#endif
+        }
+
+        LOG_DEBUG("Tree %d: read posteriors for %d nodes (zstd)", t, num_nodes);
+
+        if (g_tsv_log_file) {
+            resource_stats_t stats;
+            get_resource_stats(&stats);
+            fprintf(g_tsv_log_file, "%.3f\tTREE_LOADED\t%.1f\t%.1f\t%.1f\t%.3f\t%.3f\ttree=%d\n",
+                    stats.wall_time_sec,
+                    stats.memory_rss_kb / 1024.0,
+                    stats.memory_vm_size_kb / 1024.0,
+                    stats.memory_vm_rss_peak_kb / 1024.0,
+                    stats.user_time_sec,
+                    stats.system_time_sec,
+                    t);
+            fflush(g_tsv_log_file);
+        }
+    }
+
+    zstd_reader_close(r);
+
+    LOG_INFO("Loaded %d trees from zstd-compressed binary format", numberOfTrees);
+
+    return numberOfTrees;
+}
+
 int setNumbase_setNumspec(int numberOfPartitions, int* specs){
 	int i, maxNumbase, maxNumSpec;
 	maxNumbase=0;
@@ -1368,4 +1833,362 @@ void find_specs_for_reads(int* specs, gzFile file, int format){
 	specs[0] = max_name_length;
 	specs[1] = max_query_length;
 	free(buffer);
+}
+
+/**
+ * CompressedFile-based version of find_specs_for_reads
+ * Supports gzip and zstd compressed FASTA/FASTQ files
+ */
+void find_specs_for_reads_cf(int* specs, CompressedFile* file, int format){
+	int max_name_length = specs[0];
+	int max_query_length = specs[1];
+	char *buffer = (char *)malloc(sizeof(char)*FASTA_MAXLINE);
+	char last_name[FASTA_MAXLINE];
+	char *s;
+	int size = 0;
+	while(cf_gets(buffer, FASTA_MAXLINE, file) != NULL){
+		s = strtok(buffer,"\n");
+		if ( s == NULL || s[0] == '\0' ){
+			if ( buffer[0] == '>' || buffer[0] == '@' ){
+				fprintf(stderr,"Fatal: encountered an empty header at record for read \"%s\" — aborting.\n",last_name[0] ? last_name : "<unknown>");
+			}else{
+				fprintf(stderr,"Fatal: encountered an empty sequence for read \"%s\" — aborting.\n",last_name[0] ? last_name : "<unknown>");
+			}
+			free(buffer);
+			cf_close(file);
+			exit(EXIT_FAILURE);
+		}
+		if (buffer[0] == '>' || buffer[0] == '@' ){
+			strncpy(last_name, s, FASTA_MAXLINE-1);
+			last_name[FASTA_MAXLINE-1] = '\0';
+			size = strlen(s);
+			if (max_name_length < size ){
+				max_name_length = size;
+			}
+		}else{
+			size = strlen(s);
+			if ( max_query_length < size ){
+				max_query_length = size;
+			}
+		}
+	}
+	specs[0] = max_name_length;
+	specs[1] = max_query_length;
+	free(buffer);
+}
+
+/**
+ * CompressedFile-based version of readInXNumberOfLines
+ * Reads FASTA format query sequences from gzip or zstd compressed files
+ */
+int readInXNumberOfLines_cf(int numberOfLinesToRead, CompressedFile* query_reads, int whichPair, Options opt, int max_query_length, int max_readname_length){
+	char* buffer;
+	char* query;
+	char* reverse;
+	int buffer_size = 0;
+	if ( max_query_length > max_readname_length ){
+		buffer_size = max_query_length +2;
+		buffer = (char *)malloc(sizeof(char)*(max_query_length+2));
+	}else{
+		buffer_size = max_readname_length +2;
+		buffer = (char *)malloc(sizeof(char)*(max_readname_length+2));
+	}
+	char seqname[max_readname_length];
+	int size;
+	char *s;
+	int i;
+	int iter=0;
+	int next=0;
+	query = (char *)malloc(sizeof(char)*max_query_length+2);
+	reverse = (char *)malloc(sizeof(char)*max_query_length+2);
+	for(i=0; i<max_query_length+2; i++){
+		query[i]='\0';
+		reverse[i]='\0';
+	}
+	int first_iter=1;
+	int line_number = 0;
+	// Set the current file being processed based on whichPair
+	const char* current_filename = NULL;
+	if (whichPair == 1) {
+		current_filename = opt.read1_file;
+	} else if (whichPair == 2) {
+		current_filename = opt.read2_file;
+	}
+	if (current_filename) {
+		crash_set_current_file(current_filename);
+	}
+
+	while(cf_gets(buffer, buffer_size, query_reads)!=NULL){
+		line_number++;
+		crash_set_current_file_line(current_filename, line_number);
+		s = strtok(buffer,"\n");
+		size = strlen(s);
+		if (first_iter==1){
+			if ( buffer[0] != '>' ){
+				printf("Query reads are not in FASTA format. Try specifying -q if using FASTQ reads.\n");
+				exit(-1);
+			}
+			first_iter=0;
+		}
+
+		// Check for data corruption patterns
+		if (buffer[0] == '>') {
+			if (size < 2) {
+				crash_flag_corruption(current_filename, line_number, "Empty FASTA header");
+			}
+		} else {
+			if (buffer[0] == ' ' || buffer[0] == '\t') {
+				crash_flag_corruption(current_filename, line_number, "Sequence line starts with whitespace");
+			}
+			if (size > 0 && size < 10) {
+				crash_flag_corruption(current_filename, line_number, "Suspiciously short sequence");
+			}
+		}
+		if ( buffer[0] == '>' && whichPair==1 ){
+			for(i=1; i<size; i++){
+				if ( buffer[i]==' '){ buffer[i] = '_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1] = '\0';
+			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strcpy(pairedQueryMat->forward_name[iter],seqname);
+			memset(seqname,'\0',max_readname_length);
+			next=1;
+		}else if (buffer[0] == '>' && whichPair==2) {
+			for(i=1; i<size; i++){
+				if ( buffer[i]==' '){ buffer[i] = '_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1] = '\0';
+			char tempname[max_readname_length];
+			memset(tempname,'\0',max_readname_length);
+			for(i=0; i<size-1; i++){
+				if (pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+					tempname[i] ='2';
+				}else{
+					tempname[i] = seqname[i];
+				}
+			}
+			tempname[size-1]='\0';
+			int skipped=iter;
+			if (skipped == iter){
+				memset(pairedQueryMat->reverse_name[iter],'\0',max_readname_length);
+				strcpy(pairedQueryMat->reverse_name[iter],seqname);
+				memset(seqname,'\0',max_readname_length);
+				next=1;
+			}else{
+				shiftUp(iter,skipped-iter,numberOfLinesToRead);
+				next=0;
+			}
+		}else if (buffer[0] == '>' && whichPair==0){
+			for(i=1; i<size; i++){
+				if ( buffer[i]==' '){ buffer[i] = '_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1] = '\0';
+			for(i=0; i<max_readname_length; i++){
+				singleQueryMat->name[iter][i]='\0';
+			}
+			strcpy(singleQueryMat->name[iter],seqname);
+			for (i=0; i<size-1; i++){
+				seqname[i]='\0';
+			}
+			next=1;
+		}else{
+			for(i=0; i<size; i++){
+				query[i]=toupper(buffer[i]);
+			}
+			query[size]='\0';
+			if ( whichPair == 0 ){
+				if (opt.reverse_single_read != 1){
+					strcpy(singleQueryMat->queryMat[iter],query);
+				}else{
+					getReverseComplement(query,reverse,max_query_length);
+					strcpy(singleQueryMat->queryMat[iter],reverse);
+				}
+			}
+			if ( whichPair == 1 ){
+				strcpy(pairedQueryMat->query1Mat[iter],query);
+			}
+			if ( whichPair == 2 ){
+				if (opt.reverse_second_of_paired_read != 1){
+					strcpy(pairedQueryMat->query2Mat[iter],query);
+				}else{
+					getReverseComplement(query,reverse,max_query_length+2);
+					strcpy(pairedQueryMat->query2Mat[iter],reverse);
+					for(i=0; i<size; i++){
+						reverse[i] = '\0';
+					}
+				}
+			}
+			for(i=0; i<size; i++){
+				query[i] = '\0';
+			}
+			iter++;
+			next=0;
+			if(iter==numberOfLinesToRead)
+				break;
+			}
+	}
+	free(buffer);
+	free(query);
+	free(reverse);
+	return iter;
+}
+
+/**
+ * CompressedFile-based version of readInXNumberOfLines_fastq
+ * Reads FASTQ format query sequences from gzip or zstd compressed files
+ */
+int readInXNumberOfLines_fastq_cf(int numberOfLinesToRead, CompressedFile* query_reads, int whichPair, Options opt, int max_query_length, int max_readname_length, int first_iter){
+	char* buffer;
+	char* query;
+	char* reverse;
+	int buffer_size = 0;
+	if ( max_query_length > max_readname_length ){
+		buffer_size = max_query_length + 2;
+		buffer = (char *)malloc(sizeof(char)*(max_query_length+2));
+	}else{
+		buffer_size = max_readname_length + 2;
+		buffer = (char *)malloc(sizeof(char)*(max_readname_length+2));
+	}
+	char* s;
+	char seqname[max_readname_length+1];
+	int size=0;
+	int i=0;
+	int iter=0;
+	int next=0;
+	query = (char *)malloc(sizeof(char)*max_query_length+2);
+	reverse = (char *)malloc(sizeof(char)*max_query_length+2);
+	for(i=0; i<max_query_length+2; i++){
+		query[i] = '\0';
+		reverse[i] = '\0';
+	}
+	int line_number_fastq = 0;
+	// Set the current file being processed based on whichPair
+	const char* current_filename = NULL;
+	if (whichPair == 1) {
+		current_filename = opt.read1_file;
+	} else if (whichPair == 2) {
+		current_filename = opt.read2_file;
+	}
+	if (current_filename) {
+		crash_set_current_file(current_filename);
+	}
+
+	while(cf_gets(buffer, buffer_size, query_reads)!=NULL){
+		line_number_fastq++;
+		crash_set_current_file_line(current_filename, line_number_fastq);
+		s = strtok(buffer,"\n");
+		size = strlen(s);
+		if ( first_iter == 1 ){
+			if ( buffer[0] != '@' ){
+				printf("Query reads are not in FASTQ format\n");
+				exit(-1);
+			}
+			first_iter=0;
+		}
+
+		// Check for data corruption patterns in FASTQ
+		if (buffer[0] == '@') {
+			if (size < 2) {
+				crash_flag_corruption(current_filename, line_number_fastq, "Empty FASTQ header");
+			}
+		} else if (buffer[0] != '+' && buffer[0] != '>') {
+			if (buffer[0] == ' ' || buffer[0] == '\t') {
+				crash_flag_corruption(current_filename, line_number_fastq, "FASTQ line starts with whitespace");
+			}
+			if (size > 0 && size < 10) {
+				crash_flag_corruption(current_filename, line_number_fastq, "Suspiciously short FASTQ sequence");
+			}
+		}
+		if ( buffer[0] == '@' && whichPair==1){
+			for(i=1; i<size; i++){
+				if (buffer[i]==' '){ buffer[i] = '_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1] = '\0';
+			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strcpy(pairedQueryMat->forward_name[iter],seqname);
+			memset(seqname,'\0',max_readname_length);
+			next=1;
+		}else if ( buffer[0] == '@' && whichPair==2){
+			for(i=1; i<size; i++){
+				if(buffer[i]==' '){ buffer[i]='_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1] = '\0';
+			char tempname[max_readname_length];
+			memset(tempname,'\0',max_readname_length);
+			for(i=0; i<size-1; i++){
+				if ( pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+					tempname[i] = '2';
+				}else{
+					tempname[i] = seqname[i];
+				}
+			}
+			tempname[size-1]='\0';
+			int skipped=iter;
+			if (skipped == iter){
+				memset(pairedQueryMat->reverse_name[iter],'\0',max_readname_length);
+				strcpy(pairedQueryMat->reverse_name[iter],seqname);
+				memset(seqname,'\0',max_readname_length);
+				next=1;
+			}else{
+				shiftUp(iter,skipped-iter,numberOfLinesToRead);
+				next=0;
+			}
+		}else if ( buffer[0] == '@' && whichPair==0){
+			for(i=1; i<size; i++){
+				if ( buffer[i]==' '){ buffer[i] = '_'; }
+				seqname[i-1]=buffer[i];
+			}
+			seqname[i-1]='\0';
+			for(i=0; i<max_readname_length; i++){
+				singleQueryMat->name[iter][i]='\0';
+			}
+			strcpy(singleQueryMat->name[iter],seqname);
+			for (i=0; i<size-1; i++){
+				seqname[i]='\0';
+			}
+			next=1;
+		}else if (next==1){
+			for(i=0; i<size; i++){
+				query[i]=toupper(buffer[i]);
+			}
+			query[size]='\0';
+			if (whichPair == 0){
+				if (opt.reverse_single_read != 1){
+					strcpy(singleQueryMat->queryMat[iter],query);
+				}else{
+					getReverseComplement(query,reverse,max_query_length);
+					strcpy(singleQueryMat->queryMat[iter],reverse);
+				}
+			}
+			if (whichPair == 1){
+				strcpy(pairedQueryMat->query1Mat[iter],query);
+			}
+			if (whichPair == 2){
+				if (opt.reverse_second_of_paired_read != 1){
+					strcpy(pairedQueryMat->query2Mat[iter],query);
+				}else{
+					getReverseComplement(query,reverse,max_query_length);
+					strcpy(pairedQueryMat->query2Mat[iter],reverse);
+					for(i=0; i<size; i++){
+						reverse[i] = '\0';
+					}
+				}
+			}
+			for(i=0; i<size; i++){
+				query[i] = '\0';
+			}
+			iter++;
+			next=0;
+			if(iter==numberOfLinesToRead){ break; }
+		}
+	}
+	free(buffer);
+	free(query);
+	free(reverse);
+	return iter;
 }

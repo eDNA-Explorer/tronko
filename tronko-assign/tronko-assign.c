@@ -26,6 +26,80 @@
 #include "crash_debug.h"
 #include "symbol_resolver.h"
 #include "tsv_memlog.h"
+#ifdef ENABLE_PARQUET
+#include "parquet_writer.h"
+
+/*
+ * Parse a taxonPath TSV string into an assignmentResult struct
+ * Format: Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number
+ * Returns 0 on success, -1 on parse error
+ */
+static int parse_tsv_to_result(const char *tsv_line, assignmentResult *result) {
+    if (!tsv_line || !result) return -1;
+
+    /* Make a copy since strtok modifies the string */
+    char *line_copy = strdup(tsv_line);
+    if (!line_copy) return -1;
+
+    char *saveptr = NULL;
+    char *token;
+    int field = 0;
+
+    token = strtok_r(line_copy, "\t", &saveptr);
+    while (token && field < 7) {
+        switch (field) {
+            case 0: /* Readname */
+                result->readname = strdup(token);
+                break;
+            case 1: /* Taxonomic_Path */
+                result->taxonomic_path = strdup(token);
+                break;
+            case 2: /* Score */
+                result->score = atof(token);
+                break;
+            case 3: /* Forward_Mismatch */
+                result->forward_mismatch = atof(token);
+                break;
+            case 4: /* Reverse_Mismatch */
+                result->reverse_mismatch = atof(token);
+                break;
+            case 5: /* Tree_Number */
+                result->tree_number = atoi(token);
+                break;
+            case 6: /* Node_Number */
+                result->node_number = atoi(token);
+                break;
+        }
+        field++;
+        token = strtok_r(NULL, "\t", &saveptr);
+    }
+
+    free(line_copy);
+
+    /* Check if we got at least readname and taxonomic_path */
+    if (field < 2) return -1;
+
+    /* Handle unassigned case - may only have 2 fields */
+    if (field == 2) {
+        result->score = 0.0;
+        result->forward_mismatch = 0.0;
+        result->reverse_mismatch = 0.0;
+        result->tree_number = -1;
+        result->node_number = -1;
+    }
+
+    return 0;
+}
+
+static void free_assignment_result(assignmentResult *result) {
+    if (result) {
+        free(result->readname);
+        free(result->taxonomic_path);
+        result->readname = NULL;
+        result->taxonomic_path = NULL;
+    }
+}
+#endif
 
 // Thread-local counter for dropped BWA matches (reset per read)
 static __thread int dropped_matches_count = 0;
@@ -993,6 +1067,16 @@ int main(int argc, char **argv){
 			printf("Error: Failed to load gzipped binary reference file: %s. Exiting...\n", opt.reference_file);
 			exit(-1);
 		}
+	} else if (ref_format == FORMAT_BINARY_ZSTD) {
+		// Load zstd-compressed binary format
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Loading zstd-compressed binary format reference database: %s", opt.reference_file);
+		}
+		numberOfTrees = readReferenceBinaryZstd(opt.reference_file, name_specs);
+		if (numberOfTrees < 0) {
+			printf("Error: Failed to load zstd-compressed binary reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
 	} else if (ref_format == FORMAT_TEXT) {
 		// Load text format (existing code path)
 		if (opt.verbose_level >= 0) {
@@ -1120,12 +1204,13 @@ int main(int argc, char **argv){
 				LOG_INFO("Skipping BWA index build");
 			}
 		}
-		gzFile reads_file = gzopen(opt.read1_file,"r");
-		if ( reads_file == (gzFile) Z_NULL ){
+		CompressedFile* reads_file = cf_open(opt.read1_file, "r");
+		if ( reads_file == NULL ){
 			printf("**reads file could not be opened.\n");
+			exit(-1);
 		}
-		find_specs_for_reads(read_specs,reads_file,opt.fastq);
-		gzclose(reads_file);
+		find_specs_for_reads_cf(read_specs, reads_file, opt.fastq);
+		cf_close(reads_file);
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
@@ -1153,16 +1238,35 @@ int main(int argc, char **argv){
 				singleQueryMat->name[i] = (char *)malloc(sizeof(char)*(max_name_length+1));
 			}
 		}
-		FILE *results = fopen(opt.results_file,"w");
-		if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
-		fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");	
+		FILE *results = NULL;
+#ifdef ENABLE_PARQUET
+		parquet_writer_t *parquet_writer = NULL;
+		if (opt.parquet_enabled) {
+			char parquet_filename[MAXFILENAME];
+			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
+			char parquet_err[256];
+			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			if (!parquet_writer) {
+				printf("Error creating Parquet writer: %s\n", parquet_err);
+				exit(1);
+			}
+			printf("Writing results to Parquet: %s\n", parquet_filename);
+		} else {
+#endif
+			results = fopen(opt.results_file,"w");
+			if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
+			fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");
+#ifdef ENABLE_PARQUET
+		}
+#endif
 		int keepTrackOfReadLine=0;
 		pthread_t threads[opt.number_of_cores];//array of our threads
 		int divideFile, start, end;
 		int returnLineNumber=0;
-		gzFile seqinfile = gzopen(opt.read1_file,"r");
-		if (seqinfile == (gzFile) Z_NULL){
+		CompressedFile* seqinfile = cf_open(opt.read1_file, "r");
+		if (seqinfile == NULL){
 			printf("*** fasta file could not be opened.\n");
+			exit(-1);
 		}
 		int first_iter=1;
 		for(i=0; i<opt.number_of_cores; i++){
@@ -1221,9 +1325,9 @@ int main(int argc, char **argv){
 			TSV_LOG(tsv_log, "BATCH_START", "batch=%d", batch_count);
 
 			if (opt.fastq==0){
-				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile,0,opt,max_query_length,max_name_length);
+				returnLineNumber=readInXNumberOfLines_cf(numberOfLinesToRead/2,seqinfile,0,opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber=readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile,0,opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber=readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile,0,opt,max_query_length,max_name_length,first_iter);
 			}
 			if (returnLineNumber==0){
 				break;
@@ -1272,12 +1376,39 @@ int main(int argc, char **argv){
 				LOG_MILESTONE_TIMED(MILESTONE_PLACEMENT_COMPLETE);
 			}
 			
-			for ( i=0; i<opt.number_of_cores; i++){
-				for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
-					fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+#ifdef ENABLE_PARQUET
+			if (opt.parquet_enabled) {
+				/* Collect all results into a batch for Parquet */
+				int total_results = 0;
+				for (i = 0; i < opt.number_of_cores; i++) {
+					total_results += (mstr[i].end - mstr[i].start);
 				}
+				if (total_results > 0) {
+					assignmentResult *batch = calloc(total_results, sizeof(assignmentResult));
+					int idx = 0;
+					for (i = 0; i < opt.number_of_cores; i++) {
+						for (j = 0; j < (mstr[i].end - mstr[i].start); j++) {
+							parse_tsv_to_result(mstr[i].str->taxonPath[j], &batch[idx]);
+							idx++;
+						}
+					}
+					parquet_writer_write_batch(parquet_writer, batch, total_results);
+					for (idx = 0; idx < total_results; idx++) {
+						free_assignment_result(&batch[idx]);
+					}
+					free(batch);
+				}
+			} else {
+#endif
+				for ( i=0; i<opt.number_of_cores; i++){
+					for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
+						fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+					}
+				}
+#ifdef ENABLE_PARQUET
 			}
-			
+#endif
+
 			if (opt.verbose_level >= 0) {
 				char results_info[256];
 				snprintf(results_info, sizeof(results_info),
@@ -1316,9 +1447,19 @@ int main(int argc, char **argv){
 		}
 
 		// Close files
-		fclose(results);
-		gzclose(seqinfile);
-		
+#ifdef ENABLE_PARQUET
+		if (opt.parquet_enabled) {
+			if (parquet_writer_close(parquet_writer) != 0) {
+				printf("Warning: Error closing Parquet writer\n");
+			}
+		} else {
+#endif
+			fclose(results);
+#ifdef ENABLE_PARQUET
+		}
+#endif
+		cf_close(seqinfile);
+
 		if (opt.verbose_level >= 0) {
 			log_current_resource_usage("After closing files");
 		}
@@ -1353,18 +1494,20 @@ int main(int argc, char **argv){
 			cleanup_resource_monitoring();
 		}
 	}else{
-		gzFile seqinfile_1 = gzopen(opt.read1_file,"r");
-		gzFile seqinfile_2 = gzopen(opt.read2_file,"r");
-		if (seqinfile_1 == (gzFile) Z_NULL){
+		CompressedFile* seqinfile_1 = cf_open(opt.read1_file, "r");
+		CompressedFile* seqinfile_2 = cf_open(opt.read2_file, "r");
+		if (seqinfile_1 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		if (seqinfile_2 == (gzFile) Z_NULL){
+		if (seqinfile_2 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		find_specs_for_reads(read_specs,seqinfile_1,opt.fastq);
-		gzclose(seqinfile_1);
-		find_specs_for_reads(read_specs,seqinfile_2,opt.fastq);
-		gzclose(seqinfile_2);
+		find_specs_for_reads_cf(read_specs, seqinfile_1, opt.fastq);
+		cf_close(seqinfile_1);
+		find_specs_for_reads_cf(read_specs, seqinfile_2, opt.fastq);
+		cf_close(seqinfile_2);
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
@@ -1411,22 +1554,42 @@ int main(int argc, char **argv){
 				}
 			}
 		}
-		FILE *results = fopen(opt.results_file,"w");
-		if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
-		fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");	
+		FILE *results = NULL;
+#ifdef ENABLE_PARQUET
+		parquet_writer_t *parquet_writer = NULL;
+		if (opt.parquet_enabled) {
+			char parquet_filename[MAXFILENAME];
+			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
+			char parquet_err[256];
+			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			if (!parquet_writer) {
+				printf("Error creating Parquet writer: %s\n", parquet_err);
+				exit(1);
+			}
+			printf("Writing results to Parquet: %s\n", parquet_filename);
+		} else {
+#endif
+			results = fopen(opt.results_file,"w");
+			if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
+			fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");
+#ifdef ENABLE_PARQUET
+		}
+#endif
 		int keepTrackOfReadLine=0;
 		pthread_t threads[opt.number_of_cores];//array of our thrads
 		int divideFile, start, end;
 		int returnLineNumber=0;//<- this is the number of records that we have read.
 		int returnLineNumber2 =0;
 		int concordant=1;
-		seqinfile_1 = gzopen(opt.read1_file,"r");
-		seqinfile_2 = gzopen(opt.read2_file,"r");
-		if (seqinfile_1 == (gzFile) Z_NULL){
+		seqinfile_1 = cf_open(opt.read1_file, "r");
+		seqinfile_2 = cf_open(opt.read2_file, "r");
+		if (seqinfile_1 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		if (seqinfile_2 == (gzFile) Z_NULL){
+		if (seqinfile_2 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
 		int first_iter=1;
 		for(i=0;i<opt.number_of_cores;i++){
@@ -1463,17 +1626,17 @@ int main(int argc, char **argv){
 			crash_set_processing_stage("Reading paired-end input files");
 			crash_set_current_file(opt.read1_file);
 			if (opt.fastq==0){
-				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile_1,1,opt,max_query_length,max_name_length);
+				returnLineNumber=readInXNumberOfLines_cf(numberOfLinesToRead/2,seqinfile_1,1,opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber=readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile_1,1,opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber=readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile_1,1,opt,max_query_length,max_name_length,first_iter);
 			}
 			if (returnLineNumber==0)
 				break;
 			crash_set_current_file(opt.read2_file);
 			if (opt.fastq==0){
-				returnLineNumber2 = readInXNumberOfLines ( numberOfLinesToRead/2, seqinfile_2, 2, opt,max_query_length,max_name_length);
+				returnLineNumber2 = readInXNumberOfLines_cf(numberOfLinesToRead/2, seqinfile_2, 2, opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber2 = readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile_2, 2, opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber2 = readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile_2, 2, opt,max_query_length,max_name_length,first_iter);
 			}
 			returnLineNumber = returnLineNumber2;
 			first_iter=0;
@@ -1501,11 +1664,38 @@ int main(int argc, char **argv){
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
 			}
-			for ( i=0; i<opt.number_of_cores; i++){
-				for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
-					fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+#ifdef ENABLE_PARQUET
+			if (opt.parquet_enabled) {
+				/* Collect all results into a batch for Parquet */
+				int total_results = 0;
+				for (i = 0; i < opt.number_of_cores; i++) {
+					total_results += (mstr[i].end - mstr[i].start);
 				}
+				if (total_results > 0) {
+					assignmentResult *batch = calloc(total_results, sizeof(assignmentResult));
+					int idx = 0;
+					for (i = 0; i < opt.number_of_cores; i++) {
+						for (j = 0; j < (mstr[i].end - mstr[i].start); j++) {
+							parse_tsv_to_result(mstr[i].str->taxonPath[j], &batch[idx]);
+							idx++;
+						}
+					}
+					parquet_writer_write_batch(parquet_writer, batch, total_results);
+					for (idx = 0; idx < total_results; idx++) {
+						free_assignment_result(&batch[idx]);
+					}
+					free(batch);
+				}
+			} else {
+#endif
+				for ( i=0; i<opt.number_of_cores; i++){
+					for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
+						fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+					}
+				}
+#ifdef ENABLE_PARQUET
 			}
+#endif
 			for ( i=0; i<opt.number_of_cores; i++){
 				for(j=0; j<mstr[i].end-mstr[i].start; j++){
 					free(mstr[i].str->taxonPath[j]);
@@ -1524,9 +1714,19 @@ int main(int argc, char **argv){
 			LOG_WARN("  Consider increasing MAX_NUM_BWA_MATCHES if accuracy is affected");
 		}
 
-		fclose(results);
-		gzclose(seqinfile_1);
-		gzclose(seqinfile_2);
+#ifdef ENABLE_PARQUET
+		if (opt.parquet_enabled) {
+			if (parquet_writer_close(parquet_writer) != 0) {
+				printf("Warning: Error closing Parquet writer\n");
+			}
+		} else {
+#endif
+			fclose(results);
+#ifdef ENABLE_PARQUET
+		}
+#endif
+		cf_close(seqinfile_1);
+		cf_close(seqinfile_2);
 		if (opt.fastq==0){
 			for(i=0; i<numberOfLinesToRead/2; i++){
 				free(pairedQueryMat->query1Mat[i]);
