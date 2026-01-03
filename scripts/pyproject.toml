@@ -1,0 +1,11 @@
+[project]
+name = "tronko-scripts"
+version = "0.1.0"
+description = "Utility scripts for tronko project"
+requires-python = ">=3.10"
+dependencies = [
+    "google-cloud-storage>=2.0.0",
+]
+
+[project.scripts]
+convert-gcs-references = "convert_gcs_references:main"
