@@ -141,10 +141,25 @@ GU572157.1_3_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-
 # INSTALLATION
 
 1. Clone the [GitHub repo](https://github.com/lpipes/tronko), e.g. with `git clone https://github.com/lpipes/tronko.git`
-2. Run `make` in the `tronko-build` and `tronko-assign` directories.
-3. Copy the `tronko-build` and `tronko-assign` binaries to your path.
+2. Install build dependencies:
+   - **Debian/Ubuntu**: `sudo apt-get install -y zlib1g-dev libzstd-dev`
+   - **RHEL/CentOS/Fedora**: `sudo dnf install -y zlib-devel libzstd-devel`
+   - **macOS (Homebrew)**: `brew install zlib zstd`
+3. Run `make` in the `tronko-build` and `tronko-assign` directories.
+4. Copy the `tronko-build` and `tronko-assign` binaries to your path.
 
-`tronko-assign` uses [pthreads](http://en.wikipedia.org/wiki/POSIX_Threads) and [zlib](http://en.wikipedia.org/wiki/Zlib) as its dependencies. `tronko-build` only has dependencies if using the partition procedure for the initial trees. These are <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>, which must be installed in your path. By default, `tronko-build` uses `raxmlHPC-PTHREADS` to estimate trees, if you choose the `-a` option to use `FastTree` instead, you must have `FastTree` installed in your path.
+`tronko-assign` uses [pthreads](http://en.wikipedia.org/wiki/POSIX_Threads), [zlib](http://en.wikipedia.org/wiki/Zlib), and [zstd](https://github.com/facebook/zstd) as its dependencies.
+
+## Supported Input Formats
+
+`tronko-assign` accepts FASTA/FASTQ query files in the following formats:
+- **Plain text** (`.fasta`, `.fastq`)
+- **Gzip compressed** (`.fasta.gz`, `.fastq.gz`)
+- **Zstandard compressed** (`.fasta.zst`, `.fastq.zst`)
+
+Compression format is auto-detected from file magic bytes, not file extension. This allows for streaming decompression with minimal memory overhead (~256 KB for zstd buffers).
+
+`tronko-build` only has dependencies if using the partition procedure for the initial trees. These are <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>, which must be installed in your path. By default, `tronko-build` uses `raxmlHPC-PTHREADS` to estimate trees, if you choose the `-a` option to use `FastTree` instead, you must have `FastTree` installed in your path.
 
 	cd tronko/tronko-build
 	make
