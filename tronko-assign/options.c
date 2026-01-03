@@ -68,7 +68,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-1 [FILE], compatible only with -p, path to paired-end forward read file\n\
 	-2 [FILE], compatible only with -p, path to paired-end reverse read file\n\
 	-c [INT], LCA cut-off to use [default:5]\n\
-	-C [INT], number of cores [default:1]\n\
+	-C [INT], number of cores [default:1] (use -C 1 for reproducible results)\n\
 	-L [INT], number of lines to read for assignment [default:50000]\n\
 	-P, print alignments to stdout\n\
 	-w, use Needleman-Wunsch Alignment Algorithm (default: WFA)\n\

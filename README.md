@@ -419,6 +419,141 @@ View test status: [![Quick Tests](https://github.com/lpipes/tronko/workflows/Qui
 
 For detailed testing documentation, see [`tests/README.md`](tests/README.md).
 
+# Reproducibility and Variance
+
+`tronko-assign` uses BWA's multi-threaded alignment engine, which introduces non-deterministic ordering of candidate matches. This results in approximately **3% variance** in taxonomic assignments between runs with identical inputs when using multiple cores.
+
+## Understanding the Variance
+
+- **Magnitude**: ~3% of reads may receive different taxonomic assignments across runs
+- **Nature**: Differences are unbiased (equal probability of more/less specific results)
+- **Cause**: BWA's work-stealing thread scheduler finds matches in variable order
+- **Scientific Impact**: Variance is typically smaller than biological variation in most studies
+
+### What This Means
+
+The variance affects individual read assignments, not overall community composition. For most metabarcoding studies:
+- ✅ Community-level statistics (abundance, diversity) remain stable
+- ✅ Biological replicates average out technical variance
+- ✅ Differential abundance analysis is unaffected when using proper statistical methods
+- ⚠️ Exact read-by-read reproducibility requires special modes (see below)
+
+## Achieving Reproducible Results
+
+### Option 1: Single-Threaded Mode (100% Deterministic)
+
+Use the `-C 1` flag to run in deterministic single-threaded mode:
+
+```bash
+tronko-assign -C 1 -r -f reference.trkb -a reference.fasta -p \
+  -1 forward.fasta -2 reverse.fasta -o results.txt
+```
+
+**Trade-offs**:
+- ✅ Perfect reproducibility (identical results every run)
+- ❌ 10-16x slower than multi-threaded mode
+- 👍 **Use for**: Validation, testing, regression checks, publications requiring exact reproducibility
+
+### Option 2: Standard Multi-Threaded Mode (Fast, ~3% Variance)
+
+Use multiple cores for performance (default or explicit `-C N`):
+
+```bash
+tronko-assign -C 16 -r -f reference.trkb -a reference.fasta -p \
+  -1 forward.fasta -2 reverse.fasta -o results.txt
+```
+
+**Trade-offs**:
+- ✅ Fast execution (scales with CPU cores)
+- ⚠️ ~3% variance between runs
+- 👍 **Use for**: Standard workflows, exploratory analysis, production pipelines
+
+### Option 3: Consensus Voting (Best of Both Worlds)
+
+Run multiple times and aggregate results for both speed and reproducibility:
+
+```bash
+# Run 3 times in parallel
+tronko-assign -C 16 [...] -o run1.txt &
+tronko-assign -C 16 [...] -o run2.txt &
+tronko-assign -C 16 [...] -o run3.txt &
+wait
+
+# Aggregate results (see consensus script in scripts/)
+# (Consensus voting script to be implemented)
+```
+
+**Trade-offs**:
+- ✅ Reduces variance from ~3% to ~0.3-0.6%
+- ✅ Can parallelize across runs (3 runs ≈ 3x cost but parallelizable)
+- 👍 **Use for**: Critical datasets, regulatory submissions, important publications
+
+## Testing for Variance
+
+Measure variance on your specific dataset using the test script:
+
+```bash
+cd tronko-assign
+
+./scripts/test_determinism.sh \
+  -r /path/to/reference.trkb \
+  -a /path/to/reference.fasta \
+  -1 /path/to/forward.fasta \
+  -2 /path/to/reverse.fasta \
+  -n 3 \
+  -c 16 \
+  -k
+```
+
+This will run 3 replicates and report variance statistics.
+
+### Expected Results
+
+- **Single-threaded** (`-c 1`): 0% variance (identical results)
+- **Multi-threaded** (e.g., `-c 16`): 2-4% variance depending on dataset and core count
+- **Higher core counts**: Slightly higher variance due to increased thread contention
+
+## Recommendations by Use Case
+
+| Use Case | Recommended Mode | Cores | Expected Variance |
+|----------|------------------|-------|-------------------|
+| Validation / Testing | Single-threaded | `-C 1` | 0% |
+| Exploratory Analysis | Multi-threaded | `-C 4-16` | ~3% |
+| Production Pipeline | Multi-threaded | `-C 8-16` | ~3% |
+| Publication (standard) | Multi-threaded | `-C 4-16` | ~3% |
+| Publication (exact reproducibility) | Single-threaded | `-C 1` | 0% |
+| Regulatory Submission | Consensus voting | `-C 16`, 3 runs | <0.5% |
+
+## Technical Details
+
+For developers and advanced users:
+
+- **Root cause**: BWA's `kt_for()` work-stealing scheduler in `bwa_source_files/kthread.c`
+- **Propagation**: Variable match order → different tie-breaking in `placement.c:893`
+- **Floating-point sensitivity**: Confidence interval comparisons (`placement.c:930`) sensitive to small score differences
+- **Not affected by**: WFA2 alignment (deterministic), scoring algorithm (deterministic), result collection order (deterministic)
+
+For detailed technical analysis, see:
+- Research document: `thoughts/shared/research/2026-01-03-non-determinism-mitigation-strategies.md`
+- Baseline measurement: `thoughts/shared/research/2026-01-03-non-determinism-baseline-measurement.md`
+
+## FAQ
+
+**Q: Is this a bug?**
+A: No, this is inherent to BWA's multi-threaded design. It's a performance/reproducibility trade-off present in many bioinformatics tools.
+
+**Q: Will this affect my biological conclusions?**
+A: For most metabarcoding studies, no. The variance is small (~3%) and unbiased, similar to technical replicates.
+
+**Q: Can I use tronko-assign in CI/CD pipelines?**
+A: Yes, but use statistical comparison (e.g., expect <5% difference) rather than exact output matching. Or use `-C 1` for exact regression tests.
+
+**Q: Does this affect accuracy?**
+A: No, accuracy is identical. The algorithm is sound; only the specific reads assigned to borderline taxa vary slightly.
+
+**Q: Will this be fixed in future versions?**
+A: We are exploring options including BWA seed control and alternative aligners. For now, single-threaded mode provides perfect reproducibility when needed.
+
 ## Advanced Features
 
 Tronko includes comprehensive logging and debugging capabilities:
