@@ -36,6 +36,8 @@ typedef struct {
             uint8_t* out_buf;
             size_t in_buf_size;
             size_t out_buf_size;
+            size_t in_pos;      // Current position in input buffer (for preserving unconsumed input)
+            size_t in_end;      // End of valid data in input buffer
             size_t out_pos;
             size_t out_end;
             int eof;
@@ -113,6 +115,8 @@ static inline CompressedFile* cf_open(const char* filename, const char* mode) {
             free(cf);
             return NULL;
         }
+        cf->handle.zstd.in_pos = 0;
+        cf->handle.zstd.in_end = 0;
         cf->handle.zstd.out_pos = 0;
         cf->handle.zstd.out_end = 0;
         cf->handle.zstd.eof = 0;
@@ -132,20 +136,40 @@ static inline CompressedFile* cf_open(const char* filename, const char* mode) {
  * Refill zstd output buffer from compressed input
  * Internal helper function.
  *
+ * Preserves unconsumed input data across calls to handle cases where
+ * the output buffer fills up before all input is consumed.
+ *
  * @param cf CompressedFile handle (must be ZSTD format)
  * @return Number of bytes decompressed, 0 on EOF, -1 on error
  */
 static inline int zstd_refill(CompressedFile* cf) {
     if (cf->handle.zstd.eof) return 0;
 
-    size_t bytes_read = fread(cf->handle.zstd.in_buf, 1,
-                        cf->handle.zstd.in_buf_size, cf->handle.zstd.file);
-    if (bytes_read == 0) {
-        cf->handle.zstd.eof = 1;
-        return 0;
+    // Move any unconsumed input data to the start of the buffer
+    if (cf->handle.zstd.in_pos > 0 && cf->handle.zstd.in_pos < cf->handle.zstd.in_end) {
+        memmove(cf->handle.zstd.in_buf,
+                cf->handle.zstd.in_buf + cf->handle.zstd.in_pos,
+                cf->handle.zstd.in_end - cf->handle.zstd.in_pos);
+        cf->handle.zstd.in_end -= cf->handle.zstd.in_pos;
+        cf->handle.zstd.in_pos = 0;
+    } else {
+        cf->handle.zstd.in_pos = 0;
+        cf->handle.zstd.in_end = 0;
     }
 
-    ZSTD_inBuffer in = { cf->handle.zstd.in_buf, bytes_read, 0 };
+    // Read more compressed data to fill the buffer
+    size_t space = cf->handle.zstd.in_buf_size - cf->handle.zstd.in_end;
+    if (space > 0) {
+        size_t bytes_read = fread(cf->handle.zstd.in_buf + cf->handle.zstd.in_end, 1,
+                            space, cf->handle.zstd.file);
+        cf->handle.zstd.in_end += bytes_read;
+        if (bytes_read == 0 && cf->handle.zstd.in_end == 0) {
+            cf->handle.zstd.eof = 1;
+            return 0;
+        }
+    }
+
+    ZSTD_inBuffer in = { cf->handle.zstd.in_buf, cf->handle.zstd.in_end, cf->handle.zstd.in_pos };
     ZSTD_outBuffer out = { cf->handle.zstd.out_buf, cf->handle.zstd.out_buf_size, 0 };
 
     while (in.pos < in.size) {
@@ -155,8 +179,11 @@ static inline int zstd_refill(CompressedFile* cf) {
             return -1;
         }
         if (ret == 0) break; // Frame complete
+        if (out.pos >= out.size) break; // Output buffer full - consume it before continuing
     }
 
+    // Save input position for next call (preserves unconsumed input)
+    cf->handle.zstd.in_pos = in.pos;
     cf->handle.zstd.out_pos = 0;
     cf->handle.zstd.out_end = out.pos;
     return (int)out.pos;
