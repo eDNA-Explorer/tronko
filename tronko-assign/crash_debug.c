@@ -3,8 +3,21 @@
  * Provides signal handling, stack traces, and crash forensics
  */
 
+/*
+ * crash_debug.c - Implementation of comprehensive crash debugging system
+ * Provides signal handling, stack traces, and crash forensics
+ *
+ * Include dlfcn.h FIRST before _XOPEN_SOURCE restricts visibility.
+ * On macOS, _XOPEN_SOURCE hides Dl_info/dladdr from dlfcn.h.
+ * On Linux, _GNU_SOURCE exposes them.
+ */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+#include <dlfcn.h>
+
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
 #endif
 
 #include "crash_debug.h"
@@ -18,7 +31,6 @@
 #include <sys/stat.h>
 #include <sys/resource.h>
 #include <errno.h>
-#include <dlfcn.h>
 
 // Global state
 volatile sig_atomic_t g_crash_in_progress = 0;

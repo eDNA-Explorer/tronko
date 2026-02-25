@@ -31,12 +31,13 @@ double Logfactorial[MAXNUMBEROFINDINSPECIES];
 double currentestimate[10]; //DELETEME
 node** treeArr;
 char** rootSeqs;
+int* rootSeqLens; // OPT6: Pre-cached strlen of each rootSeqs[i]
 double** distMat;
 readsToAssign* readsStruct;
 
 // Forward declarations for optimizations
 double compute_JC_from_CIGAR(cigar_t* const cigar, char* seq1, char* seq2, int seq1_len, int seq2_len);
-double findShortestDist_WFA_reuse(int index, char* seq, wavefront_aligner_t* wf_aligner);
+double findShortestDist_WFA_reuse(int index, char* seq, wavefront_aligner_t* wf_aligner, int seq2_len);
 
 void setNumSeq(FILE* fasta, int* fasta_specs){
 	char buffer[FASTA_MAXLINE];
@@ -219,7 +220,17 @@ int populate_DATA(char* query1, char* query2, int** DATA, int alignment_length, 
 			DATA[0][i]=2;
 		}else if ( query1[i] == 't' || query1[i] == 'u' || query1[i] == 'T' || query1[i] == 'U'){
 			DATA[0][i]=3;
-		}else if ( query1[i] == 'n' || query1[i] == '-' || query1[i] == 'N'){
+		}else if ( query1[i] == 'n' || query1[i] == '-' || query1[i] == 'N'
+			|| query1[i] == 'R' || query1[i] == 'r'
+			|| query1[i] == 'Y' || query1[i] == 'y'
+			|| query1[i] == 'S' || query1[i] == 's'
+			|| query1[i] == 'W' || query1[i] == 'w'
+			|| query1[i] == 'K' || query1[i] == 'k'
+			|| query1[i] == 'M' || query1[i] == 'm'
+			|| query1[i] == 'B' || query1[i] == 'b'
+			|| query1[i] == 'D' || query1[i] == 'd'
+			|| query1[i] == 'H' || query1[i] == 'h'
+			|| query1[i] == 'V' || query1[i] == 'v'){
 			DATA[0][i]=-1;
 		}else if ( query1[i] == '\n'){
 		}else{
@@ -236,7 +247,17 @@ int populate_DATA(char* query1, char* query2, int** DATA, int alignment_length, 
 			DATA[1][i]=2;
 		}else if ( query2[i] == 't' || query2[i] == 'u' || query2[i] == 'T' || query2[i] == 'U'){
 			DATA[1][i]=3;
-		}else if ( query2[i] == 'n' || query2[i] == '-' || query2[i] == 'N'){
+		}else if ( query2[i] == 'n' || query2[i] == '-' || query2[i] == 'N'
+			|| query2[i] == 'R' || query2[i] == 'r'
+			|| query2[i] == 'Y' || query2[i] == 'y'
+			|| query2[i] == 'S' || query2[i] == 's'
+			|| query2[i] == 'W' || query2[i] == 'w'
+			|| query2[i] == 'K' || query2[i] == 'k'
+			|| query2[i] == 'M' || query2[i] == 'm'
+			|| query2[i] == 'B' || query2[i] == 'b'
+			|| query2[i] == 'D' || query2[i] == 'd'
+			|| query2[i] == 'H' || query2[i] == 'h'
+			|| query2[i] == 'V' || query2[i] == 'v'){
 			DATA[1][i]=-1;
 		}else if (query2[i] == '\n'){
 		}else{
@@ -679,10 +700,13 @@ void *fillInMat(void *ptr){
 	for(i=start_i; i<end_i; i++){
 		int len_i = strlen(dstr->seq[i]); // OPT3: Cache strlen
 		for(j=start_j; j<end_j; j++){
+				if (j <= i) continue; // OPT5: Upper-triangle only — skip diagonal and lower half
 				int len_j = strlen(dstr->seq[j]);
 				wavefront_align(wf_aligner,dstr->seq[i],len_i,dstr->seq[j],len_j);
 				// OPT2: Direct CIGAR-to-JC distance (no string materialization)
-				distMat[i][j] = compute_JC_from_CIGAR(wf_aligner->cigar,dstr->seq[i],dstr->seq[j],len_i,len_j);
+				double dist = compute_JC_from_CIGAR(wf_aligner->cigar,dstr->seq[i],dstr->seq[j],len_i,len_j);
+				distMat[i][j] = dist;
+				distMat[j][i] = dist; // Mirror for NJ's lower-triangle reads
 		}
 	}
 	wavefront_aligner_delete(wf_aligner);
@@ -1151,9 +1175,8 @@ double findShortestDist_WFA(int index, char* seq, int clusterSize, double** dist
 }
 // OPT4: Version that accepts a pre-created aligner (avoids create/destroy per call)
 // Used in runAssignToCluster where findShortestDist_WFA is called C times per sequence
-double findShortestDist_WFA_reuse(int index, char* seq, wavefront_aligner_t* wf_aligner){
-	int seq1_len = strlen(rootSeqs[index]);
-	int seq2_len = strlen(seq);
+double findShortestDist_WFA_reuse(int index, char* seq, wavefront_aligner_t* wf_aligner, int seq2_len){
+	int seq1_len = rootSeqLens[index]; // OPT6: Use pre-cached length
 	wavefront_align(wf_aligner,rootSeqs[index],seq1_len,seq,seq2_len);
 	return compute_JC_from_CIGAR(wf_aligner->cigar,rootSeqs[index],seq,seq1_len,seq2_len);
 }
@@ -1814,44 +1837,12 @@ void *runAssignToCluster(void *ptr){
 	//for(i=start; i<end; i++){
 	for(i=start; i<end; i++){
 		shortest_distance=1;
-		//for(j=0; j<number_of_kseqs; j++){
-		//	if (i+start==mstr->chooseK[j]){
-		//		next=1;
-		//	}
-		//}
-		//for(j=0; j<number_of_kseqs; j++){
-		//	if (strcmp(seqNames[i],clusters[0][j])==0){
-		//		next=1;
-		//	}
-		//}
-		//if ( 1==(int)hashmap_get(&seqsToCompare,seqNames[i]) ){
-		//	next=1;
-		//}
-		//if ( 1==(int)hashmap_get(&assignedSeqs,seqNames[i]) ){
-		//	next = 1;
-		//}
-		//for(j=0; j<end-start; j++){
-		//	if (strcmp(assignedSeqs[j],seqNames[i])==0){
-		//		next=1;
-		//	}
-		//}
-		//if (next != 1){
+		int query_len = strlen(readsStruct->sequence[i]); // OPT6: Compute query length once per sequence
 			for(j=1; j<number_of_clusters; j++){
-				//for(k=0; k<clusterSize[j]; k++){
-					//for(l=0; l<update_initial_cluster; l++){
-						//if (strcmp(clusters[j][k],clusters[0][l])==0){
-						//	strcpy(seqsInCluster[k],sequences[chooseK[l]]);
-						//}
-					//}
-					//if ( 1==(int)hashmap_get(&seqsToCompare,clusters[j][k]) ){
-					//	strcpy(seqsInCluster[k],(char *)hashmap_get(&map,clusters[j][k]));
-					//}
-				//}
-				//pthread_mutex_lock(&lock);
-				//distance=findShortestDist(clusterSeqs[j],sequences[i],clusterSize[j],fasta_specs[3],nw_struct,distMat2,DATA,mult);
 				if (mstr->use_nw==0){
 					// OPT4: Reuse thread-local aligner instead of creating/destroying per call
-					distance=findShortestDist_WFA_reuse(j-1,readsStruct->sequence[i],thread_wf_aligner);
+					// OPT6: Pass pre-computed query length
+					distance=findShortestDist_WFA_reuse(j-1,readsStruct->sequence[i],thread_wf_aligner,query_len);
 				}else{
 					distance=findShortestDist(j-1,readsStruct->sequence[i],1,nw_struct,distMat2,DATA,mult);
 				}
@@ -1859,6 +1850,7 @@ void *runAssignToCluster(void *ptr){
 				if (distance < shortest_distance){
 					shortest_distance = distance;
 					closestCluster=j;
+					if (distance == 0.0) break; // OPT7: Early-exit on exact match
 				}
 			}
 			//printf("thread %d\t%s\t%d\t%lf\t%s\n",mstr->threadnumber,seqNames[i],closestCluster,shortest_distance,taxonomy[i]);
@@ -1993,7 +1985,7 @@ int findNewClusterSizes(int* newClusterSizes, int* fasta_specs){
 void printInitialClusters(int starting_number_of_clusters,int number_of_clusters, int* clusterSizes, Options opt, int total_number_of_sequences, struct hashmap taxMap, int hasTaxFile, char*** seqNames, char*** sequences){
 	FILE *fasta;
 	FILE *tax;
-	char fileName[MAX_FILENAME];
+	char fileName[FASTA_MAXLINE];
 	//check to see if directory exitsts;
 	struct stat st = {0};
 	if ( stat(opt.output_directory, &st) == -1){
@@ -4123,7 +4115,7 @@ int main(int argc, char **argv){
 	opt.clstr_format=1;
 	opt.use_nw=0;
 	opt.number_of_desc=10;
-	opt.numberOfLinesToRead=10000;
+	opt.numberOfLinesToRead=0; // 0 = read all sequences in one pass (overridden by -l)
 	opt.average=-1.0;
 	strcpy(opt.output_directory,"");
 	memset(opt.output_file,'\0',2000);
@@ -4158,6 +4150,10 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 	fasta_specs[4] = opt.number_of_clusters+1; //NUMBER OF CLUSTERS
+	// Default -l to total sequence count (read all in one pass)
+	if (opt.numberOfLinesToRead <= 0 || opt.numberOfLinesToRead > fasta_specs[0]){
+		opt.numberOfLinesToRead = fasta_specs[0];
+	}
 	printf("Number of clusters: %d\n",fasta_specs[4]-1);
 	fclose(fasta_for_clustering);
 	printf("Number of threads: %d\n",opt.numthreads);
@@ -4633,6 +4629,7 @@ int main(int argc, char **argv){
 	int k,l,m;
 	int *numbase = (int *)malloc((numberOfNodesToCut-1)*sizeof(int));
 	rootSeqs = (char **)malloc((numberOfNodesToCut-1)*(sizeof(char *)));
+	rootSeqLens = (int *)malloc((numberOfNodesToCut-1)*sizeof(int)); // OPT6: Allocate length cache
 	for(i=0; i<numberOfNodesToCut-1; i++){
 		//seqArr[i] = (int **)malloc(clusterSize[i+1]*sizeof(int *));
 		//for(j=0; j<clusterSize[i+1]; j++){
@@ -4712,6 +4709,10 @@ int main(int argc, char **argv){
 				fclose(root_sequences_file);
 			}
 		}
+	}
+	// OPT6: Populate root sequence length cache from numbase
+	for(i=0; i<numberOfNodesToCut-1; i++){
+		rootSeqLens[i] = numbase[i];
 	}
 	free(rootArr);
 	//free(kalign_args[0]);

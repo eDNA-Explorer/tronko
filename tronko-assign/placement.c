@@ -73,25 +73,15 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	attributes.affine_penalties.gap_opening = 6;
 	attributes.affine_penalties.gap_extension = 2;
 	attributes.alignment_form.span = alignment_endsfree;
-	//attributes.alignment_form.pattern_begin_free = 0;
-	//attributes.alignment_form.pattern_end_free = 300;
-	//attributes.alignment_form.text_begin_free = 50;
-	//attributes.alignment_form.text_end_free = 50;
+	/* Create WFA aligner once and reuse across all matches */
+	wavefront_aligner_t* const wf_aligner = wavefront_aligner_new(&attributes);
 	for(match=0; match<number_of_matches; match++){
-		if (use_leaf_portion==1){
-			for(i=0; i<max_query_length+max_query_length+2*padding+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
-		}else{
-			for(i=0; i<max_query_length+max_numbase+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
+		{
+			int clear_len = use_leaf_portion ? (max_query_length+max_query_length+2*padding+1) : (max_query_length+max_numbase+1);
+			memset(positions, -1, clear_len * sizeof(int));
+			memset(locQuery, '\0', clear_len);
+			memset(leaf_sequence, '\0', clear_len);
+			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_1);
 		if (use_leaf_portion==1){
@@ -111,8 +101,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		affine_wavefronts_t* affine_wavefronts;
 		char* const pattern_alg=mm_allocator_calloc(mm_allocator,leaf_length+query_length+1,char,true);
 		char* const text_alg=mm_allocator_calloc(mm_allocator,leaf_length+query_length+1,char,true);*/
-		// Initialize Wavefront Aligner
-		wavefront_aligner_t* const wf_aligner = wavefront_aligner_new(&attributes);
+		// Align using reused WFA aligner
 		wavefront_align(wf_aligner,leaf_sequence,leaf_length,query_1,query_length);
 		char* const pattern_alg = mm_allocator_calloc(wf_aligner->mm_allocator,leaf_length+query_length+1,char,true);
 		char* const ops_alg = mm_allocator_calloc(wf_aligner->mm_allocator,leaf_length+query_length+1,char,true);
@@ -466,25 +455,16 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		mm_allocator_free(wf_aligner->mm_allocator,pattern_alg);
 		mm_allocator_free(wf_aligner->mm_allocator,ops_alg);
 		mm_allocator_free(wf_aligner->mm_allocator,text_alg);
-		wavefront_aligner_delete(wf_aligner);
 	}
 	}
 	if (paired==1){
 	for(match=0; match<number_of_matches; match++){
-		if (use_leaf_portion==1){
-			for(i=0; i<max_query_length+max_query_length+2*padding+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
-		}else{
-			for(i=0; i<max_query_length+max_numbase+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
+		{
+			int clear_len = use_leaf_portion ? (max_query_length+max_query_length+2*padding+1) : (max_query_length+max_numbase+1);
+			memset(positions, -1, clear_len * sizeof(int));
+			memset(locQuery, '\0', clear_len);
+			memset(leaf_sequence, '\0', clear_len);
+			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_2);
 		if (use_leaf_portion==1){
@@ -518,7 +498,6 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		affine_wavefronts_t* affine_wavefronts;
 		char* const pattern_alg=mm_allocator_calloc(mm_allocator,leaf_length+query_length+1,char,true);
 		char* const text_alg=mm_allocator_calloc(mm_allocator,leaf_length+query_length+1,char,true);*/
-		wavefront_aligner_t* const wf_aligner = wavefront_aligner_new(&attributes);
 		wavefront_align(wf_aligner,leaf_sequence,leaf_length,query_2,query_length);
 		char* const pattern_alg = mm_allocator_calloc(wf_aligner->mm_allocator,leaf_length+query_length+1,char,true);
 		char* const ops_alg = mm_allocator_calloc(wf_aligner->mm_allocator,leaf_length+query_length+1,char,true);
@@ -871,10 +850,11 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		mm_allocator_free(wf_aligner->mm_allocator,pattern_alg);
 		mm_allocator_free(wf_aligner->mm_allocator,ops_alg);
 		mm_allocator_free(wf_aligner->mm_allocator,text_alg);
-		wavefront_aligner_delete(wf_aligner);
 		}
 		}
 	}
+	/* Delete the reused WFA aligner after all matches are done */
+	wavefront_aligner_delete(wf_aligner);
 	type_of_PP maximum=-9999999999999999;
 	int minRoot=0;
 	int minNode=0;
@@ -950,20 +930,12 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	forward_mismatch=0;
 	reverse_mismatch=0;
 	for(match=0; match<number_of_matches; match++){
-		if (use_leaf_portion==1){
-			for(i=0; i<max_query_length+max_query_length+2*padding+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
-		}else{
-			for(i=0; i<max_query_length+max_numbase+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
+		{
+			int clear_len = use_leaf_portion ? (max_query_length+max_query_length+2*padding+1) : (max_query_length+max_numbase+1);
+			memset(positions, -1, clear_len * sizeof(int));
+			memset(locQuery, '\0', clear_len);
+			memset(leaf_sequence, '\0', clear_len);
+			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_1);
 		if (use_leaf_portion==1){
@@ -1337,20 +1309,12 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	}
 	if (paired==1){
 	for(match=0; match<number_of_matches; match++){
-		if (use_leaf_portion==1){
-			for(i=0; i<max_query_length+2*padding+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
-		}else{
-			for(i=0; i<max_query_length+max_numbase+1;i++){
-				positions[i]=-1;
-				locQuery[i]='\0';
-				leaf_sequence[i] = '\0';
-				positionsInRoot[i]=-1;
-			}
+		{
+			int clear_len = use_leaf_portion ? (max_query_length+2*padding+1) : (max_query_length+max_numbase+1);
+			memset(positions, -1, clear_len * sizeof(int));
+			memset(locQuery, '\0', clear_len);
+			memset(leaf_sequence, '\0', clear_len);
+			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_2);
 		//needleman_wunsch_align(rootSeqs[topRoots[rootNum]], query_2, scoring, nw, aln);

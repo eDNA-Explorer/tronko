@@ -1,0 +1,12 @@
+.git
+thoughts
+docs
+*.md
+!build-tronko-db.sh
+tests
+EXPERIMENTS_LOG.md
+CLAUDE.md
+README.md
+LICENSE
+*.png
+*.jpg

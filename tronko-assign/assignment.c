@@ -28,68 +28,43 @@ void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positio
     type_of_PP strike_box, int max_strikes,
     int enable_pruning, type_of_PP pruning_threshold) {
 
-	int child0 = treeArr[rootNum][node].up[0];
-	int child1 = treeArr[rootNum][node].up[1];
+	/*
+	 * Iterative DFS traversal using an explicit stack.
+	 * Replaces the recursive version to avoid ~2931 stack frames with 17 parameters each.
+	 * The stack is allocated on the C stack (VLA) since max tree size is bounded.
+	 */
+	int stack[4096];  /* Max tree depth; binary tree with ~2931 nodes has depth <= ~12 */
+	int sp = 0;
+	stack[sp++] = node;
 
-	// Calculate score for this node
-	type_of_PP node_score = getscore_Arr(alength, node, rootNum, locQuery, positions,
-	                                      print_all_nodes, site_scores_file, readname);
+	type_of_PP *scores_arr = scores[search_number][rootNum];
 
-	if (child0 == -1 && child1 == -1) {
-		// Leaf node
-		scores[search_number][rootNum][node] += node_score;
+	while (sp > 0) {
+		int cur = stack[--sp];
+		int child0 = treeArr[rootNum][cur].up[0];
+		int child1 = treeArr[rootNum][cur].up[1];
 
-		// Update best score tracking
-		if (early_termination && node_score > *best_score) {
-			*best_score = node_score;
-			*strikes = 0;
-		}
-	} else if (child0 != -1 && child1 != -1) {
-		// Internal node
-		scores[search_number][rootNum][node] += node_score;
+		type_of_PP node_score = getscore_Arr(alength, cur, rootNum, locQuery, positions,
+		                                      print_all_nodes, site_scores_file, readname);
+		scores_arr[cur] += node_score;
 
-		// Subtree pruning check (only if enabled)
-		// If this node is too bad, skip entire subtree
-		if (enable_pruning && *best_score > -9999999999999998) {
-			if (node_score < *best_score - pruning_threshold) {
-				// This subtree cannot contain nodes within Cinterval of best
-				// Skip children entirely
-				return;
-			}
-		}
-
-		// FIXME: Early termination is BROKEN - produces incorrect results (0.0 scores, wrong nodes)
-		// The algorithm terminates too aggressively, stopping before reaching leaf nodes.
-		// TODO: Remove this feature or completely redesign the approach.
-		// See validation report: baseline vs early_termination outputs differ significantly.
-		// Disabled pending fix - the flag is accepted but ignored.
-		/*
-		if (early_termination) {
-			// Higher score is better in tronko (log probabilities, less negative = better)
-			if (node_score < *best_score - strike_box) {
-				// This node is significantly worse than best
-				(*strikes)++;
-				if (*strikes >= max_strikes) {
-					// Stop exploring this subtree
-					return;
-				}
-			} else if (node_score > *best_score) {
-				// Found a better score, reset strikes
+		if (child0 == -1 && child1 == -1) {
+			/* Leaf node — update best score tracking */
+			if (early_termination && node_score > *best_score) {
 				*best_score = node_score;
 				*strikes = 0;
 			}
+		} else if (child0 != -1 && child1 != -1) {
+			/* Internal node — pruning check, then push children */
+			if (enable_pruning && *best_score > -9999999999999998) {
+				if (node_score < *best_score - pruning_threshold) {
+					continue;  /* Skip children entirely */
+				}
+			}
+			/* Push child1 first so child0 is processed first (preserves DFS order) */
+			stack[sp++] = child1;
+			stack[sp++] = child0;
 		}
-		*/
-
-		// Recurse to children
-		assignScores_Arr_paired(rootNum, child0, locQuery, positions, scores, alength,
-		    search_number, print_all_nodes, site_scores_file, readname,
-		    early_termination, best_score, strikes, strike_box, max_strikes,
-		    enable_pruning, pruning_threshold);
-		assignScores_Arr_paired(rootNum, child1, locQuery, positions, scores, alength,
-		    search_number, print_all_nodes, site_scores_file, readname,
-		    early_termination, best_score, strikes, strike_box, max_strikes,
-		    enable_pruning, pruning_threshold);
 	}
 }
 /*type_of_PP getscore(int alength, int node, int rootNum){
@@ -169,70 +144,92 @@ int checkPolyA(int rootNum, int node, int position){
 	}
 	return isPolyA;
 }
+/*
+ * Precomputed log constants and nucleotide lookup table.
+ * Avoids recomputing log() on every iteration of the inner scoring loop.
+ */
+static const type_of_PP LOG_001 = -4.605170185988091;  /* log(0.01) */
+static const type_of_PP LOG_025 = -1.3862943611198906; /* log(0.25) */
+
+/*
+ * Nucleotide character -> index lookup table.
+ * A/a=0, C/c=1, G/g=2, T/t=3, '-'=4 (gap), everything else=5 (unknown).
+ * Eliminates branch-heavy if/else chain in the inner loop.
+ */
+static const int NUC_LUT[256] = {
+	[0 ... 255] = 5,  /* default: unknown */
+	['A'] = 0, ['a'] = 0,
+	['C'] = 1, ['c'] = 1,
+	['G'] = 2, ['g'] = 2,
+	['T'] = 3, ['t'] = 3,
+	['-'] = 4
+};
+
 type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int *positions, int print_all_nodes, FILE* site_scores_file, char* readname){
 	type_of_PP score;
-	int pos, i;
-	i=0;
+	int i;
 	score=0;
-	type_of_PP overhang=0;
-	int isPolyA=0;
-	if (positions[i]==-1){
+	if (positions[0]==-1){
 		score=9999999999;
 		return score;
 	}
-	for (i=0; i<alength; i++){//We assume that we have already ensured that the sequence only contains a, c, t, and g.  Missing data is not aligned
-		//pos=positions[i];//test if this is faster rather than referencing multiple times.  Compiler optimization may make the latter faster.
-			if ( print_all_nodes == 1){
-				fprintf(site_scores_file,"%s\t%d\t%d\t%d\t",readname,rootNum,node,positions[i]);
-			}
-			if (positions[i]==-1){
-				score=score+log(0.01);
-				if ( print_all_nodes == 1 ){
-					fprintf(site_scores_file,"%lf\n",log(0.01));
-				}
+
+	/* Fast path: no debug output (the overwhelmingly common case) */
+	if (print_all_nodes != 1) {
+		const type_of_PP *pp = treeArr[rootNum][node].posteriornc;
+		for (i=0; i<alength; i++){
+			int pos = positions[i];
+			if (pos==-1){
+				score += LOG_001;
 			}else{
-				if ( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)]==1 && locQuery[i]=='-' ){
-					score=score+0;
-					if ( print_all_nodes == 1){
-						fprintf(site_scores_file,"%lf\n",0);
+				if (pp[PP_IDX(pos, 0)] == 1){
+					/* Missing data position */
+					if (locQuery[i] != '-'){
+						score += LOG_001;
 					}
+					/* else: gap at missing data = +0, nothing to add */
 				}else{
-					if( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)] == 1){
-						score = score + log(0.01);
-						if ( print_all_nodes == 1){
-							fprintf(site_scores_file,"%lf\n",log(0.01));
-						}
-					}else{
-						if (locQuery[i]=='a' || locQuery[i]=='A'){
-							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)];
-							if ( print_all_nodes == 1){
-								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)]);
-							}
-						}else if (locQuery[i]=='c' || locQuery[i]=='C'){
-							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 1)];
-							if ( print_all_nodes == 1){
-								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 1)]);
-							}
-						}else if (locQuery[i]=='g' || locQuery[i]=='G'){
-							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 2)];
-							if ( print_all_nodes == 1){
-								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 2)]);
-							}
-						}else if (locQuery[i]=='t' || locQuery[i]=='T'){
-							score += treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 3)];
-							if ( print_all_nodes == 1){
-								fprintf(site_scores_file, PP_PRINT_FORMAT "\n",treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 3)]);
-							}
-						}else if (locQuery[i]=='-'){
-							score += log(0.25);
-							if ( print_all_nodes == 1){
-								fprintf(site_scores_file,"%lf\n",log(0.25));
-							}
-						}
+					int nuc = NUC_LUT[(unsigned char)locQuery[i]];
+					if (nuc <= 3){
+						score += pp[PP_IDX(pos, nuc)];
+					}else if (nuc == 4){
+						/* gap character */
+						score += LOG_025;
+					}
+					/* nuc==5 (unknown): no contribution, same as original */
+				}
+			}
+		}
+		return score;
+	}
+
+	/* Slow path: with debug output (print_all_nodes == 1) */
+	for (i=0; i<alength; i++){
+		fprintf(site_scores_file,"%s\t%d\t%d\t%d\t",readname,rootNum,node,positions[i]);
+		if (positions[i]==-1){
+			score += LOG_001;
+			fprintf(site_scores_file,"%lf\n",LOG_001);
+		}else{
+			if ( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)]==1 && locQuery[i]=='-' ){
+				score=score+0;
+				fprintf(site_scores_file,"%lf\n",0.0);
+			}else{
+				if( treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], 0)] == 1){
+					score += LOG_001;
+					fprintf(site_scores_file,"%lf\n",LOG_001);
+				}else{
+					int nuc = NUC_LUT[(unsigned char)locQuery[i]];
+					if (nuc <= 3){
+						type_of_PP pp_val = treeArr[rootNum][node].posteriornc[PP_IDX(positions[i], nuc)];
+						score += pp_val;
+						fprintf(site_scores_file, PP_PRINT_FORMAT "\n", pp_val);
+					}else if (nuc == 4){
+						score += LOG_025;
+						fprintf(site_scores_file,"%lf\n",LOG_025);
 					}
 				}
 			}
-			//printf("Node: %d Position: %d Score: %lf\n",node,pos,score);
+		}
 	}
 
 	return score;

@@ -1,11 +1,108 @@
 # Tronko Experiments Log
 
-This document records benchmark results and experiments conducted to evaluate performance characteristics and optimization tradeoffs in tronko-assign.
+This document records benchmark results and experiments conducted to evaluate performance characteristics and optimization tradeoffs in tronko.
 
 ## Table of Contents
 
+- [2026-02-25: tronko-build Optimizations — Correctness Verification](#2026-02-25-tronko-build-optimizations--correctness-verification)
 - [2026-01-02: Zstd Compressed Binary Database Format](#2026-01-02-zstd-compressed-binary-database-format)
 - [2026-01-01: Memory Optimization (Float vs Double Precision)](#2026-01-01-memory-optimization-float-vs-double-precision)
+
+---
+
+## 2026-02-25: tronko-build Optimizations — Correctness Verification
+
+### Objective
+
+Verify that the optimized tronko-build produces **byte-identical** output to the original (upstream) tronko-build. The optimized version includes algorithmic improvements (hashmap taxonomy lookup, stack-based recursion, buffered I/O) and OpenMP multi-tree parallelism. None of these changes should alter the numerical results.
+
+### What Changed
+
+| Optimization | Description |
+|---|---|
+| Hashmap taxonomy lookup | O(1) taxonomy matching instead of O(n) linear scan |
+| Stack-based recursion | Explicit stack replaces call-stack recursion in tree traversal, preventing stack overflow on deep trees |
+| Buffered I/O | `reference_tree.txt` output written via large buffer instead of per-field `fprintf` calls |
+| Crash fixes (A-H) | Bounds checks, null guards, and buffer overflow fixes for edge cases in the original code |
+| OpenMP multi-tree parallelism | `#pragma omp parallel for` on the outer tree loop — each partition tree's ML optimization runs on a separate thread |
+
+### Test Configuration
+
+All tests ran inside Docker containers using `gcc:12` (linux/amd64) with identical input data. The original binary was compiled from the unmodified upstream source. The optimized binary was compiled with `-O3 -fopenmp`.
+
+### Test 1: Single Tree (Charadriiformes COI)
+
+| Parameter | Value |
+|---|---|
+| Dataset | Charadriiformes (COI) |
+| Sequences | 1,466 |
+| Alignment columns | 316 |
+| Partition trees | 1 |
+
+| Metric | Original | Optimized | Change |
+|---|---|---|---|
+| Wall time | 10.33s | 4.50s | **2.30x faster** |
+| Max RSS | 122,832 KB | 123,876 KB | ~same |
+| Output | — | — | **BYTE-IDENTICAL** |
+
+### Test 2: Large Tree (CO1 Metazoa subset)
+
+| Parameter | Value |
+|---|---|
+| Dataset | CO1_Metazoa (subsampled) |
+| Sequences | 2,998 |
+| Alignment columns | 362 |
+| Partition trees | 1 |
+
+| Metric | Original | Optimized | Change |
+|---|---|---|---|
+| Wall time | 35.79s | 11.60s | **3.09x faster** |
+| Max RSS | 277,236 KB | 278,324 KB | ~same |
+| Output | — | — | **BYTE-IDENTICAL** |
+
+### Test 3: OpenMP Thread Safety (single-tree)
+
+Verified that the OpenMP build with `OMP_NUM_THREADS=12` produces identical output to `OMP_NUM_THREADS=1` on the same dataset. ML optimization is deterministic (same initial parameters, same convergence path), so output is byte-identical regardless of thread count.
+
+```
+OMP_NUM_THREADS=1  → reference_tree.txt (sha256: ...)
+OMP_NUM_THREADS=12 → reference_tree.txt (sha256: identical)
+```
+
+### OpenMP Implementation Details
+
+The parallelism targets the outer tree loop in `tronko-build.c`:
+
+```c
+#pragma omp parallel for schedule(dynamic) private(i)
+for(i=0; i<numberOfTrees; i++){
+    double local_params[10] = {0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+    estimatenucparameters_Arr(local_params, i);
+    getposterior_nc_Arr(local_params, i);
+}
+```
+
+Each partition tree is fully independent — `treeArr[i]`, `seqArr[i]`, `numspecArr[i]`, etc. are accessed only by the thread processing tree `i`. Global scratch variables used during ML optimization (eigendecomposition matrices, optimizer state, etc.) are declared `#pragma omp threadprivate` so each thread gets its own copy.
+
+Thread count is controlled by `OMP_NUM_THREADS` (defaults to all available cores). For single-tree datasets, only one thread does useful work. For multi-partition databases (e.g., CRUXv2 vert12S with 10,144 partition trees), expect near-linear speedup up to the number of trees.
+
+### Conclusion
+
+The optimized tronko-build produces **byte-identical `reference_tree.txt` output** compared to the original across all tested datasets. The 2.3-3.1x single-threaded speedup comes from algorithmic improvements with zero impact on numerical results. The OpenMP multi-tree parallelism adds no overhead for single-tree workloads and enables near-linear scaling for multi-partition databases.
+
+### Reproduction
+
+```bash
+# Build the comparison Docker image
+docker build -t tronko-compare .
+
+# Run comparison (uses cached golden output from original)
+docker run --rm -v tronko-golden:/golden tronko-compare
+
+# Verify with specific thread counts
+docker run --rm -e OMP_NUM_THREADS=1 -v tronko-golden:/golden tronko-compare
+docker run --rm -e OMP_NUM_THREADS=12 -v tronko-golden:/golden tronko-compare
+```
 
 ---
 

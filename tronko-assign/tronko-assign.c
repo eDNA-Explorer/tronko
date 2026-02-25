@@ -600,13 +600,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}
 		numberOfTrees = leaf_iter;
-		for(i=0;i<number_of_total_nodes;i++){
-			minNodes[i]=-1;
-		}
+		memset(minNodes, -1, number_of_total_nodes * sizeof(int));
 		for(i=0; i<leaf_iter; i++){
-			for(j=0; j<2*numspecArr[trees_search[i]]-1; j++){
-				results->nodeScores[i][trees_search[i]][j]=0;
-			}
+			memset(results->nodeScores[i][trees_search[i]], 0, (2*numspecArr[trees_search[i]]-1) * sizeof(type_of_PP));
 			results->leaf_coordinates[i][0]=-1;
 			results->leaf_coordinates[i][1]=-1;
 		}
@@ -710,134 +706,59 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 			if (minLevel>6){ unassigned=1;}
 		}
-		for(i=0; i<max_readname_length+mstr->max_lineTaxonomy+120;i++){
-			resultsPath[i] = '\0';
-		}
+		int resultsPathSize = max_readname_length+mstr->max_lineTaxonomy+120;
+		resultsPath[0] = '\0';
 		int print_un=1;
 		if (count==1){
-			if ( paired != 0 ){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\t");
+			const char *readname = (paired != 0) ?
+				pairedQueryMat->forward_name[lineNumber] :
+				singleQueryMat->name[lineNumber];
 			int taxIndex1 = treeArr[maxRoot][LCA].taxIndex[1];
+
+			/* Build taxonomy string into resultsPath using cursor */
+			int pos = 0;
+			pos += snprintf(resultsPath + pos, resultsPathSize - pos, "%s\t", readname);
 			if ( taxIndex1 == -1 ){
-				strcat(resultsPath,"unassigned Euk or Bac");
-				//if (print_unassigned==0){
-				//	print_un = 0;
-				//}
+				pos += snprintf(resultsPath + pos, resultsPathSize - pos, "unassigned Euk or Bac");
 			}else{
-			for(i=6;i>=taxIndex1;i--){
-				if (i==taxIndex1){
-					strcat(resultsPath,taxonomyArr[maxRoot][treeArr[maxRoot][LCA].taxIndex[0]][i]);
-				}else{
-					strcat(resultsPath,taxonomyArr[maxRoot][treeArr[maxRoot][LCA].taxIndex[0]][i]);
-					strcat(resultsPath,";");
+				for(i=6;i>=taxIndex1;i--){
+					pos += snprintf(resultsPath + pos, resultsPathSize - pos, "%s%s",
+						taxonomyArr[maxRoot][treeArr[maxRoot][LCA].taxIndex[0]][i],
+						(i==taxIndex1) ? "" : ";");
 				}
 			}
-			}
-			strcat(resultsPath,"\t");
-			char *num = NULL;
-			asprintf(&num,"%lf",results->minimum[0]);
-			strcat(resultsPath,num);
-			strcat(resultsPath,"\t");
-			//free(num);
-			char *num2 = NULL;
-			asprintf(&num2,"%lf",results->minimum[1]);
-			strcat(resultsPath,num2);
-			strcat(resultsPath,"\t");
-			//free(num2);
-			char *num3 = NULL;
-			asprintf(&num3,"%lf",results->minimum[2]);
-			strcat(resultsPath,num3);
-			strcat(resultsPath,"\t");
-			//free(num3);
-			char *num4 = NULL;
-			asprintf(&num4,"%d",maxRoot);
-			strcat(resultsPath,num4);
-			strcat(resultsPath,"\t");
-			//free(num4);
-			char *num5 = NULL;
-			asprintf(&num5,"%d",LCA);
-			strcat(resultsPath,num5);
-			//free(num5);
-			//char* appendScores = (char*)malloc(30*sizeof(char));
-			//sprintf(appendScores,"%lf\t%lf\t%lf\t%d\t%d",results->minimum[0],results->minimum[1],results->minimum[2],maxRoot,LCA);
-			//strcat(resultsPath,appendScores);
-			//free(appendScores);
-			//printf("%s\n",resultsPath);
-			//if ( print_un == 1){
-				strcpy(results->taxonPath[iter], resultsPath);
-			//}
-			free(num);
-			free(num2);
-			free(num3);
-			free(num4);
-			free(num5);
-		}else if (count==0 /*&& print_unassigned==1*/){
-			if (paired != 0){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\tunassigned");
+			pos += snprintf(resultsPath + pos, resultsPathSize - pos,
+				"\t%lf\t%lf\t%lf\t%d\t%d",
+				results->minimum[0], results->minimum[1], results->minimum[2],
+				maxRoot, LCA);
+			strcpy(results->taxonPath[iter], resultsPath);
+		}else if (count==0){
+			const char *readname = (paired != 0) ?
+				pairedQueryMat->forward_name[lineNumber] :
+				singleQueryMat->name[lineNumber];
+			snprintf(resultsPath, resultsPathSize, "%s\tunassigned", readname);
 			strcpy(results->taxonPath[iter],resultsPath);
 		}else{
-			if (paired != 0){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\t");
+			const char *readname = (paired != 0) ?
+				pairedQueryMat->forward_name[lineNumber] :
+				singleQueryMat->name[lineNumber];
+			int pos = 0;
+			pos += snprintf(resultsPath + pos, resultsPathSize - pos, "%s\t", readname);
 			if (unassigned==1 ){
-				strcat(resultsPath, "unassigned Eukaryote or Bacteria");
-				//if (print_unassigned==0){
-				//	print_un=0;
-				//}
+				pos += snprintf(resultsPath + pos, resultsPathSize - pos, "unassigned Eukaryote or Bacteria");
 			}else{
-			int taxIndex1=minLevel;
-			for(i=6;i>=taxIndex1;i--){
-				if (i==taxIndex1){
-					strcat(resultsPath,taxonomyArr[taxRoot][treeArr[taxRoot][taxNode].taxIndex[0]][i]);
-				}else{
-					strcat(resultsPath,taxonomyArr[taxRoot][treeArr[taxRoot][taxNode].taxIndex[0]][i]);
-					strcat(resultsPath,";");
+				int taxIndex1=minLevel;
+				for(i=6;i>=taxIndex1;i--){
+					pos += snprintf(resultsPath + pos, resultsPathSize - pos, "%s%s",
+						taxonomyArr[taxRoot][treeArr[taxRoot][taxNode].taxIndex[0]][i],
+						(i==taxIndex1) ? "" : ";");
 				}
 			}
-			}
-			strcat(resultsPath,"\t");
-			//char* appendScores = (char*)malloc(18*sizeof(char));
-			//char *appendScores = NULL;
-			//asprintf(&appendScores,"%lf\t%d\t%d\t%d\t%d",results->minimum[0],results->minimum[1],results->minimum[2],maxRoot,LCA);
-			char *num = NULL;
-			asprintf(&num,"%lf",results->minimum[0]);
-			strcat(resultsPath,num);
-			strcat(resultsPath,"\t");
-			//free(num);
-			char *num2 = NULL;
-			asprintf(&num2,"%lf",results->minimum[1]);
-			strcat(resultsPath,num2);
-			strcat(resultsPath,"\t");
-			//free(num2);
-			char *num3 = NULL;
-			asprintf(&num3,"%lf",results->minimum[2]);
-			strcat(resultsPath,num3);
-			strcat(resultsPath,"\t");
-			//free(num3);
-			char *num4 = NULL;
-			asprintf(&num4,"%d",maxRoot);
-			strcat(resultsPath,num4);
-			strcat(resultsPath,"\t");
-			//free(num4);
-			char *num5 = NULL;
-			asprintf(&num5,"%d",LCA);
-			strcat(resultsPath,num5);
-			//strcat(resultsPath,appendScores);
-			//if (print_un==1){
-				strcpy(results->taxonPath[iter],resultsPath);
-			//}
-			//free(appendScores);
+			pos += snprintf(resultsPath + pos, resultsPathSize - pos,
+				"\t%lf\t%lf\t%lf\t%d\t%d",
+				results->minimum[0], results->minimum[1], results->minimum[2],
+				maxRoot, LCA);
+			strcpy(results->taxonPath[iter],resultsPath);
 		}
 		//free(bwa_results[iter].concordant_matches);
 		//free(bwa_results[iter].discordant_matches);
@@ -878,9 +799,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		LCA = -1;
 		if (leaf_iter > 0){
 			for(i=0; i<mstr->ntree; i++){
-				for (j=0; j<2*numspecArr[i]-1; j++){
-					results->voteRoot[i][j]=0;
-				}
+				memset(results->voteRoot[i], 0, (2*numspecArr[i]-1) * sizeof(int));
 			}
 		}
 	}

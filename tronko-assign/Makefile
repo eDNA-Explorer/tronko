@@ -9,7 +9,28 @@ DBGCFLAGS = -g -w
 STACKPROTECT = -fno-stack-protector
 # -lm links the math library
 #LIBS = -lm -lpthread -lz
-LIBS = -lm -pthread -lz -lzstd -lrt -std=gnu99
+# Platform-specific libraries
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    PLATFORM_LIBS = -lrt -ldl
+else
+    PLATFORM_LIBS = -ldl
+endif
+# Include paths for Homebrew (macOS) or system paths (Linux)
+ifeq ($(UNAME_S),Darwin)
+    INCLUDE_FLAGS = -I$(shell brew --prefix zstd 2>/dev/null || echo /usr/local)/include
+    LDFLAGS_EXTRA = -L$(shell brew --prefix zstd 2>/dev/null || echo /usr/local)/lib
+else
+    INCLUDE_FLAGS =
+    LDFLAGS_EXTRA =
+endif
+LIBS = -lm -pthread -lz -lzstd $(PLATFORM_LIBS) -std=gnu99
+# macOS requires _XOPEN_SOURCE for ucontext.h, plus _DARWIN_C_SOURCE to keep dladdr/Dl_info
+ifeq ($(UNAME_S),Darwin)
+    XOPEN_FLAGS = -D_XOPEN_SOURCE=600 -D_DARWIN_C_SOURCE
+else
+    XOPEN_FLAGS =
+endif
 
 # Base optimization
 OPTIMIZATION = -O3
@@ -69,15 +90,15 @@ carquet_lib:
 ifdef ENABLE_PARQUET
 	@if [ ! -f carquet/build/libcarquet.a ]; then \
 		echo "Building Carquet library..."; \
-		cd carquet && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$$(nproc); \
+		cd carquet && mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$${CMAKE_PREFIX_PATH:-}" && make -j$$(nproc); \
 	fi
 endif
 
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(INCLUDE_FLAGS) $(XOPEN_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LDFLAGS_EXTRA) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 debug: carquet_lib $(TARGET).c
-	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
+	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(INCLUDE_FLAGS) $(XOPEN_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LDFLAGS_EXTRA) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 clean:
 	$(RM) $(TARGET)
