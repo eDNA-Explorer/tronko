@@ -15,10 +15,14 @@ extern double ITMAX;
 extern double TOLX;
 extern double TOLX2;
 extern double STPMX;
-extern double *dg,*g,*hdg,*pnew,*xi,**hessin; 
+#pragma omp threadprivate(ITMAX, TOLX, TOLX2, STPMX)
+extern double *dg,*g,*hdg,*pnew,*xi,**hessin;
+#pragma omp threadprivate(dg, g, hdg, pnew, xi, hessin)
 extern int npar, CENTRALMODE, PRECISIONLEVEL;
+#pragma omp threadprivate(npar, CENTRALMODE, PRECISIONLEVEL)
 extern FILE *tempfile;
 extern double oldf0;
+#pragma omp threadprivate(oldf0)
 
 void nrerror(char error_text[]);
 double *dvector(long nl, long nh);

@@ -38,6 +38,9 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 	snprintf(buf,BUFFER_SIZE,"%s/reference_tree.txt",opt.partitions_directory);
 	FILE *outputTree = fopen(buf,"w");
 	if  ( outputTree == NULL ){ printf("Error opening reference tree file!\n"); exit(-1); }
+	/* Opt 5: 256KB write buffer for bulk I/O */
+	char *io_buf = malloc(256 * 1024);
+	if (io_buf) setvbuf(outputTree, io_buf, _IOFBF, 256 * 1024);
 	fprintf(outputTree,"%d\n",numberOfTrees);
 	fprintf(outputTree,"%d\n",max_nodename);
 	fprintf(outputTree,"%d\n",max_tax_name);
@@ -81,6 +84,7 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 		}
 	}
 	fclose(outputTree);
+	free(io_buf);
 }
 void printTaxonomyArrToFile(int numberOfTrees){
 	int i,j,k;

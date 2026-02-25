@@ -13,13 +13,13 @@
 #define MAXTIEBREAK 64
 #define type_of_PP double
 #define MAX_NODENAME 30
-#define MAX_NUMBEROFROOTS 100000
+#define MAX_NUMBEROFROOTS 10000
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
 #define MAX_NUM_BWA_MATCHES 5000
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 50000
-#define NUM_THREADS 1
+// Thread count controlled by OMP_NUM_THREADS environment variable
 #define MAXTAXLENGTHNAME 256
 #define MAXFILENAME 1000
 #define BUFFER_SIZE 1000
@@ -29,8 +29,11 @@ extern int *rootArr, *numspecArr, *numbaseArr, ***seqArr;
 extern int root,tip,comma; /*globals used to read in the tree*/
 extern double Logfactorial[MAXNUMBEROFINDINSPECIES];
 extern double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
+#pragma omp threadprivate(LRVEC, RRVEC, RRVAL, PMAT1, PMAT2)
 extern double LRVECnc[4][4], RRVECnc[4][4], RRVALnc[4], PMATnc[2][4][5];
+#pragma omp threadprivate(LRVECnc, RRVECnc, RRVALnc, PMATnc)
 extern double *statevector, UFC, *UFCnc, **templike_nc;
+#pragma omp threadprivate(statevector, UFC, UFCnc, templike_nc)
 //extern int ***PP; // WE SHOULD TEST WHAT IS THE FASTEST. MAYBE MOVE TO UNSIGNED SHORT?
 extern type_of_PP ***PP;
 extern type_of_PP ***PPcopy;
@@ -142,8 +145,10 @@ typedef struct masterArr{
 extern node **treeArr;
 extern int COUNT2;
 extern int COUNT;
+#pragma omp threadprivate(COUNT, COUNT2)
 extern double *localpi;
 extern int localnode;
+#pragma omp threadprivate(localpi, localnode)
 extern double currentestimate[10];
 
 //extern char *locQuery;
@@ -152,6 +157,7 @@ extern char *seqInRoot;
 extern char **nodeIDs;
 extern char ***nodeIDsArr;
 extern double parameters[10];
+#pragma omp threadprivate(parameters)
 extern double maxpar[4];
 extern double ml;
 //extern int open;

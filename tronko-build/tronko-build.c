@@ -19,7 +19,6 @@
 #include "getclade.h"
 #include "readfasta.h"
 #include "readreference.h"
-#include <time.h>
 
 HASHMAP(int, struct masterArr) mastermap;
 struct node **treeArr;
@@ -53,6 +52,7 @@ node **treeArr;
 
 /*This function calculates the number of  desdencents of each node in the tree stored in tree[node].nd*/
 int get_number_descendantsArr(int node, struct masterArr *m){
+	if (node==-1) return 0;
 	if (m->tree[node].up[0]==-1) return (m->tree[node].nd=1);
 	else return (m->tree[node].nd=(get_number_descendantsArr(m->tree[node].up[0],m)+get_number_descendantsArr(m->tree[node].up[1],m)));
 }
@@ -113,6 +113,7 @@ void findMaxTaxName(FILE* file, int* specs){
 	while( fgets(buffer,BUFFER_SIZE,file) != NULL ){
 		s = strtok(buffer,"\t");
 		lineTaxonomy = strtok(NULL,"\n");
+		if (lineTaxonomy == NULL) continue;
 		int taxsize = strlen(lineTaxonomy);
 		if ( max_line < taxsize ){
 			max_line = taxsize;
@@ -120,6 +121,7 @@ void findMaxTaxName(FILE* file, int* specs){
 		int j=6;
 		while(j>-1){
 			s = strtok_r(lineTaxonomy,";",&lineTaxonomy);
+			if (s == NULL) break;
 			int size = strlen(s);
 			if ( max_tax_name < size ){
 				max_tax_name = size;
@@ -135,41 +137,61 @@ void findMaxTaxName(FILE* file, int* specs){
 	}
 }
 void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, int max_tax_name){
-	//int child0 = m->tree[node].up[0];
-	//int child1 = m->tree[node].up[1];
 	char buffer[BUFFER_SIZE];
-	char *s;
 	char *lineAccession, *lineTaxonomy, *taxLevelName;
-	char fullTaxonomy[BUFFER_SIZE];
-	int startIndex;
-	char accessionID[max_nodename];
-	int i;
+	int i, j;
 	FILE *taxonomy_file;
-	for(i=0; i<2*m->numspec-1; i++){
-		if ( i<m->numspec - 1){
-			m->tree[i].taxIndex[0] = -1;
-			m->tree[i].taxIndex[1] = -1;
-		}else{
-			if (( taxonomy_file = fopen(tax,"r")) == (FILE *) NULL) printf("*** taxonomy file could not be opened.\n");
-			while( fgets(buffer,BUFFER_SIZE,taxonomy_file) != NULL){
-				lineAccession = strtok(buffer,"\t");
-				lineTaxonomy = strtok(NULL,"\n");
-				assert(strlen(lineAccession) <= max_nodename);
-				strncpy(&accessionID[0], lineAccession, max_nodename);
-				if ( strcmp(accessionID,m->tree[i].name)==0 ){
-					m->tree[i].taxIndex[0]=i-m->numspec+1;
-					m->tree[i].taxIndex[1]=0;
-					int j=6;
-					while(j>-1){
-						taxLevelName = strtok_r(lineTaxonomy,";",&lineTaxonomy);
-						strncpy(m->taxonomy[i-m->numspec+1][j], taxLevelName, max_tax_name); 
-						j--;
-					}
-				}
+
+	/* Set internal nodes' taxIndex to -1 */
+	for(i=0; i<m->numspec - 1; i++){
+		m->tree[i].taxIndex[0] = -1;
+		m->tree[i].taxIndex[1] = -1;
+	}
+
+	/* Opt 2: Build name->leaf-index hashmap for O(1) lookup */
+	HASHMAP(char, int) name_map;
+	hashmap_init(&name_map, hashmap_hash_string, strcmp);
+	hashmap_set_key_alloc_funcs(&name_map, strdup, free);
+
+	for(i = m->numspec - 1; i < 2*m->numspec - 1; i++){
+		int *idx = malloc(sizeof(int));
+		*idx = i;
+		hashmap_put(&name_map, m->tree[i].name, idx);
+	}
+
+	/* Read taxonomy file ONCE (was re-opened N times before) */
+	if ((taxonomy_file = fopen(tax,"r")) == (FILE *) NULL){
+		fprintf(stderr, "*** taxonomy file could not be opened: %s\n", tax);
+		exit(-1);
+	}
+	while(fgets(buffer, BUFFER_SIZE, taxonomy_file) != NULL){
+		lineAccession = strtok(buffer, "\t");
+		lineTaxonomy = strtok(NULL, "\n");
+		if (lineAccession == NULL || lineTaxonomy == NULL) continue;
+
+		int *leaf_ptr = hashmap_get(&name_map, lineAccession);
+		if (leaf_ptr != NULL){
+			i = *leaf_ptr;
+			m->tree[i].taxIndex[0] = i - m->numspec + 1;
+			m->tree[i].taxIndex[1] = 0;
+			j = 6;
+			while(j > -1){
+				taxLevelName = strtok_r(lineTaxonomy, ";", &lineTaxonomy);
+				if (taxLevelName == NULL) break;
+				strncpy(m->taxonomy[i - m->numspec + 1][j], taxLevelName, max_tax_name);
+				j--;
 			}
-			fclose(taxonomy_file);
 		}
 	}
+	fclose(taxonomy_file);
+
+	/* Cleanup hashmap */
+	const char *hkey;
+	int *hdata;
+	hashmap_foreach(hkey, hdata, &name_map){
+		free(hdata);
+	}
+	hashmap_cleanup(&name_map);
 	/*if ( child0 == -1 && child1 == -1 ){
 		if (( taxonomy_file = fopen(tax,"r")) == (FILE *) NULL) printf("*** taxonomy file could not be opened.\n");
 		while( fgets(buffer,BUFFER_SIZE,taxonomy_file) != NULL){
@@ -201,16 +223,15 @@ void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, 
 		assignTaxonomyToLeavesArr(child1,tax,m,max_nodename,max_tax_name);
 	}*/
 }
-int* getTaxonomyArr(int node, struct masterArr *m){
-	int* taxIndexA = NULL;
-	int* taxIndexB = NULL;
-	int* taxonomyOfNode = malloc(sizeof(int)*2);
-	taxonomyOfNode[0] = -1;
-	taxonomyOfNode[1] = -1;
+/* Opt 3: Stack-allocated recursion — void + output parameter instead of malloc per call */
+void getTaxonomyArr(int node, struct masterArr *m, int *out){
+	int taxIndexA[2], taxIndexB[2];
+	out[0] = -1;
+	out[1] = -1;
 	if ( m->tree[node].up[0] != -1 ){
 		if ( m->tree[node].taxIndex[0] == -1 ){
-			taxIndexA = getTaxonomyArr(m->tree[node].up[0],m);
-			taxIndexB = getTaxonomyArr(m->tree[node].up[1],m);
+			getTaxonomyArr(m->tree[node].up[0],m,taxIndexA);
+			getTaxonomyArr(m->tree[node].up[1],m,taxIndexB);
 			if ( taxIndexA[0]==-1 || taxIndexB[0]==-1 ){
 				m->tree[node].taxIndex[0]=-1;
 				m->tree[node].taxIndex[1]=-1;
@@ -218,12 +239,11 @@ int* getTaxonomyArr(int node, struct masterArr *m){
 				int i=0;
 				int phylogenyLevel=0;
 				int maxABLevel = (taxIndexA[1] > taxIndexB[1]) ? taxIndexA[1] : taxIndexB[1];
-				//int maxABLevel = 0;
 				for(i=maxABLevel;i<7;i++){
 					if ( strcmp(m->taxonomy[taxIndexA[0]][i],m->taxonomy[taxIndexB[0]][i])==0){
 						phylogenyLevel = i;
-						taxonomyOfNode[0] = taxIndexA[0];
-						taxonomyOfNode[1] = phylogenyLevel;
+						out[0] = taxIndexA[0];
+						out[1] = phylogenyLevel;
 						m->tree[node].taxIndex[0] = taxIndexA[0];
 						m->tree[node].taxIndex[1] = phylogenyLevel;
 						break;
@@ -232,12 +252,9 @@ int* getTaxonomyArr(int node, struct masterArr *m){
 			}
 		}
 	}else{
-		taxonomyOfNode[0] = m->tree[node].taxIndex[0];
-		taxonomyOfNode[1] = m->tree[node].taxIndex[1];
+		out[0] = m->tree[node].taxIndex[0];
+		out[1] = m->tree[node].taxIndex[1];
 	}
-	if(taxIndexA != NULL) free(taxIndexA);
-	if(taxIndexB != NULL) free(taxIndexB);
-	return taxonomyOfNode;
 }
 int* getTaxonomyArr_UsePartitions(int node, int whichPartitions, char**** taxonomyArr_heap){
 	int* taxIndexA = NULL;
@@ -291,7 +308,7 @@ void readSeqArr(gzFile partitionsFile, int maxname, struct masterArr *master){
 		size = strlen(s);
 		if ( buffer[0] == '>'){
 			if ( size > maxname ){ size = maxname; }
-			for(i=1; buffer[i]!='\0'; i++){
+			for(i=1; buffer[i]!='\0' && (i-1) < maxname; i++){
 				nodename[i-1]=buffer[i];
 			}
 			nodename[size-1]='\0';
@@ -351,6 +368,7 @@ char* readNewickFile( FILE *file){
 	return buffer;
 }
 int *findLeavesOfMinVarArr(int node, int *leafNodeList, int size, struct masterArr *m){
+	if (node==-1){ return leafNodeList; }
 	int child0 = m->tree[node].up[0];
 	int child1 = m->tree[node].up[1];
 	int i=0;
@@ -548,11 +566,11 @@ void exportTreeToNewick(struct masterArr* m, const char* filename){
 	fclose(file);
 }
 void findMinVarianceArr(int node, int size, struct masterArr *m){
+	if (node==-1){ return; }
 	int child0 = m->tree[node].up[0];
 	int child1 = m->tree[node].up[1];
 	int parent = m->tree[node].down;
 	int i=0;
-	if (node==-1){ return; }
 	if ( parent == -1 ){
 		findMinVarianceArr(child0,size,m);
 		findMinVarianceArr(child1,size,m);
@@ -829,8 +847,6 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
 				exit(EXIT_FAILURE);
 			}
-			void parseNewick(struct masterArr* m, const char* newick, int max_nodename);
-			void makeBinary(struct masterArr* m, int max_nodename);
 			char* newick = readNewickFile(fasttreefile);
 			fclose(fasttreefile);
 			srand(time(NULL)); // Seed random number generator
@@ -877,7 +893,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			}
 		}
 		assignTaxonomyToLeavesArr(buf,t,max_nodename,max_lineTaxonomy);
-		getTaxonomyArr(t->root,t);
+		{ int _tax_out[2]; getTaxonomyArr(t->root,t,_tax_out); }
 		hashmap_put(&mastermap, t->index, t);
 		double initialSPscore=-1;
 		if ( opt.use_spscore==1 && opt.use_min_leaves==0){
@@ -1233,7 +1249,6 @@ int main(int argc, char **argv){
 		max_nodename = specifications[1];
 		m->numbase = specifications[2];
 		free(specifications);
-		void initlogfactorial(void);
 		initlogfactorial();
 		//nodeIDsArr = (char ***)malloc(sizeof(char**));
 		//itoa(0,m->index,10);
@@ -1255,7 +1270,10 @@ int main(int argc, char **argv){
 		comma=0;
 		tip=0;
 		FILE* treefile;
-		if (( treefile = fopen(opt.tree_file,"r")) == (FILE *) NULL) fprintf(stderr,"*** tree file could not be opened.\n");
+		if (( treefile = fopen(opt.tree_file,"r")) == (FILE *) NULL){
+			fprintf(stderr,"*** tree file could not be opened: %s\n", opt.tree_file);
+			exit(-1);
+		}
 		m->root=getcladeArr(treefile,m,max_nodename)-1;
 		fclose(treefile);
 		m->tree[m->root].down = -1;
@@ -1282,7 +1300,7 @@ int main(int argc, char **argv){
 			}
 		}
 		assignTaxonomyToLeavesArr(opt.taxonomy_file,m,max_nodename,max_tax_name);
-		getTaxonomyArr(m->root,m);
+		{ int _tax_out[2]; getTaxonomyArr(m->root,m,_tax_out); }
 		hashmap_put(&mastermap,m->index,m);
 		/*treeArr = malloc(sizeof(node*));
 		treeArr[0] = m->tree;
@@ -1407,7 +1425,41 @@ int main(int argc, char **argv){
 			allocateTreeArrMemory(m,max_nodename);
 			snprintf(buffer,BUFFER_SIZE,"%s/%s",opt.readdir,pf->tree_files[i]);
 			strcpy(m->filename,buffer);
-			if (( partitionTree = fopen(buffer,"r")) == (FILE *) NULL) printf("*** tree file could not be opened.\n");
+			if (( partitionTree = fopen(buffer,"r")) == (FILE *) NULL){
+				fprintf(stderr, "*** tree file could not be opened: %s\n", buffer);
+				exit(-1);
+			}
+			if ( opt.fasttree == 1 ){
+				/* FastTree/VeryFastTree can produce multifurcating trees.
+				   Use parseNewick+makeBinary to resolve polytomies,
+				   export the binary tree, then re-parse with getcladeArr. */
+				char* newick = readNewickFile(partitionTree);
+				fclose(partitionTree);
+				m->numspec = 0;
+				m->numNodes = 0;
+				srand(time(NULL));
+				parseNewick(m, newick, max_nodename);
+				free(newick);
+				makeBinary(m, max_nodename);
+				exportTreeToNewick(m, buffer);
+				int idx;
+				for(idx=0; idx<2*m->numspec-1; idx++){
+					node* nd = &m->tree[idx];
+					nd->up[0] = -1;
+					nd->up[1] = -1;
+					nd->down = -1;
+					nd->nd = 0;
+					nd->depth = 0;
+					nd->bl = 0.0;
+				}
+				for(idx=0; idx<2*m->numspec-1; idx++){
+					memset(m->tree[idx].name, '\0', max_nodename+1);
+				}
+				if (( partitionTree = fopen(buffer,"r")) == (FILE *) NULL){
+					fprintf(stderr, "*** resolved tree could not be re-opened: %s\n", buffer);
+					exit(-1);
+				}
+			}
 			comma=0;
 			tip=0;
 			m->root=getcladeArr(partitionTree,m,max_nodename)-1;
@@ -1427,7 +1479,7 @@ int main(int argc, char **argv){
 				}
 			}
 			assignTaxonomyToLeavesArr(buffer,m,max_nodename,max_lineTaxonomy);
-			getTaxonomyArr(m->root,m);
+			{ int _tax_out[2]; getTaxonomyArr(m->root,m,_tax_out); }
 			hashmap_put(&mastermap, m->index, m);
 			if ( opt.use_partitions==1 && m->numspec > opt.min_leaves ){
 				SPscoreArr[i]=0;
@@ -1638,10 +1690,11 @@ int main(int argc, char **argv){
 	}
 	fclose(list_newick_files);
 	allocatetreememory_for_nucleotide_Arr(numberOfTrees);
+	#pragma omp parallel for schedule(dynamic) private(i)
 	for(i=0; i<numberOfTrees; i++){
-		estimatenucparameters_Arr(parameters,i);
-		getposterior_nc_Arr(parameters,i);
-		//set_posteriors(i);
+		double local_params[10] = {0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+		estimatenucparameters_Arr(local_params,i);
+		getposterior_nc_Arr(local_params,i);
 	}
 	//FILE *for_monica = fopen("/space/s1/lenore/trout_copy/s2_copy/for_monica/OU061397_1_PP.txt","w");
 	//if ( for_monica == NULL ){ printf("Error opening file!\n"); exit(1); }
@@ -1655,6 +1708,7 @@ int main(int argc, char **argv){
 	//fclose(for_monica);
 	//exit(1);
 	if (opt.missing_data==1){
+		#pragma omp parallel for schedule(dynamic) private(i, j)
 		for(i=0; i<numberOfTrees; i++){
 			changePP_Arr(rootArr[i],i);
 			for(j=numspecArr[i]-1;j<2*numspecArr[i]-1;j++){

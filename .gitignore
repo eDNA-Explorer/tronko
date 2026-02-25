@@ -11,8 +11,10 @@ debug.log
 # Build artifacts
 tronko-assign/tronko-assign
 tronko-build/tronko-build
+ancestralclust/ancestralclust
 *.o
 *.so
+*.a
 
 # Temporary files
 *.tmp

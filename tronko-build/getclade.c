@@ -114,11 +114,14 @@ int specsearchArr(FILE *tre, struct masterArr *m, int max_node_name){
 		}
 		specname[i]='\0';
 		int tmp1=0;
+		int found=0;
 		for(tmp1=0;tmp1<m->numspec;tmp1++){
 			if ( !strcmp(m->names[tmp1],specname) ){
 				tip = tmp1+1;
+				found=1;
 			}
 		}
+		if (!found) fprintf(stderr, "WARNING: leaf '%s' not found in MSA\n", specname);
 		strcpy(m->tree[tip+m->numspec-2].name,specname);
 		m->tree[tip+m->numspec-2].up[0]=-1;
 		m->tree[tip+m->numspec-2].up[1]=-1;

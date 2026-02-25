@@ -55,7 +55,7 @@ void print_help_statement(){
 
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
-	char c;
+	int c;  /* must be int, not char — getopt_long returns -1 which is not representable as unsigned char (aarch64) */
 	if (argc==1){
 		print_help_statement();
 		exit(0);
