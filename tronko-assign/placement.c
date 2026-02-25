@@ -57,7 +57,7 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes){
+void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -449,7 +449,15 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			fprintf(site_scores_file,"Readname\tTree_Number\tNode_Number\tSite\tScore\n");
 			//fprintf(site_scores_file,"%s\t",forward_name);
 		}
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match,print_all_nodes,site_scores_file,forward_name);
+		// Initialize early termination state for this tree
+		type_of_PP best_score = -9999999999999999;
+		int strikes = 0;
+		type_of_PP strike_box_threshold = Cinterval * strike_box;
+		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
+
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match,print_all_nodes,site_scores_file,forward_name,
+		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
+		    enable_pruning, pruning_threshold_calc);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
 		if ( print_all_nodes == 1){
 			fclose(site_scores_file);
@@ -845,7 +853,15 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			if (( site_scores_file = fopen("site_scores.txt","a")) == (FILE *) NULL ) fprintf(stderr, "File could not be opened.\n");
 			//fprintf(site_scores_file,"%s\t",reverse_name);
 		}
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name);
+		// Initialize early termination state for this tree (second read of pair)
+		type_of_PP best_score2 = -9999999999999999;
+		int strikes2 = 0;
+		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
+		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
+
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
+		    enable_pruning, pruning_threshold_calc2);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
 		//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 		//free(leaf_sequence);
@@ -928,7 +944,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -1302,8 +1318,16 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			if (( site_scores_file = fopen("site_scores.txt","w")) == (FILE *) NULL ) fprintf(stderr, "File could not be opened.\n");
 			fprintf(site_scores_file,"Readname\tTree_Number\tNode_Number\tSite\tScore\n");
 			//fprintf(site_scores_file,"%s\t",forward_name);
-		}	
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match, print_all_nodes, site_scores_file,forward_name);
+		}
+		// Initialize early termination state for this tree
+		type_of_PP best_score = -9999999999999999;
+		int strikes = 0;
+		type_of_PP strike_box_threshold = Cinterval * strike_box;
+		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
+
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match, print_all_nodes, site_scores_file,forward_name,
+		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
+		    enable_pruning, pruning_threshold_calc);
 		if ( print_all_nodes == 1){
 			fclose(site_scores_file);
 		}
@@ -1690,7 +1714,15 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			if (( site_scores_file = fopen("site_scores.txt","a")) == (FILE *) NULL ) fprintf(stderr, "File could not be opened.\n");
 			//fprintf(site_scores_file,"%s\t",reverse_name);
 		}
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name);
+		// Initialize early termination state for this tree (second read of pair)
+		type_of_PP best_score2 = -9999999999999999;
+		int strikes2 = 0;
+		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
+		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
+
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
+		    enable_pruning, pruning_threshold_calc2);
 		if ( print_all_nodes == 1){
 			fclose(site_scores_file);
 		}

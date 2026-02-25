@@ -21,7 +21,98 @@
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
 #include "hashmap_base.h"
+#include "logger.h"
+#include "resource_monitor.h"
+#include "crash_debug.h"
+#include "symbol_resolver.h"
+#include "tsv_memlog.h"
+#ifdef ENABLE_PARQUET
+#include "parquet_writer.h"
+
+/*
+ * Parse a taxonPath TSV string into an assignmentResult struct
+ * Format: Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number
+ * Returns 0 on success, -1 on parse error
+ */
+static int parse_tsv_to_result(const char *tsv_line, assignmentResult *result) {
+    if (!tsv_line || !result) return -1;
+
+    /* Make a copy since strtok modifies the string */
+    char *line_copy = strdup(tsv_line);
+    if (!line_copy) return -1;
+
+    char *saveptr = NULL;
+    char *token;
+    int field = 0;
+
+    token = strtok_r(line_copy, "\t", &saveptr);
+    while (token && field < 7) {
+        switch (field) {
+            case 0: /* Readname */
+                result->readname = strdup(token);
+                break;
+            case 1: /* Taxonomic_Path */
+                result->taxonomic_path = strdup(token);
+                break;
+            case 2: /* Score */
+                result->score = atof(token);
+                break;
+            case 3: /* Forward_Mismatch */
+                result->forward_mismatch = atof(token);
+                break;
+            case 4: /* Reverse_Mismatch */
+                result->reverse_mismatch = atof(token);
+                break;
+            case 5: /* Tree_Number */
+                result->tree_number = atoi(token);
+                break;
+            case 6: /* Node_Number */
+                result->node_number = atoi(token);
+                break;
+        }
+        field++;
+        token = strtok_r(NULL, "\t", &saveptr);
+    }
+
+    free(line_copy);
+
+    /* Check if we got at least readname and taxonomic_path */
+    if (field < 2) return -1;
+
+    /* Handle unassigned case - may only have 2 fields */
+    if (field == 2) {
+        result->score = 0.0;
+        result->forward_mismatch = 0.0;
+        result->reverse_mismatch = 0.0;
+        result->tree_number = -1;
+        result->node_number = -1;
+    }
+
+    return 0;
+}
+
+static void free_assignment_result(assignmentResult *result) {
+    if (result) {
+        free(result->readname);
+        free(result->taxonomic_path);
+        result->readname = NULL;
+        result->taxonomic_path = NULL;
+    }
+}
+#endif
+
+// Thread-local counter for dropped BWA matches (reset per read)
+static __thread int dropped_matches_count = 0;
+
+// Global diagnostic counters for measuring cap impact
+static int g_overflow_read_count = 0;        // Reads that hit the cap
+static int g_total_dropped_matches = 0;      // Total matches dropped across all reads
+static int g_max_potential_matches = 0;      // Highest potential match count seen
+static pthread_mutex_t g_overflow_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 //int numspec, numbase, root/***seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
+// Global TSV log file for use by readreference.c
+FILE *g_tsv_log_file = NULL;
 char ****taxonomyArr;
 struct node **treeArr;
 struct queryMatPaired *pairedQueryMat;
@@ -46,15 +137,15 @@ void store_PPs_Arr(int numberOfRoots, double c){
 		for (j=0; j<2*numspecArr[i]-1; j++){
 			for (k=0; k<numbaseArr[i]; k++){
 				for (l=0; l<4; l++){
-					if ( treeArr[i][j].posteriornc[k][l] == -1 ){   //Missing data
-						treeArr[i][j].posteriornc[k][l]=1;
+					if ( treeArr[i][j].posteriornc[PP_IDX(k, l)] == -1 ){   //Missing data
+						treeArr[i][j].posteriornc[PP_IDX(k, l)]=1;
 					}else{
-							//treeArr[i][j].posteriornc[k][l] = log((c/3) + ((1-(((4*c)/3) * treeArr[i][j].posteriornc[k][l]))));
+							//treeArr[i][j].posteriornc[PP_IDX(k, l)] = log((c/3) + ((1-(((4*c)/3) * treeArr[i][j].posteriornc[PP_IDX(k, l)]))));
 							double d = 1-c;
 							double e = c/3;
-							double f = d * treeArr[i][j].posteriornc[k][l];
-							double g = e * (1-treeArr[i][j].posteriornc[k][l]);
-							treeArr[i][j].posteriornc[k][l] = log( (f + g) );
+							double f = d * treeArr[i][j].posteriornc[PP_IDX(k, l)];
+							double g = e * (1-treeArr[i][j].posteriornc[PP_IDX(k, l)]);
+							treeArr[i][j].posteriornc[PP_IDX(k, l)] = log( (f + g) );
 					}
 				}
 			}
@@ -197,6 +288,12 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	int max_numbase = mstr->max_numbase;
 	int number_of_total_nodes = mstr->number_of_total_nodes;
 	int print_all_nodes = mstr->print_all_nodes;
+	// Tier 1 optimization settings
+	int early_termination = mstr->early_termination;
+	type_of_PP strike_box = mstr->strike_box;
+	int max_strikes = mstr->max_strikes;
+	int enable_pruning = mstr->enable_pruning;
+	type_of_PP pruning_factor = mstr->pruning_factor;
 	/*affine_penalties_t affine_penalties = {
 		.match = 0,
 		.mismatch = 4,
@@ -270,6 +367,12 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	struct leafMap *leaf_map;	
 	run_bwa(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name);
 	for ( lineNumber=mstr->start; lineNumber<end; lineNumber++){
+		// Set crash context for current read processing
+		char read_info[64];
+		snprintf(read_info, sizeof(read_info), "read_%d", lineNumber);
+		crash_set_current_read(read_info, 1, lineNumber);
+		crash_set_processing_stage("BWA alignment and tree search");
+		
 		for(i=0; i<mstr->ntree; i++){
 			trees_search[i]=-1;
 		}
@@ -277,6 +380,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int hashValue;
 		int no_add=0;
 		int leaf_iter=0;
+		dropped_matches_count = 0;  // Reset dropped counter for this read
 		if (bwa_results[iter].concordant_matches_roots[0]==-1 && mstr->concordant==1){
 			for (i=0; i<mstr->ntree; i++){
 				if (bwa_results[iter].discordant_matches_roots[0] < 0 ){
@@ -290,8 +394,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}else if ( bwa_results[iter].discordant_matches_roots[i]==-1){
 					break;
 				}else{
-					results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-					results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
+					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
+						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
 						if (use_leaf_portion==1){
 							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
 							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
@@ -300,6 +405,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
 							}
 						}
+					}
 				}
 				int index1=mstr->ntree-1;
 				for(k=mstr->ntree-1; k>=0; k--){
@@ -309,13 +415,17 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 				int found=0;
 				for(k=0; k<index1; k++){
-					if (trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
+					if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
 						found=1;
 					}
 				}
 				if (found==0){
-					trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-					leaf_iter++;
+					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+						trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
+						leaf_iter++;
+					} else {
+						dropped_matches_count++;
+					}
 				}
 			}
 		}else if (mstr->concordant==1){
@@ -324,14 +434,16 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
 				}else{
-					results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].concordant_matches_roots[i];
-					results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].concordant_matches_nodes[i];
-					if (use_leaf_portion==1){
-						results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-						strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-						if ( paired==1){
-							results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-							strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].concordant_matches_roots[i];
+						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].concordant_matches_nodes[i];
+						if (use_leaf_portion==1){
+							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
+							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
+							if ( paired==1){
+								results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
+								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+							}
 						}
 					}
 					int index1=mstr->ntree-1;
@@ -342,13 +454,17 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					}
 					int found=0;
 					for(k=0; k<index1; k++){
-						if (trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
+						if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
 							found=1;
 						}
 					}
 					if (found==0){
-						trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-						leaf_iter++;
+						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+							trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
+							leaf_iter++;
+						} else {
+							dropped_matches_count++;
+						}
 					}
 				}
 			}
@@ -360,14 +476,16 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					break;
 				}else{
 					if (no_add==0){
-						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
-						if (use_leaf_portion==1){
-							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-							if (paired==1){
-								results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+							results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
+							results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
+							if (use_leaf_portion==1){
+								results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
+								strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
+								if (paired==1){
+									results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
+									strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+								}
 							}
 						}
 						int index1=mstr->ntree-1;
@@ -378,13 +496,17 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 						}
 						int found=0;
 						for(k=0; k<index1; k++){
-							if (trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
+							if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
 								found=1;
 							}
 						}
 						if (found==0){
-							trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-							leaf_iter++;
+							if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+								trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
+								leaf_iter++;
+							} else {
+								dropped_matches_count++;
+							}
 						}
 						j++;
 					}
@@ -397,31 +519,37 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					break;
 				}else{
 					if (no_add==0){
-						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
-						if (use_leaf_portion == 1){
-							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-							if (paired==1){
-								results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+							results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
+							results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
+							if (use_leaf_portion == 1){
+								results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
+								strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
+								if (paired==1){
+									results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
+									strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
+								}
 							}
 						}
 					int index1=mstr->ntree-1;
 					for(k=mstr->ntree-1; k>=0; k--){
-						if (trees_search[k]=-1){
+						if (trees_search[k]==-1){
 							index1=k;
 						}
 					}
 					int found=0;
 					for(k=0; k<index1; k++){
-						if (trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
+						if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
 							found=1;
 						}
 					}
 					if (found==0){
-						trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-						leaf_iter++;
+						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
+							trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
+							leaf_iter++;
+						} else {
+							dropped_matches_count++;
+						}
 					}
 						j++;
 					}
@@ -429,20 +557,46 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 			}
 		}
+
+		// Update crash context and log if matches were dropped
+		if (dropped_matches_count > 0) {
+			int potential_matches = leaf_iter + dropped_matches_count;
+			const char *read_name = paired ? pairedQueryMat->forward_name[lineNumber] : singleQueryMat->name[lineNumber];
+
+			// Update global statistics (thread-safe)
+			pthread_mutex_lock(&g_overflow_stats_mutex);
+			g_overflow_read_count++;
+			g_total_dropped_matches += dropped_matches_count;
+			if (potential_matches > g_max_potential_matches) {
+				g_max_potential_matches = potential_matches;
+			}
+			int local_overflow_count = g_overflow_read_count;
+			pthread_mutex_unlock(&g_overflow_stats_mutex);
+
+			crash_set_bwa_bounds_violation(leaf_iter, MAX_NUM_BWA_MATCHES, dropped_matches_count);
+
+			// Log first 100 occurrences for debugging, then every 1000th
+			if (local_overflow_count <= 100 || local_overflow_count % 1000 == 0) {
+				LOG_WARN("Read %s: %d unique tree matches (capped at %d, dropped %d) [overflow #%d]",
+				         read_name, potential_matches, MAX_NUM_BWA_MATCHES,
+				         dropped_matches_count, local_overflow_count);
+			}
+		}
+
 		results->minimum[0]=0;
 		if (leaf_iter > 0 ){
 			//strcmp(results->cigars_forward[0],"*")!=0 && strcmp(results->cigars_forward[0]," ")!=0){
 		if (paired != 0){
 			if ( use_nw==0 ){
-				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes);
+				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}else{
-				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes);
+				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}
 		}else{
 			if (use_nw==0){
-				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes);
+				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}else{
-				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes);
+				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}
 		}
 		numberOfTrees = leaf_iter;
@@ -506,6 +660,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int minLevel=0;
 		int taxRoot,taxIndex0,taxIndex1,taxNode;
 		if ( count == 1 ){
+			// Set context for tree processing
+			crash_set_current_tree(maxRoot);
+			crash_set_processing_stage("LCA calculation and taxonomic assignment");
 			clock_gettime(CLOCK_MONOTONIC, &tstart);
 			//LCA=getLCAofArray_Arr(minNodes,maxRoot,maxNumSpec,number_of_total_nodes);
 			LCA = LCA_of_nodes(maxRoot,rootArr[maxRoot],minNodes,numMinNodes);
@@ -713,6 +870,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		free(bwa_results[iter].discordant_matches_roots);
 		free(bwa_results[iter].discordant_matches_nodes);
 		//free(bwa_results[iter].readname);
+		crash_clear_bwa_context();  // Clear BWA context at end of read processing
 		iter++;
 		results->minimum[0] = -1;
 		results->minimum[1] = -1;
@@ -763,10 +921,114 @@ int main(int argc, char **argv){
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
 	opt.print_all_nodes=0;
+	opt.verbose_level = -1;  // Disabled by default
+	opt.log_file[0] = '\0';
+	opt.enable_resource_monitoring = 0;
+	opt.enable_timing = 0;
+	opt.tsv_log_file[0] = '\0';
+	// Tier 1 optimization defaults (disabled by default for baseline comparison)
+	opt.early_termination = 0;
+	opt.strike_box = 1.0;
+	opt.max_strikes = 6;
+	opt.enable_pruning = 0;
+	opt.pruning_factor = 2.0;
+
 	parse_options(argc, argv, &opt);
+	
+	// Initialize logging based on options
+	if (opt.verbose_level >= 0) {
+		log_level_t level = (log_level_t)(3 - opt.verbose_level);  // Convert to our enum (3=DEBUG, 2=INFO, etc.)
+		const char* log_file = (opt.log_file[0] != '\0') ? opt.log_file : NULL;
+		logger_init(level, log_file, 1);  // Always log to stderr
+		
+		if (opt.enable_resource_monitoring) {
+			logger_enable_resource_monitoring(1);
+			init_resource_monitoring();
+		}
+		
+		if (opt.enable_timing) {
+			logger_enable_timing(1);
+		}
+		
+		// Initialize crash debugging system
+		crash_clear_context();  // Initialize context tracking
+		crash_config_t crash_config = {0};
+		crash_config.enable_stack_trace = 1;
+		crash_config.enable_register_dump = 1;
+		crash_config.enable_memory_dump = 1;
+		crash_config.enable_core_dump = 1;
+		crash_config.enable_crash_log = 1;
+		strcpy(crash_config.crash_log_directory, "/tmp");
+		strcpy(crash_config.crash_log_prefix, "tronko_assign_crash");
+		
+		if (crash_debug_init(&crash_config) == 0) {
+			LOG_DEBUG("Crash debugging system initialized");
+		}
+		
+		// Initialize symbol resolver for enhanced crash reports
+		symbol_resolver_config_t symbol_config = {0};
+		symbol_config.enable_addr2line = 1;
+		symbol_config.enable_source_lookup = 1;
+		symbol_config.cache_symbols = 1;
+		strcpy(symbol_config.debug_info_path, "/usr/lib/debug");
+		strcpy(symbol_config.addr2line_path, "addr2line");
+		
+		if (symbol_resolver_init(&symbol_config) == 0) {
+			LOG_DEBUG("Enhanced symbol resolution initialized");
+		}
+		
+		// Log program startup (now that logging is initialized)
+		LOG_MILESTONE_TIMED(MILESTONE_STARTUP);
+		
+		char milestone_info[256];
+		snprintf(milestone_info, sizeof(milestone_info), 
+			"Verbose logging enabled, level=%d, cores=%d, lines=%d", 
+			opt.verbose_level, opt.number_of_cores, opt.number_of_lines_to_read);
+		log_milestone_with_timing(MILESTONE_OPTIONS_PARSED, milestone_info);
+		
+		LOG_INFO("Full logging system initialized successfully");
+
+#ifdef OPTIMIZE_MEMORY
+		LOG_INFO("Memory optimization ENABLED: using float precision for posteriors");
+#else
+		LOG_INFO("Memory optimization DISABLED: using double precision for posteriors");
+#endif
+
+		// Set crash context for reference file loading
+		crash_set_processing_stage("Loading reference database");
+		crash_set_current_file(opt.reference_file);
+	}
+
+	// Initialize TSV memory log (independent of verbose logging)
+	FILE *tsv_log = NULL;
+	if (opt.tsv_log_file[0] != '\0') {
+		tsv_log = fopen(opt.tsv_log_file, "w");
+		if (tsv_log) {
+			// Write header
+			fprintf(tsv_log, "# tronko-assign memory log v1.0\n");
+			fprintf(tsv_log, "wall_time\tphase\trss_mb\tvm_mb\tpeak_rss_mb\tcpu_user\tcpu_sys\textra_info\n");
+			fflush(tsv_log);
+			// Set global for readreference.c access
+			g_tsv_log_file = tsv_log;
+			// Initialize resource monitoring if not already done
+			if (!opt.enable_resource_monitoring) {
+				init_resource_monitoring();
+			}
+			TSV_LOG_SIMPLE(tsv_log, "STARTUP");
+		} else {
+			LOG_WARN("Could not open TSV log file: %s", opt.tsv_log_file);
+		}
+	}
+
+	// Check if reference file is specified and exists
+	if (opt.reference_file[0] == '\0') {
+		printf("Error: Reference file not specified. Use -f to specify reference file. Exiting...\n");
+		exit(-1);
+	}
+	
 	struct stat st = {0};
 	if ( stat(opt.reference_file, &st) == -1 ){
-		printf("Cannot find reference_tree.txt file. Exiting...\n");
+		printf("Cannot find reference_tree.txt file: %s. Exiting...\n", opt.reference_file);
 		exit(-1);
 	}
 	if ( opt.fastq == 1 && opt.number_of_lines_to_read%4 != 0 ){
@@ -777,19 +1039,79 @@ int main(int argc, char **argv){
 		printf("You chose FASTA for your queries but the number of lines to read are not divisible by 2. Change -L to be divisible by 2. Exiting...\n");
 		exit(-1);
 	}
-	gzFile referenceTree = Z_NULL;
-	referenceTree = gzopen(opt.reference_file,"r");
-	assert(Z_NULL!=referenceTree);
 	int* name_specs = (int*)malloc(3*sizeof(int));
 	name_specs[0]=0;
 	name_specs[1]=0;
 	name_specs[2]=0;
-	numberOfTrees = readReferenceTree(referenceTree,name_specs);
-	gzclose(referenceTree);
+
+	// Detect reference file format
+	int ref_format = detect_reference_format(opt.reference_file);
+
+	if (ref_format == FORMAT_BINARY) {
+		// Load uncompressed binary format
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Loading binary format reference database: %s", opt.reference_file);
+		}
+		numberOfTrees = readReferenceBinary(opt.reference_file, name_specs);
+		if (numberOfTrees < 0) {
+			printf("Error: Failed to load binary reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
+	} else if (ref_format == FORMAT_BINARY_GZIPPED) {
+		// Load gzipped binary format
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Loading gzipped binary format reference database: %s", opt.reference_file);
+		}
+		numberOfTrees = readReferenceBinaryGzipped(opt.reference_file, name_specs);
+		if (numberOfTrees < 0) {
+			printf("Error: Failed to load gzipped binary reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
+	} else if (ref_format == FORMAT_BINARY_ZSTD) {
+		// Load zstd-compressed binary format
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Loading zstd-compressed binary format reference database: %s", opt.reference_file);
+		}
+		numberOfTrees = readReferenceBinaryZstd(opt.reference_file, name_specs);
+		if (numberOfTrees < 0) {
+			printf("Error: Failed to load zstd-compressed binary reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
+	} else if (ref_format == FORMAT_TEXT) {
+		// Load text format (existing code path)
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Loading text format reference database: %s", opt.reference_file);
+		}
+		gzFile referenceTree = gzopen(opt.reference_file, "r");
+		if (referenceTree == Z_NULL) {
+			printf("Error: Cannot open reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
+		numberOfTrees = readReferenceTree(referenceTree, name_specs);
+		gzclose(referenceTree);
+	} else {
+		printf("Error: Unknown reference file format: %s. Exiting...\n", opt.reference_file);
+		exit(-1);
+	}
+
+	if (numberOfTrees <= 0) {
+		printf("Error: No trees loaded from reference file: %s. Exiting...\n", opt.reference_file);
+		exit(-1);
+	}
 	int max_nodename = name_specs[0];
 	int max_taxname = name_specs[1];
 	int max_lineTaxonomy = name_specs[2];
 	free(name_specs);
+	
+	if (opt.verbose_level >= 0) {
+		char ref_info[256];
+		snprintf(ref_info, sizeof(ref_info),
+			"Loaded %d trees, max_nodename=%d, max_taxname=%d",
+			numberOfTrees, max_nodename, max_taxname);
+		log_milestone_with_timing(MILESTONE_REFERENCE_LOADED, ref_info);
+	}
+	TSV_LOG(tsv_log, "REFERENCE_LOADED", "trees=%d", numberOfTrees);
+
 	if ( opt.print_node_info[0] != '\0' ){
 		printf("Printing Accession IDs, Tree numbers, and leaf numbers...\n");
 		FILE* tree_info = fopen(opt.print_node_info,"w");
@@ -869,17 +1191,37 @@ int main(int argc, char **argv){
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
 	if ( strcmp("single",opt.paired_or_single)==0){
 		if (opt.skip_build==0){
+			if (opt.verbose_level >= 0) {
+				LOG_INFO("Building BWA index for: %s", opt.fasta_file);
+			}
 			bwa_index(2,opt.fasta_file);
+			if (opt.verbose_level >= 0) {
+				LOG_MILESTONE_TIMED(MILESTONE_BWA_INDEX_BUILT);
+			}
+			TSV_LOG_SIMPLE(tsv_log, "BWA_INDEX");
+		} else {
+			if (opt.verbose_level >= 0) {
+				LOG_INFO("Skipping BWA index build");
+			}
 		}
-		gzFile *reads_file =gzopen(opt.read1_file,"r");
-		if ( reads_file == (gzFile) Z_NULL ){
+		CompressedFile* reads_file = cf_open(opt.read1_file, "r");
+		if ( reads_file == NULL ){
 			printf("**reads file could not be opened.\n");
+			exit(-1);
 		}
-		find_specs_for_reads(read_specs,reads_file,opt.fastq);
-		gzclose(reads_file);
+		find_specs_for_reads_cf(read_specs, reads_file, opt.fastq);
+		cf_close(reads_file);
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
+		
+		if (opt.verbose_level >= 0) {
+			char specs_info[256];
+			snprintf(specs_info, sizeof(specs_info), 
+				"Read specs detected: max_name=%d, max_query=%d", 
+				max_name_length, max_query_length);
+			log_milestone_with_timing(MILESTONE_READ_SPECS_DETECTED, specs_info);
+		}
 		singleQueryMat = malloc(sizeof(struct queryMatSingle));
 		if ( opt.fastq == 0 ){
 			singleQueryMat->queryMat = (char **)malloc(sizeof(char *)*(numberOfLinesToRead/2));
@@ -896,16 +1238,35 @@ int main(int argc, char **argv){
 				singleQueryMat->name[i] = (char *)malloc(sizeof(char)*(max_name_length+1));
 			}
 		}
-		FILE *results = fopen(opt.results_file,"w");
-		if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
-		fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");	
+		FILE *results = NULL;
+#ifdef ENABLE_PARQUET
+		parquet_writer_t *parquet_writer = NULL;
+		if (opt.parquet_enabled) {
+			char parquet_filename[MAXFILENAME];
+			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
+			char parquet_err[256];
+			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			if (!parquet_writer) {
+				printf("Error creating Parquet writer: %s\n", parquet_err);
+				exit(1);
+			}
+			printf("Writing results to Parquet: %s\n", parquet_filename);
+		} else {
+#endif
+			results = fopen(opt.results_file,"w");
+			if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
+			fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");
+#ifdef ENABLE_PARQUET
+		}
+#endif
 		int keepTrackOfReadLine=0;
 		pthread_t threads[opt.number_of_cores];//array of our threads
 		int divideFile, start, end;
 		int returnLineNumber=0;
-		gzFile *seqinfile = gzopen(opt.read1_file,"r");
-		if (seqinfile == (gzFile) Z_NULL){
+		CompressedFile* seqinfile = cf_open(opt.read1_file, "r");
+		if (seqinfile == NULL){
 			printf("*** fasta file could not be opened.\n");
+			exit(-1);
 		}
 		int first_iter=1;
 		for(i=0; i<opt.number_of_cores; i++){
@@ -931,16 +1292,54 @@ int main(int argc, char **argv){
 			mstr[i].max_lineTaxonomy = max_lineTaxonomy;
 			mstr[i].number_of_total_nodes = number_of_total_nodes;
 			mstr[i].print_all_nodes = opt.print_all_nodes;
+			// Tier 1 optimization settings
+			mstr[i].early_termination = opt.early_termination;
+			mstr[i].strike_box = opt.strike_box;
+			mstr[i].max_strikes = opt.max_strikes;
+			mstr[i].enable_pruning = opt.enable_pruning;
+			mstr[i].pruning_factor = opt.pruning_factor;
 		}
+
+		if (opt.verbose_level >= 0) {
+			char mem_info[256];
+			snprintf(mem_info, sizeof(mem_info),
+				"Memory allocated: threads=%d, lines_per_batch=%d, total_nodes=%d",
+				opt.number_of_cores, numberOfLinesToRead, number_of_total_nodes);
+			log_milestone_with_timing(MILESTONE_MEMORY_ALLOCATED, mem_info);
+
+			char thread_info[256];
+			snprintf(thread_info, sizeof(thread_info),
+				"Thread structures initialized for %d cores", opt.number_of_cores);
+			log_milestone_with_timing(MILESTONE_THREADS_INITIALIZED, thread_info);
+		}
+		TSV_LOG(tsv_log, "THREADS_ALLOCATED", "threads=%d", opt.number_of_cores);
+
+		int batch_count = 0;
 		while (1){
+			batch_count++;
+			if (opt.verbose_level >= 0) {
+				char start_info[128];
+				snprintf(start_info, sizeof(start_info), "Starting batch %d", batch_count);
+				log_milestone_with_timing(MILESTONE_BATCH_START, start_info);
+			}
+			TSV_LOG(tsv_log, "BATCH_START", "batch=%d", batch_count);
+
 			if (opt.fastq==0){
-				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile,0,opt,max_query_length,max_name_length);
+				returnLineNumber=readInXNumberOfLines_cf(numberOfLinesToRead/2,seqinfile,0,opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber=readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile,0,opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber=readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile,0,opt,max_query_length,max_name_length,first_iter);
 			}
 			if (returnLineNumber==0){
 				break;
 			}
+			
+			if (opt.verbose_level >= 0) {
+				char batch_info[256];
+				snprintf(batch_info, sizeof(batch_info),
+					"Batch %d loaded: %d reads", batch_count, returnLineNumber);
+				log_milestone_with_timing(MILESTONE_BATCH_LOADED, batch_info);
+			}
+			TSV_LOG(tsv_log, "BATCH_LOADED", "batch=%d,reads=%d", batch_count, returnLineNumber);
 			divideFile = returnLineNumber/opt.number_of_cores;
 			first_iter=0;
 			j=0;
@@ -961,17 +1360,67 @@ int main(int argc, char **argv){
 					mstr[i].str->taxonPath[k] = malloc((max_name_length+max_lineTaxonomy+120)*(sizeof(char)));
 				}
 			}
+			
+			if (opt.verbose_level >= 0) {
+				LOG_DEBUG("Creating %d threads for batch processing", opt.number_of_cores);
+			}
+			
 			for(i=0; i<opt.number_of_cores;i++){
 				pthread_create(&threads[i], NULL, runAssignmentOnChunk_WithBWA, &mstr[i]);
 			}
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
 			}
-			for ( i=0; i<opt.number_of_cores; i++){
-				for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
-					fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
-				}
+			
+			if (opt.verbose_level >= 0) {
+				LOG_MILESTONE_TIMED(MILESTONE_PLACEMENT_COMPLETE);
 			}
+			
+#ifdef ENABLE_PARQUET
+			if (opt.parquet_enabled) {
+				/* Collect all results into a batch for Parquet */
+				int total_results = 0;
+				for (i = 0; i < opt.number_of_cores; i++) {
+					total_results += (mstr[i].end - mstr[i].start);
+				}
+				if (total_results > 0) {
+					assignmentResult *batch = calloc(total_results, sizeof(assignmentResult));
+					int idx = 0;
+					for (i = 0; i < opt.number_of_cores; i++) {
+						for (j = 0; j < (mstr[i].end - mstr[i].start); j++) {
+							parse_tsv_to_result(mstr[i].str->taxonPath[j], &batch[idx]);
+							idx++;
+						}
+					}
+					parquet_writer_write_batch(parquet_writer, batch, total_results);
+					for (idx = 0; idx < total_results; idx++) {
+						free_assignment_result(&batch[idx]);
+					}
+					free(batch);
+				}
+			} else {
+#endif
+				for ( i=0; i<opt.number_of_cores; i++){
+					for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
+						fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+					}
+				}
+#ifdef ENABLE_PARQUET
+			}
+#endif
+
+			if (opt.verbose_level >= 0) {
+				char results_info[256];
+				snprintf(results_info, sizeof(results_info),
+					"Batch %d results written", batch_count);
+				log_milestone_with_timing(MILESTONE_RESULTS_WRITTEN, results_info);
+
+				char complete_info[256];
+				snprintf(complete_info, sizeof(complete_info),
+					"Batch %d completed: %d reads processed", batch_count, returnLineNumber);
+				log_milestone_with_timing(MILESTONE_BATCH_COMPLETE, complete_info);
+			}
+			TSV_LOG(tsv_log, "BATCH_COMPLETE", "batch=%d", batch_count);
 			for ( i=0; i<opt.number_of_cores; i++){
 				for(j=0; j<mstr[i].end-mstr[i].start; j++){
 					free(mstr[i].str->taxonPath[j]);
@@ -979,8 +1428,41 @@ int main(int argc, char **argv){
 				free(mstr[i].str->taxonPath);
 			}
 		}
-		fclose(results);
-		gzclose(seqinfile);
+		
+		if (opt.verbose_level >= 0) {
+			char cleanup_info[256];
+			snprintf(cleanup_info, sizeof(cleanup_info),
+				"Processing completed. Processed %d batches", batch_count);
+			log_milestone_with_timing(MILESTONE_CLEANUP_START, cleanup_info);
+		}
+
+		// Log BWA overflow statistics summary
+		if (g_overflow_read_count > 0) {
+			LOG_WARN("=== BWA BOUNDS CAP SUMMARY ===");
+			LOG_WARN("  Reads hitting cap: %d", g_overflow_read_count);
+			LOG_WARN("  Total matches dropped: %d", g_total_dropped_matches);
+			LOG_WARN("  Max potential matches seen: %d (cap is %d)",
+			         g_max_potential_matches, MAX_NUM_BWA_MATCHES);
+			LOG_WARN("  Consider increasing MAX_NUM_BWA_MATCHES if accuracy is affected");
+		}
+
+		// Close files
+#ifdef ENABLE_PARQUET
+		if (opt.parquet_enabled) {
+			if (parquet_writer_close(parquet_writer) != 0) {
+				printf("Warning: Error closing Parquet writer\n");
+			}
+		} else {
+#endif
+			fclose(results);
+#ifdef ENABLE_PARQUET
+		}
+#endif
+		cf_close(seqinfile);
+
+		if (opt.verbose_level >= 0) {
+			log_current_resource_usage("After closing files");
+		}
 		if ( opt.fastq == 0 ){
 			for(i=0; i<numberOfLinesToRead/2; i++){
 				free(singleQueryMat->queryMat[i]);
@@ -995,19 +1477,37 @@ int main(int argc, char **argv){
 		free(singleQueryMat->queryMat);
 		free(singleQueryMat->name);
 		free(singleQueryMat);
+		
+		if (opt.verbose_level >= 0) {
+			log_current_resource_usage("After freeing query matrices");
+		}
+		
+		if (opt.verbose_level >= 0) {
+			LOG_MILESTONE_TIMED(MILESTONE_CLEANUP_COMPLETE);
+			LOG_MILESTONE_TIMED(MILESTONE_PROGRAM_END);
+			
+			// Cleanup crash debugging systems
+			crash_debug_cleanup();
+			symbol_resolver_cleanup();
+			
+			logger_cleanup();
+			cleanup_resource_monitoring();
+		}
 	}else{
-		gzFile *seqinfile_1 = gzopen(opt.read1_file,"r");
-		gzFile *seqinfile_2 = gzopen(opt.read2_file,"r");
-		if (seqinfile_1 == (gzFile) Z_NULL){
+		CompressedFile* seqinfile_1 = cf_open(opt.read1_file, "r");
+		CompressedFile* seqinfile_2 = cf_open(opt.read2_file, "r");
+		if (seqinfile_1 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		if (seqinfile_2 == (gzFile) Z_NULL){
+		if (seqinfile_2 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		find_specs_for_reads(read_specs,seqinfile_1,opt.fastq);
-		gzclose(seqinfile_1);
-		find_specs_for_reads(read_specs,seqinfile_2,opt.fastq);
-		gzclose(seqinfile_2);
+		find_specs_for_reads_cf(read_specs, seqinfile_1, opt.fastq);
+		cf_close(seqinfile_1);
+		find_specs_for_reads_cf(read_specs, seqinfile_2, opt.fastq);
+		cf_close(seqinfile_2);
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
@@ -1054,22 +1554,42 @@ int main(int argc, char **argv){
 				}
 			}
 		}
-		FILE *results = fopen(opt.results_file,"w");
-		if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
-		fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");	
+		FILE *results = NULL;
+#ifdef ENABLE_PARQUET
+		parquet_writer_t *parquet_writer = NULL;
+		if (opt.parquet_enabled) {
+			char parquet_filename[MAXFILENAME];
+			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
+			char parquet_err[256];
+			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			if (!parquet_writer) {
+				printf("Error creating Parquet writer: %s\n", parquet_err);
+				exit(1);
+			}
+			printf("Writing results to Parquet: %s\n", parquet_filename);
+		} else {
+#endif
+			results = fopen(opt.results_file,"w");
+			if ( results == NULL ){ printf("Error opening output file!\n"); exit(1); }
+			fprintf(results,"Readname\tTaxonomic_Path\tScore\tForward_Mismatch\tReverse_Mismatch\tTree_Number\tNode_Number\n");
+#ifdef ENABLE_PARQUET
+		}
+#endif
 		int keepTrackOfReadLine=0;
 		pthread_t threads[opt.number_of_cores];//array of our thrads
 		int divideFile, start, end;
 		int returnLineNumber=0;//<- this is the number of records that we have read.
 		int returnLineNumber2 =0;
 		int concordant=1;
-		seqinfile_1 = gzopen(opt.read1_file,"r");
-		seqinfile_2 = gzopen(opt.read2_file,"r");
-		if (seqinfile_1 == (gzFile) Z_NULL){
+		seqinfile_1 = cf_open(opt.read1_file, "r");
+		seqinfile_2 = cf_open(opt.read2_file, "r");
+		if (seqinfile_1 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
-		if (seqinfile_2 == (gzFile) Z_NULL){
+		if (seqinfile_2 == NULL){
 			printf("*** fasta/fastq file could not be opened.\n");
+			exit(-1);
 		}
 		int first_iter=1;
 		for(i=0;i<opt.number_of_cores;i++){
@@ -1095,19 +1615,28 @@ int main(int argc, char **argv){
 			mstr[i].max_lineTaxonomy = max_lineTaxonomy;
 			mstr[i].number_of_total_nodes = number_of_total_nodes;
 			mstr[i].print_all_nodes = opt.print_all_nodes;
+			// Tier 1 optimization settings
+			mstr[i].early_termination = opt.early_termination;
+			mstr[i].strike_box = opt.strike_box;
+			mstr[i].max_strikes = opt.max_strikes;
+			mstr[i].enable_pruning = opt.enable_pruning;
+			mstr[i].pruning_factor = opt.pruning_factor;
 		}
 		while (1){
+			crash_set_processing_stage("Reading paired-end input files");
+			crash_set_current_file(opt.read1_file);
 			if (opt.fastq==0){
-				returnLineNumber=readInXNumberOfLines(numberOfLinesToRead/2,seqinfile_1,1,opt,max_query_length,max_name_length);
+				returnLineNumber=readInXNumberOfLines_cf(numberOfLinesToRead/2,seqinfile_1,1,opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber=readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile_1,1,opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber=readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile_1,1,opt,max_query_length,max_name_length,first_iter);
 			}
 			if (returnLineNumber==0)
 				break;
+			crash_set_current_file(opt.read2_file);
 			if (opt.fastq==0){
-				returnLineNumber2 = readInXNumberOfLines ( numberOfLinesToRead/2, seqinfile_2, 2, opt,max_query_length,max_name_length);
+				returnLineNumber2 = readInXNumberOfLines_cf(numberOfLinesToRead/2, seqinfile_2, 2, opt,max_query_length,max_name_length);
 			}else{
-				returnLineNumber2 = readInXNumberOfLines_fastq(numberOfLinesToRead/4,seqinfile_2, 2, opt,max_query_length,max_name_length,first_iter);
+				returnLineNumber2 = readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile_2, 2, opt,max_query_length,max_name_length,first_iter);
 			}
 			returnLineNumber = returnLineNumber2;
 			first_iter=0;
@@ -1135,11 +1664,38 @@ int main(int argc, char **argv){
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
 			}
-			for ( i=0; i<opt.number_of_cores; i++){
-				for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
-					fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+#ifdef ENABLE_PARQUET
+			if (opt.parquet_enabled) {
+				/* Collect all results into a batch for Parquet */
+				int total_results = 0;
+				for (i = 0; i < opt.number_of_cores; i++) {
+					total_results += (mstr[i].end - mstr[i].start);
 				}
+				if (total_results > 0) {
+					assignmentResult *batch = calloc(total_results, sizeof(assignmentResult));
+					int idx = 0;
+					for (i = 0; i < opt.number_of_cores; i++) {
+						for (j = 0; j < (mstr[i].end - mstr[i].start); j++) {
+							parse_tsv_to_result(mstr[i].str->taxonPath[j], &batch[idx]);
+							idx++;
+						}
+					}
+					parquet_writer_write_batch(parquet_writer, batch, total_results);
+					for (idx = 0; idx < total_results; idx++) {
+						free_assignment_result(&batch[idx]);
+					}
+					free(batch);
+				}
+			} else {
+#endif
+				for ( i=0; i<opt.number_of_cores; i++){
+					for ( j=0; j<(mstr[i].end-mstr[i].start); j++){
+						fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
+					}
+				}
+#ifdef ENABLE_PARQUET
 			}
+#endif
 			for ( i=0; i<opt.number_of_cores; i++){
 				for(j=0; j<mstr[i].end-mstr[i].start; j++){
 					free(mstr[i].str->taxonPath[j]);
@@ -1147,9 +1703,30 @@ int main(int argc, char **argv){
 				free(mstr[i].str->taxonPath);
 			}
 		}
-		fclose(results);
-		gzclose(seqinfile_1);
-		gzclose(seqinfile_2);
+
+		// Log BWA overflow statistics summary for paired-end
+		if (g_overflow_read_count > 0) {
+			LOG_WARN("=== BWA BOUNDS CAP SUMMARY ===");
+			LOG_WARN("  Reads hitting cap: %d", g_overflow_read_count);
+			LOG_WARN("  Total matches dropped: %d", g_total_dropped_matches);
+			LOG_WARN("  Max potential matches seen: %d (cap is %d)",
+			         g_max_potential_matches, MAX_NUM_BWA_MATCHES);
+			LOG_WARN("  Consider increasing MAX_NUM_BWA_MATCHES if accuracy is affected");
+		}
+
+#ifdef ENABLE_PARQUET
+		if (opt.parquet_enabled) {
+			if (parquet_writer_close(parquet_writer) != 0) {
+				printf("Warning: Error closing Parquet writer\n");
+			}
+		} else {
+#endif
+			fclose(results);
+#ifdef ENABLE_PARQUET
+		}
+#endif
+		cf_close(seqinfile_1);
+		cf_close(seqinfile_2);
 		if (opt.fastq==0){
 			for(i=0; i<numberOfLinesToRead/2; i++){
 				free(pairedQueryMat->query1Mat[i]);
@@ -1171,6 +1748,11 @@ int main(int argc, char **argv){
 		free(pairedQueryMat->reverse_name);
 		free(pairedQueryMat);
 	}
+	// Free thread result structures
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("Before freeing thread structures");
+	}
+	
 	for(i=0; i<opt.number_of_cores; i++){
 		if (opt.fastq == 0){
 			if (strcmp("single",opt.paired_or_single)==0){
@@ -1186,12 +1768,21 @@ int main(int argc, char **argv){
 			}
 		}
 	}
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing thread structures");
+	}
+	
+	// Free tree data structures - this is where major memory should be freed
+	if (opt.verbose_level >= 0) {
+		char tree_info[256];
+		snprintf(tree_info, sizeof(tree_info), "Before freeing tree data (%d trees)", numberOfTrees);
+		log_current_resource_usage(tree_info);
+	}
+	
 	for(i=0; i<numberOfTrees; i++){
 		for(j=0; j<2*numspecArr[i]-1; j++){
-			for(k=0; k<numbaseArr[i]; k++){
-				free(treeArr[i][j].posteriornc[k]);
-			}
-			free(treeArr[i][j].posteriornc);
+			free(treeArr[i][j].posteriornc);  /* Single free per node (1D array) */
 		}
 		for(j=numspecArr[i]-1; j<(2*numspecArr[i]-1); j++){
 			free(treeArr[i][j].name);
@@ -1199,7 +1790,47 @@ int main(int argc, char **argv){
 		free(treeArr[i]);
 	}
 	free(treeArr);
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing tree arrays");
+	}
+	
+	// Free taxonomyArr - 4-dimensional array [trees][species][taxonomy_levels][taxonomy_names]
+	if (taxonomyArr) {
+		for(i=0; i<numberOfTrees; i++){
+			if (taxonomyArr[i]) {
+				for(j=0; j<numspecArr[i]; j++){
+					if (taxonomyArr[i][j]) {
+						for(k=0; k<7; k++){  // 7 phylogeny levels
+							if (taxonomyArr[i][j][k]) {
+								free(taxonomyArr[i][j][k]);
+							}
+						}
+						free(taxonomyArr[i][j]);
+					}
+				}
+				free(taxonomyArr[i]);
+			}
+		}
+		free(taxonomyArr);
+	}
+	
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing taxonomy arrays");
+	}
+	
 	free(numbaseArr);
 	free(rootArr);
 	free(numspecArr);
+
+	if (opt.verbose_level >= 0) {
+		log_current_resource_usage("After freeing all tree data");
+	}
+
+	// Close TSV log file
+	TSV_LOG_SIMPLE(tsv_log, "FINAL");
+	if (tsv_log) {
+		fclose(tsv_log);
+		g_tsv_log_file = NULL;
+	}
 }

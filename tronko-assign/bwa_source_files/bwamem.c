@@ -4,9 +4,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
-#ifdef HAVE_PTHREAD
 #include <pthread.h>
-#endif
 
 #include "kstring.h"
 #include "bwamem.h"

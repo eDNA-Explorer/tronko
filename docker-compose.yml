@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  tronko-dev:
+    build: .
+    container_name: tronko-logging-test
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    environment:
+      - TERM=xterm-256color

@@ -19,6 +19,7 @@
 #include "getclade.h"
 #include "readfasta.h"
 #include "readreference.h"
+#include <time.h>
 
 HASHMAP(int, struct masterArr) mastermap;
 struct node **treeArr;
@@ -828,6 +829,8 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
 				exit(EXIT_FAILURE);
 			}
+			void parseNewick(struct masterArr* m, const char* newick, int max_nodename);
+			void makeBinary(struct masterArr* m, int max_nodename);
 			char* newick = readNewickFile(fasttreefile);
 			fclose(fasttreefile);
 			srand(time(NULL)); // Seed random number generator
@@ -1230,6 +1233,7 @@ int main(int argc, char **argv){
 		max_nodename = specifications[1];
 		m->numbase = specifications[2];
 		free(specifications);
+		void initlogfactorial(void);
 		initlogfactorial();
 		//nodeIDsArr = (char ***)malloc(sizeof(char**));
 		//itoa(0,m->index,10);
@@ -1253,7 +1257,7 @@ int main(int argc, char **argv){
 		FILE* treefile;
 		if (( treefile = fopen(opt.tree_file,"r")) == (FILE *) NULL) fprintf(stderr,"*** tree file could not be opened.\n");
 		m->root=getcladeArr(treefile,m,max_nodename)-1;
-		close(treefile);
+		fclose(treefile);
 		m->tree[m->root].down = -1;
 		get_number_descendantsArr(m->root,m);
 		int child0 = m->tree[m->root].up[0];
@@ -1491,9 +1495,37 @@ int main(int argc, char **argv){
 						if ( found == 0 ){
 							printf("removing %s...\n",tempfilename);
 							char partition_buffer2[BUFFER_SIZE];
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/*%s*",opt.partitions_directory,tempfilename);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.fasta",opt.partitions_directory,tempfilename);
 							int status=0;
 							status=system(partition_buffer2);	
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_taxonomy.txt",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_bestTree.%s",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_bestTree.%s.reroot",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.phymlAln",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.phymlAln.reduced",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_log.%s",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_result.%s",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_info.%s",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
+							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_parsimonyTree.%s",opt.partitions_directory,tempfilename);
+							status=0;
+							status=system(partition_buffer2);
 						}
 						free(tempfilename);
 						free(tempfilename2);

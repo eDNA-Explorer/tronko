@@ -3,15 +3,39 @@
  */
 #ifndef _GLOBAL_
 #define _GLOBAL_
+
+/*
+ * Memory Optimization Feature Flag
+ * When OPTIMIZE_MEMORY is defined, use float instead of double for posterior
+ * probability storage, reducing memory by ~50% with no loss in accuracy.
+ *
+ * Build with: make OPTIMIZE_MEMORY=1
+ */
+#ifdef OPTIMIZE_MEMORY
+    #define type_of_PP float
+    #define PP_FORMAT "%f"
+    #define PP_PRINT_FORMAT "%f"
+#else
+    #define type_of_PP double
+    #define PP_FORMAT "%lf"
+    #define PP_PRINT_FORMAT "%lf"
+#endif
+
+/*
+ * Posterior probability indexing macro
+ * Converts 2D [position][nucleotide] access to 1D index
+ * posteriornc is stored as: [pos0_A, pos0_C, pos0_G, pos0_T, pos1_A, ...]
+ */
+#define PP_IDX(pos, nuc) ((pos) * 4 + (nuc))
+
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/
 #define MAXNUMBEROFINDINSPECIES 500 /*maximum number of individuals belonging to a species*/
 #define MAXQUERYLENGTH 30000
-#define MAX_CIGAR 100
+#define MAX_CIGAR 1000
 #define NUMCAT 1/*number of categories in the discretization of the gamma for the nucleotide substituion model*/
 #define MINBL 0.000001
 #define MAXBL 2.0
 #define MAXTIEBREAK 64
-#define type_of_PP double
 #define MAX_NODENAME 30
 #define MAX_NUMBEROFROOTS 20000
 #define MAXRESULTSNAME 2000
@@ -22,6 +46,25 @@
 #define MAXTAXLENGTHNAME 256
 #define MAXFILENAME 1000
 #define BUFFER_SIZE 1000
+
+// Reference file format constants (must match tronko-convert/format_common.h)
+#define FORMAT_UNKNOWN        -1
+#define FORMAT_TEXT            1
+#define FORMAT_BINARY          2
+#define FORMAT_BINARY_GZIPPED  3  // Gzipped binary format (.trkb.gz)
+#define FORMAT_BINARY_ZSTD     4  // Zstd-compressed binary format (.trkb)
+
+// Binary format magic bytes
+#define TRONKO_MAGIC_0 0x89
+#define TRONKO_MAGIC_1 'T'
+#define TRONKO_MAGIC_2 'R'
+#define TRONKO_MAGIC_3 'K'
+
+// Binary format header sizes (verified from Phase 1)
+#define BINARY_FILE_HEADER_SIZE 64
+#define BINARY_GLOBAL_META_SIZE 16
+#define BINARY_TREE_META_SIZE 12
+#define BINARY_NODE_RECORD_SIZE 32
 //extern FILE *infile, *outfile, *treefile;
 //extern int numspec, numbase, root/*, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
 extern int *rootArr, *numspecArr, *numbaseArr;
@@ -45,7 +88,7 @@ typedef struct node{
 	int down;
 	int nd;
 	int depth;
-	double **posteriornc;
+	type_of_PP *posteriornc;  /* 1D array: access with PP_IDX(pos, nuc) */
 	char *name;
 	int taxIndex[2];
 }node;
@@ -90,6 +133,22 @@ typedef struct resultsStruct{
 	char **cigars_reverse;
 }resultsStruct;
 
+#ifdef ENABLE_PARQUET
+/*
+ * Structured assignment result for Parquet output
+ * Stores typed fields instead of pre-formatted TSV string
+ */
+typedef struct assignmentResult {
+    char *readname;
+    char *taxonomic_path;
+    double score;
+    double forward_mismatch;
+    double reverse_mismatch;
+    int tree_number;
+    int node_number;
+} assignmentResult;
+#endif
+
 typedef struct mystruct{
 	char **rootSeqs;
 	int ntree;
@@ -114,6 +173,16 @@ typedef struct mystruct{
 	int max_lineTaxonomy;
 	int number_of_total_nodes;
 	int print_all_nodes;
+	// Tier 1 optimization settings
+	int early_termination;
+	type_of_PP strike_box;
+	int max_strikes;
+	int enable_pruning;
+	type_of_PP pruning_factor;
+#ifdef ENABLE_PARQUET
+	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
+	int thread_id;         // Thread index for filename
+#endif
 }mystruct;
 
 typedef struct bwaMatches{
@@ -176,6 +245,21 @@ typedef struct Options{
 	int print_leave_seqs;
 	double score_constant;
 	int print_all_nodes;
+	int verbose_level;
+	char log_file[200];
+	int enable_resource_monitoring;
+	int enable_timing;
+	char tsv_log_file[BUFFER_SIZE];  // TSV memory log output file (empty = disabled)
+	// Tier 1 optimization toggles
+	int early_termination;      // Enable early termination (default: 0)
+	double strike_box;          // Strike box size, multiplier of Cinterval (default: 1.0)
+	int max_strikes;            // Maximum strikes before termination (default: 6)
+	int enable_pruning;         // Enable subtree pruning (default: 0)
+	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
+#ifdef ENABLE_PARQUET
+	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
+	int parquet_enabled;               // 1 if Parquet output enabled
+#endif
 }Options;
 
 //extern node *tree;

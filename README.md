@@ -1,8 +1,12 @@
 # tronko
+
+![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)
+![Comprehensive Tests](https://github.com/lpipes/tronko/workflows/Tests/badge.svg)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg)](https://doi.org/10.5281/zenodo.7407318)
+
 A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets
 
-In the tronko package there are two modules: `tronko-build` and `tronko-assign`. `tronko-build` is for building custom reference databases that tronko-assign uses as input. We have two reference databases currently available for download with `tronko-assign`. Cytochrome oxidase I (COI) which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GGWACWGGWTGAACWGTWTAYCCYCC` and reverse primer `TANACYTCnGGRTGNCCRAARAAYCA`. 16S which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GTGCCAGCMGCCGCGGTAA` and reverse primer `GACTACHVGGGTATCTAATCC`. 
-<a href="https://doi.org/10.5281/zenodo.7407318"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg" alt="DOI"></a>
+In the tronko package there are two modules: `tronko-build` and `tronko-assign`. `tronko-build` is for building custom reference databases that tronko-assign uses as input. We have two reference databases currently available for download with `tronko-assign`. Cytochrome oxidase I (COI) which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GGWACWGGWTGAACWGTWTAYCCYCC` and reverse primer `TANACYTCnGGRTGNCCRAARAAYCA`. 16S which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GTGCCAGCMGCCGCGGTAA` and reverse primer `GACTACHVGGGTATCTAATCC`.
 
 Alignment-based and composition-based assignment methods calculate the lowest common ancestor (LCA) using data only in the leaf nodes of a phylogeny (A). The advantage of Tronko is that it stores fractional likelihoods in all nodes of a phylogeny and calculates the LCA based on all nodes in the tree (B).
 <img src="https://github.com/lpipes/tronko/blob/main/Overview_Figure.jpg?raw=true">
@@ -61,6 +65,62 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		-5 [FILE], Print tree number and leaf number and exit
 		-6, Skip the bwa build if database already exists
 		-u, Score constant [default: 0.01]
+		-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]
+		-l [FILE], Log file path [default: stderr only]
+		-R, Enable resource monitoring (memory/CPU usage)
+		-T, Enable timing information
+
+## Verbose Logging and Performance Monitoring
+
+`tronko-assign` includes comprehensive logging capabilities to monitor performance and troubleshoot issues:
+
+### Basic Verbose Logging
+```bash
+# Enable INFO level logging to stderr
+tronko-assign -V2 [other options...]
+
+# Enable DEBUG level logging with maximum detail
+tronko-assign -V3 [other options...]
+```
+
+### Logging to File
+```bash
+# Write logs to a file (also logs to stderr)
+tronko-assign -V2 -l assignment.log [other options...]
+```
+
+### Resource Monitoring
+```bash
+# Monitor memory and CPU usage at each milestone
+tronko-assign -V2 -R [other options...]
+```
+
+### Timing Information
+```bash
+# Include timing information between processing milestones
+tronko-assign -V2 -T [other options...]
+```
+
+### Comprehensive Monitoring
+```bash
+# Enable all logging features for detailed performance analysis
+tronko-assign -V3 -T -R -l comprehensive.log [other options...]
+```
+
+The logging system tracks 18 key milestones throughout the assignment process including:
+- Program startup and option parsing
+- Reference database loading 
+- BWA index creation
+- Memory allocation
+- Batch processing start/completion
+- Sequence alignment and placement
+- Results writing and cleanup
+
+Log levels:
+- `-V0`: ERROR messages only
+- `-V1`: WARN and ERROR messages  
+- `-V2`: INFO, WARN, and ERROR messages (recommended)
+- `-V3`: DEBUG, INFO, WARN, and ERROR messages (most verbose)
 
 Tronko uses the <a href="https://github.com/smarco/WFA2-lib">Wavefront Alignment Algorithm (version 2)</a> or <a href="https://github.com/noporpoise/seq-align">Needleman-Wunsch Algorithm</a> for semi-global alignments. It uses <a href="https://github.com/lh3/bwa">bwa</a> for alignment to leaf nodes, and uses <a href="https://github.com/DavidLeeds/hashmap">David Leeds' hashmap</a> for hashmap implementation in C. `tronko-assign` does not reverse complement your reads automatically. You must use options `-v` or `-z` to reverse complement your read for better alignment to the reference database. For more information on the direction of your reads based on your library prep, please refer to this helpful blog here: <a href="http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html">http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html</a>.
 
@@ -81,10 +141,25 @@ GU572157.1_3_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-
 # INSTALLATION
 
 1. Clone the [GitHub repo](https://github.com/lpipes/tronko), e.g. with `git clone https://github.com/lpipes/tronko.git`
-2. Run `make` in the `tronko-build` and `tronko-assign` directories.
-3. Copy the `tronko-build` and `tronko-assign` binaries to your path.
+2. Install build dependencies:
+   - **Debian/Ubuntu**: `sudo apt-get install -y zlib1g-dev libzstd-dev`
+   - **RHEL/CentOS/Fedora**: `sudo dnf install -y zlib-devel libzstd-devel`
+   - **macOS (Homebrew)**: `brew install zlib zstd`
+3. Run `make` in the `tronko-build` and `tronko-assign` directories.
+4. Copy the `tronko-build` and `tronko-assign` binaries to your path.
 
-`tronko-assign` uses [pthreads](http://en.wikipedia.org/wiki/POSIX_Threads) and [zlib](http://en.wikipedia.org/wiki/Zlib) as its dependencies. `tronko-build` only has dependencies if using the partition procedure for the initial trees. These are <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>, which must be installed in your path. By default, `tronko-build` uses `raxmlHPC-PTHREADS` to estimate trees, if you choose the `-a` option to use `FastTree` instead, you must have `FastTree` installed in your path.
+`tronko-assign` uses [pthreads](http://en.wikipedia.org/wiki/POSIX_Threads), [zlib](http://en.wikipedia.org/wiki/Zlib), and [zstd](https://github.com/facebook/zstd) as its dependencies.
+
+## Supported Input Formats
+
+`tronko-assign` accepts FASTA/FASTQ query files in the following formats:
+- **Plain text** (`.fasta`, `.fastq`)
+- **Gzip compressed** (`.fasta.gz`, `.fastq.gz`)
+- **Zstandard compressed** (`.fasta.zst`, `.fastq.zst`)
+
+Compression format is auto-detected from file magic bytes, not file extension. This allows for streaming decompression with minimal memory overhead (~256 KB for zstd buffers).
+
+`tronko-build` only has dependencies if using the partition procedure for the initial trees. These are <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>, which must be installed in your path. By default, `tronko-build` uses `raxmlHPC-PTHREADS` to estimate trees, if you choose the `-a` option to use `FastTree` instead, you must have `FastTree` installed in your path.
 
 	cd tronko/tronko-build
 	make
@@ -248,6 +323,261 @@ With the CO1 database and same parameters:
 tronko-assign -r -q -p -z -w -C 16 -c 5 -f CO1_tronko_build.txt.gz -a CO1.fasta -1 CO1_TW-DR-1-S88_F_filt.fastq.gz -2 CO1_TW-DR-1-S88_R_filt.fastq.gz -o CO1_TW-DR-1-S88_results.txt
 ```
 
+# Testing
+
+Tronko includes a comprehensive testing suite to ensure reliability and help with development.
+
+## Quick Testing
+
+### Unit Tests
+Test core functionality including crash debugging, signal handling, and corruption detection:
+```bash
+cd tests
+make -f Makefile.simple smoke
+```
+
+### Integration Tests  
+Test binary functionality, command-line interfaces, and data validation:
+```bash
+cd tests
+make -f Makefile.simple test_simple_workflows
+./test_simple_workflows
+```
+
+### Functional Tests
+Test end-to-end workflows with real datasets:
+```bash
+./test_with_example_data.sh
+```
+
+## Comprehensive Testing
+
+### Full Test Suite
+Run all tests (unit, integration, and functional):
+```bash
+cd tests
+make -f Makefile.simple test
+```
+
+### Using the Test Runner
+The test runner provides convenient options for different testing scenarios:
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run only unit tests  
+./run_tests.sh --unit-only
+
+# Run only integration tests
+./run_tests.sh --integration-only
+
+# Generate code coverage report
+./run_tests.sh --coverage
+
+# Run with memory leak detection
+./run_tests.sh --valgrind
+
+# Verbose output for debugging
+./run_tests.sh --verbose
+```
+
+## Docker Testing
+
+Test in a consistent containerized environment:
+```bash
+# Build and run tests in Docker
+docker compose up -d
+docker compose exec tronko-dev bash -c "cd /app/tests && make -f Makefile.simple test"
+
+# Or use the test runner in Docker
+docker compose exec tronko-dev bash -c "cd /app && ./run_tests.sh"
+```
+
+## Continuous Integration
+
+Tests run automatically on every push via GitHub Actions:
+- **Quick Tests**: Fast validation on all branches (~2-3 minutes)
+- **Comprehensive Tests**: Full validation on main/experimental/develop branches (~10-15 minutes)
+- **Performance Tests**: Benchmarking on main/experimental branches
+
+View test status: [![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)](https://github.com/lpipes/tronko/actions)
+
+## Test Categories
+
+### Unit Tests
+- **Framework**: Unity (lightweight C testing framework)
+- **Coverage**: Crash debugging system, corruption detection, signal handling
+- **Location**: `tests/unit/`
+
+### Integration Tests
+- **Coverage**: Binary existence, command-line interfaces, error handling
+- **Location**: `tests/integration/`
+
+### Functional Tests  
+- **Coverage**: End-to-end workflows, real data processing, crash testing
+- **Location**: `test_with_example_data.sh`
+
+For detailed testing documentation, see [`tests/README.md`](tests/README.md).
+
+# Reproducibility and Variance
+
+`tronko-assign` uses BWA's multi-threaded alignment engine, which introduces non-deterministic ordering of candidate matches. This results in approximately **3% variance** in taxonomic assignments between runs with identical inputs when using multiple cores.
+
+## Understanding the Variance
+
+- **Magnitude**: ~3% of reads may receive different taxonomic assignments across runs
+- **Nature**: Differences are unbiased (equal probability of more/less specific results)
+- **Cause**: BWA's work-stealing thread scheduler finds matches in variable order
+- **Scientific Impact**: Variance is typically smaller than biological variation in most studies
+
+### What This Means
+
+The variance affects individual read assignments, not overall community composition. For most metabarcoding studies:
+- ✅ Community-level statistics (abundance, diversity) remain stable
+- ✅ Biological replicates average out technical variance
+- ✅ Differential abundance analysis is unaffected when using proper statistical methods
+- ⚠️ Exact read-by-read reproducibility requires special modes (see below)
+
+## Achieving Reproducible Results
+
+### Option 1: Single-Threaded Mode (100% Deterministic)
+
+Use the `-C 1` flag to run in deterministic single-threaded mode:
+
+```bash
+tronko-assign -C 1 -r -f reference.trkb -a reference.fasta -p \
+  -1 forward.fasta -2 reverse.fasta -o results.txt
+```
+
+**Trade-offs**:
+- ✅ Perfect reproducibility (identical results every run)
+- ❌ 10-16x slower than multi-threaded mode
+- 👍 **Use for**: Validation, testing, regression checks, publications requiring exact reproducibility
+
+### Option 2: Standard Multi-Threaded Mode (Fast, ~3% Variance)
+
+Use multiple cores for performance (default or explicit `-C N`):
+
+```bash
+tronko-assign -C 16 -r -f reference.trkb -a reference.fasta -p \
+  -1 forward.fasta -2 reverse.fasta -o results.txt
+```
+
+**Trade-offs**:
+- ✅ Fast execution (scales with CPU cores)
+- ⚠️ ~3% variance between runs
+- 👍 **Use for**: Standard workflows, exploratory analysis, production pipelines
+
+### Option 3: Consensus Voting (Best of Both Worlds)
+
+Run multiple times and aggregate results for both speed and reproducibility:
+
+```bash
+# Run 3 times in parallel
+tronko-assign -C 16 [...] -o run1.txt &
+tronko-assign -C 16 [...] -o run2.txt &
+tronko-assign -C 16 [...] -o run3.txt &
+wait
+
+# Aggregate results (see consensus script in scripts/)
+# (Consensus voting script to be implemented)
+```
+
+**Trade-offs**:
+- ✅ Reduces variance from ~3% to ~0.3-0.6%
+- ✅ Can parallelize across runs (3 runs ≈ 3x cost but parallelizable)
+- 👍 **Use for**: Critical datasets, regulatory submissions, important publications
+
+## Testing for Variance
+
+Measure variance on your specific dataset using the test script:
+
+```bash
+cd tronko-assign
+
+./scripts/test_determinism.sh \
+  -r /path/to/reference.trkb \
+  -a /path/to/reference.fasta \
+  -1 /path/to/forward.fasta \
+  -2 /path/to/reverse.fasta \
+  -n 3 \
+  -c 16 \
+  -k
+```
+
+This will run 3 replicates and report variance statistics.
+
+### Expected Results
+
+- **Single-threaded** (`-c 1`): 0% variance (identical results)
+- **Multi-threaded** (e.g., `-c 16`): 2-4% variance depending on dataset and core count
+- **Higher core counts**: Slightly higher variance due to increased thread contention
+
+## Recommendations by Use Case
+
+| Use Case | Recommended Mode | Cores | Expected Variance |
+|----------|------------------|-------|-------------------|
+| Validation / Testing | Single-threaded | `-C 1` | 0% |
+| Exploratory Analysis | Multi-threaded | `-C 4-16` | ~3% |
+| Production Pipeline | Multi-threaded | `-C 8-16` | ~3% |
+| Publication (standard) | Multi-threaded | `-C 4-16` | ~3% |
+| Publication (exact reproducibility) | Single-threaded | `-C 1` | 0% |
+| Regulatory Submission | Consensus voting | `-C 16`, 3 runs | <0.5% |
+
+## Technical Details
+
+For developers and advanced users:
+
+- **Root cause**: BWA's `kt_for()` work-stealing scheduler in `bwa_source_files/kthread.c`
+- **Propagation**: Variable match order → different tie-breaking in `placement.c:893`
+- **Floating-point sensitivity**: Confidence interval comparisons (`placement.c:930`) sensitive to small score differences
+- **Not affected by**: WFA2 alignment (deterministic), scoring algorithm (deterministic), result collection order (deterministic)
+
+For detailed technical analysis, see:
+- Research document: `thoughts/shared/research/2026-01-03-non-determinism-mitigation-strategies.md`
+- Baseline measurement: `thoughts/shared/research/2026-01-03-non-determinism-baseline-measurement.md`
+
+## FAQ
+
+**Q: Is this a bug?**
+A: No, this is inherent to BWA's multi-threaded design. It's a performance/reproducibility trade-off present in many bioinformatics tools.
+
+**Q: Will this affect my biological conclusions?**
+A: For most metabarcoding studies, no. The variance is small (~3%) and unbiased, similar to technical replicates.
+
+**Q: Can I use tronko-assign in CI/CD pipelines?**
+A: Yes, but use statistical comparison (e.g., expect <5% difference) rather than exact output matching. Or use `-C 1` for exact regression tests.
+
+**Q: Does this affect accuracy?**
+A: No, accuracy is identical. The algorithm is sound; only the specific reads assigned to borderline taxa vary slightly.
+
+**Q: Will this be fixed in future versions?**
+A: We are exploring options including BWA seed control and alternative aligners. For now, single-threaded mode provides perfect reproducibility when needed.
+
+## Advanced Features
+
+Tronko includes comprehensive logging and debugging capabilities:
+
+### Performance Monitoring
+```bash
+# Enable performance logging with resource monitoring
+tronko-assign -V2 -R -T -l performance.log [options...]
+```
+
+### Crash Debugging
+Automatic crash detection with root cause analysis:
+```bash
+# Crash debugging is always enabled
+# View crash reports in /tmp/tronko_assign_crash_*.crash
+tronko-assign -V2 [options...]  # Enhanced context capture
+```
+
+### Documentation
+- **[Performance Logging Guide](docs/performance-logging.md)**: Comprehensive performance monitoring, resource tracking, and optimization
+- **[Crash Debugging Guide](docs/crash-debugging.md)**: Advanced crash detection, root cause analysis, and debugging workflows
+- **[Complete Documentation Index](docs/index.md)**: Full documentation overview and quick reference
+- **[Experiments Log](EXPERIMENTS_LOG.md)**: Benchmark results and optimization experiments (memory vs accuracy tradeoffs)
+
 # Performance
 
 We performed a leave-one-species-out test comparing Tronko (with LCA cut-offs for the score of 0, 5, 10, 15, and 20 with Needleman-Wunsch alignment) to kraken2, metaphlan2, and MEGAN for 1,467 COI sequences from 253 species from the order Charadriiformes using 150bp x 2 paired-end sequences and 150bp and 300bp single-end sequences using 0, 1, and 2% error/polymorphism.
@@ -256,5 +586,5 @@ Using leave-one-species-out and simulating reads (both paired-end and single-end
 
 # Citation
 
-Pipes L, and Nielsen R (2022) A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets. bioRXiv.
-https://www.biorxiv.org/content/10.1101/2022.12.06.519402v1 
+Pipes L, and Nielsen R (2024) A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets. eLife.
+https://elifesciences.org/articles/85794.pdf

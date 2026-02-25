@@ -1,0 +1,31 @@
+# Test output files
+*.log
+test_results_*.txt
+test_output.log
+debug_timing.log
+resource_monitor.log
+full_logging.log
+comprehensive_test.log
+debug.log
+
+# Build artifacts
+tronko-assign/tronko-assign
+tronko-build/tronko-build
+*.o
+*.so
+
+# Temporary files
+*.tmp
+*~
+.DS_Store
+
+# BWA index files
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+
+# Example/test data outputs
+test_results_*.txt
+missingreads_*_results.txttests/unity/

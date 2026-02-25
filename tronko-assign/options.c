@@ -1,6 +1,7 @@
 #include "options.h"
+#include <getopt.h>
 
-static struct Options long_options[]=
+static struct option long_options[]=
 {
 	{"help", no_argument, 0, 'h'},
 	{"paired", no_argument, 0, 'p'},
@@ -31,7 +32,25 @@ static struct Options long_options[]=
 	{"print-node-info",required_argument, 0, '5'},
 	{"skip-bwa-build",no_argument,0, '6'},
 	{"score-constant",required_argument,0, 'u'},
-	{"print-all-scores",no_argument,0,'7'}
+	{"print-all-scores",no_argument,0,'7'},
+	{"print-alignments-dir",required_argument,0,'3'},
+	{"tree-dir",required_argument,0,'4'},
+	{"verbose",optional_argument,0,'V'},
+	{"log-file",required_argument,0,'l'},
+	{"enable-resource-monitoring",no_argument,0,'R'},
+	{"enable-timing",no_argument,0,'T'},
+	{"tsv-log",required_argument,0,0},  // Long option only, no short form
+	{"early-termination",no_argument,0,0},
+	{"no-early-termination",no_argument,0,0},
+	{"strike-box",required_argument,0,0},
+	{"max-strikes",required_argument,0,0},
+	{"enable-pruning",no_argument,0,0},
+	{"disable-pruning",no_argument,0,0},
+	{"pruning-factor",required_argument,0,0},
+#ifdef ENABLE_PARQUET
+	{"parquet",required_argument,0,0},
+#endif
+	{0, 0, 0, 0}  // Terminating entry required by getopt_long
 };
 
 char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF FASTA FILE] -o [OUTPUT FILE]\n\
@@ -49,7 +68,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-1 [FILE], compatible only with -p, path to paired-end forward read file\n\
 	-2 [FILE], compatible only with -p, path to paired-end reverse read file\n\
 	-c [INT], LCA cut-off to use [default:5]\n\
-	-C [INT], number of cores [default:1]\n\
+	-C [INT], number of cores [default:1] (use -C 1 for reproducible results)\n\
 	-L [INT], number of lines to read for assignment [default:50000]\n\
 	-P, print alignments to stdout\n\
 	-w, use Needleman-Wunsch Alignment Algorithm (default: WFA)\n\
@@ -60,6 +79,23 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-6, Skip the bwa build if database already exists\n\
 	-u, Score constant [default: 0.01]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
+	-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]\n\
+	-l [FILE], Log file path [default: stderr only]\n\
+	-R, Enable resource monitoring (memory/CPU usage)\n\
+	-T, Enable timing information\n\
+	--tsv-log [FILE], Export memory stats to TSV file for analysis\n\
+	\n\
+	Optimization Options:\n\
+	--early-termination, Enable early termination during tree traversal\n\
+	--no-early-termination, Disable early termination (default)\n\
+	--strike-box [FLOAT], Strike box size as multiplier of Cinterval [default: 1.0]\n\
+	--max-strikes [INT], Maximum strikes before termination [default: 6]\n\
+	--enable-pruning, Enable subtree pruning\n\
+	--disable-pruning, Disable subtree pruning (default)\n\
+	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	\n\
+	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
+	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
 	\n";
 
 void print_help_statement(){
@@ -69,15 +105,70 @@ void print_help_statement(){
 
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
-	char c;
+	int c;  // getopt_long returns int, not char
+	
 	if (argc==1){
 		print_help_statement();
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hpsrqw6yevUzP75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:",long_options, &option_index);
-		if (c==-1) break;
+		c=getopt_long(argc,argv,"hpsrqw6yevUzP:75:f:u:t:m:d:o:x:g:1:2:a:c:n:3:4:C:L:V::l:RT",long_options, &option_index);
+		
+		// Handle end of options and errors
+		if (c == -1) {
+			break;
+		}
+		if (c == '?' || c == 255) {
+			fprintf(stderr, "Unknown option or missing argument\n");
+			print_help_statement();
+			exit(1);
+		}
+		
 		switch(c){
+			case 0:
+				// Handle long options without short equivalents
+				if (strcmp(long_options[option_index].name, "tsv-log") == 0) {
+					strncpy(opt->tsv_log_file, optarg, sizeof(opt->tsv_log_file) - 1);
+					opt->tsv_log_file[sizeof(opt->tsv_log_file) - 1] = '\0';
+				}
+				else if (strcmp(long_options[option_index].name, "early-termination") == 0) {
+					opt->early_termination = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "no-early-termination") == 0) {
+					opt->early_termination = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "strike-box") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->strike_box)) != 1) {
+						fprintf(stderr, "Invalid strike-box value\n");
+						opt->strike_box = 1.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "max-strikes") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_strikes)) != 1) {
+						fprintf(stderr, "Invalid max-strikes value\n");
+						opt->max_strikes = 6;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "enable-pruning") == 0) {
+					opt->enable_pruning = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "disable-pruning") == 0) {
+					opt->enable_pruning = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "pruning-factor") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->pruning_factor)) != 1) {
+						fprintf(stderr, "Invalid pruning-factor value\n");
+						opt->pruning_factor = 2.0;
+					}
+				}
+#ifdef ENABLE_PARQUET
+				else if (strcmp(long_options[option_index].name, "parquet") == 0) {
+					strncpy(opt->parquet_prefix, optarg, BUFFER_SIZE - 1);
+					opt->parquet_prefix[BUFFER_SIZE - 1] = '\0';
+					opt->parquet_enabled = 1;
+				}
+#endif
+				break;
 			case 'h':
 				print_help_statement();
 				exit(0);
@@ -211,6 +302,30 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%d", &(opt->number_of_lines_to_read));
 				if (!success)
 					fprintf(stderr, "Invalid number");
+				break;
+			case 'V':
+				if (optarg) {
+					success = sscanf(optarg, "%d", &(opt->verbose_level));
+					if (!success || opt->verbose_level < 0 || opt->verbose_level > 3) {
+						fprintf(stderr, "Invalid verbose level (0-3)\n");
+						opt->verbose_level = 2;  // Default to INFO
+					}
+				} else {
+					opt->verbose_level = 2;  // Default to INFO if no level specified
+				}
+				break;
+			case 'l':
+				strncpy(opt->log_file, optarg, sizeof(opt->log_file) - 1);
+				opt->log_file[sizeof(opt->log_file) - 1] = '\0';
+				break;
+			case 'R':
+				opt->enable_resource_monitoring = 1;
+				break;
+			case 'T':
+				opt->enable_timing = 1;
+				break;
+			default:
+				// Ignore unknown options, getopt will handle them
 				break;
 		}
 	}
