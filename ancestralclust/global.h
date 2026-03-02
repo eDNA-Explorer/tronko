@@ -56,6 +56,8 @@ typedef struct Options{
 	int output_fasta;
 	int use_nw;
 	int number_of_desc;
+	int min_cluster_size;   /* -m: minimum predicted final cluster size (0 = disabled) */
+	int max_cluster_size;   /* -x: maximum predicted final cluster size (0 = disabled) */
 	double average;
 	char root[1000];
 }Options;

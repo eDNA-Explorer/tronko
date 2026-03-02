@@ -102,18 +102,15 @@ else
     fi
 fi
 
-# Setup directories
-WORK_DIR=$(mktemp -d)
-AC_DIR="$WORK_DIR/ancestralclust"
-NEWICK_DIR="$WORK_DIR/newick"
-MERGED_DIR="$WORK_DIR/merged"
+# Setup directories — use $OUTPUT_DIR/.cache for checkpoint persistence
+CACHE_DIR="$OUTPUT_DIR/.cache"
+AC_DIR="$CACHE_DIR/ancestralclust"
+NEWICK_DIR="$CACHE_DIR/newick"
+MERGED_DIR="$CACHE_DIR/merged"
 mkdir -p "$AC_DIR" "$NEWICK_DIR" "$MERGED_DIR" "$OUTPUT_DIR"
 
-cleanup() {
-    echo "Cleaning up working directory: $WORK_DIR"
-    rm -rf "$WORK_DIR"
-}
-trap cleanup EXIT
+# No cleanup trap — cache persists for resume on failure
+# To force a clean rebuild, delete $OUTPUT_DIR/.cache/
 
 NUM_SEQS=$(grep -c '^>' "$INPUT_FASTA")
 echo "================================================================"
@@ -143,13 +140,17 @@ echo ""
 echo "=== Step 1/5: AncestralClust pre-clustering ==="
 STEP1_START=$(date +%s)
 
-if [[ "$NUM_SEQS" -le "$AC_CUTOFF" ]]; then
+if [[ -f "$AC_DIR/.step1_done" ]]; then
+    NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l | tr -d ' ')
+    echo "  CACHED: Step 1 already complete ($NUM_CLUSTERS clusters). Skipping."
+elif [[ "$NUM_SEQS" -le "$AC_CUTOFF" ]]; then
     echo "Only $NUM_SEQS sequences (below cutoff $AC_CUTOFF) — skipping clustering"
     # Single cluster: just copy
     cp "$INPUT_FASTA" "$AC_DIR/0.fasta"
     # Extract taxonomy for these sequences
     cp "$INPUT_TAXONOMY" "$AC_DIR/0_taxonomy.txt"
     NUM_CLUSTERS=1
+    touch "$AC_DIR/.step1_done"
 else
     # Calculate AncestralClust parameters (CruxV2 formula)
     NUM_BINS=$(( (NUM_SEQS + AC_BIN_SIZE - 1) / AC_BIN_SIZE ))
@@ -159,9 +160,9 @@ else
     fi
 
     echo "AncestralClust: $NUM_SEQS seqs -> $NUM_BINS bins, $NUM_SEEDS seeds"
-    echo "Running: ancestralclust -f -u -i $INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p 75 -c $THREADS -d $AC_DIR"
+    echo "Running: ancestralclust -f -i $INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p 75 -c $THREADS -d $AC_DIR"
 
-    ancestralclust -f -u \
+    ancestralclust -f \
         -i "$INPUT_FASTA" \
         -b "$NUM_BINS" \
         -r "$NUM_SEEDS" \
@@ -175,16 +176,17 @@ else
     for cluster_fasta in "$AC_DIR"/*.fasta; do
         cluster_id=$(basename "$cluster_fasta" .fasta)
         # Extract accessions from this cluster's FASTA
-        grep '^>' "$cluster_fasta" | sed 's/^>//' | cut -d' ' -f1 | sort > "$WORK_DIR/accs_${cluster_id}.txt"
+        grep '^>' "$cluster_fasta" | sed 's/^>//' | cut -d' ' -f1 | sort > "$CACHE_DIR/accs_${cluster_id}.txt"
         # Filter taxonomy to matching accessions
-        sort "$INPUT_TAXONOMY" | join -t$'\t' "$WORK_DIR/accs_${cluster_id}.txt" - > "$AC_DIR/${cluster_id}_taxonomy.txt"
-        rm "$WORK_DIR/accs_${cluster_id}.txt"
+        sort "$INPUT_TAXONOMY" | join -t$'\t' "$CACHE_DIR/accs_${cluster_id}.txt" - > "$AC_DIR/${cluster_id}_taxonomy.txt"
+        rm "$CACHE_DIR/accs_${cluster_id}.txt"
         n_seqs=$(grep -c '^>' "$cluster_fasta")
         n_tax=$(wc -l < "$AC_DIR/${cluster_id}_taxonomy.txt")
         echo "  Cluster $cluster_id: $n_seqs seqs, $n_tax taxonomy entries"
     done
 
-    NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l)
+    NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l | tr -d ' ')
+    touch "$AC_DIR/.step1_done"
 fi
 
 STEP1_END=$(date +%s)
@@ -205,10 +207,27 @@ build_cluster_tree() {
     local n_seqs
     n_seqs=$(grep -c '^>' "$cluster_fasta")
 
-    echo "  Cluster $cluster_id ($n_seqs seqs): aligning..."
+    # Deduplicate sequences by header (VeryFastTree requires unique names)
+    local dedup_fasta="$outdir/${cluster_id}_dedup.fasta"
+    awk '/^>/{h=$0; if(seen[h]++){next} p=1; print; next} p{print} /^>/{p=0}' "$cluster_fasta" > "$dedup_fasta"
+    local n_dedup
+    n_dedup=$(grep -c '^>' "$dedup_fasta")
+    if [[ "$n_dedup" -ne "$n_seqs" ]]; then
+        echo "  Cluster $cluster_id ($n_seqs seqs, $n_dedup unique): aligning..."
+    else
+        echo "  Cluster $cluster_id ($n_seqs seqs): aligning..."
+    fi
+
+    # Skip clusters that are too small after dedup
+    if [[ "$n_dedup" -lt 3 ]]; then
+        echo "  Cluster $cluster_id: only $n_dedup unique seqs, skipping"
+        rm -f "$dedup_fasta"
+        return 1
+    fi
 
     # FAMSA alignment
-    famsa -t "$THREADS" "$cluster_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
+    famsa -t "$THREADS" "$dedup_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
+    rm -f "$dedup_fasta"
 
     # Unwrap to single-line (tronko-build requirement)
     unwrap_fasta "$outdir/${cluster_id}_MSA.fasta" "$outdir/${cluster_id}_MSA_unwrapped.fasta"
@@ -218,8 +237,16 @@ build_cluster_tree() {
 
     if [[ "$USE_FASTTREE" -eq 1 ]]; then
         # VeryFastTree or FastTree (outputs Newick to stdout)
+        set +e
         $TREE_BIN -gtr -gamma -nt $TREE_THREAD_FLAG "$outdir/${cluster_id}_MSA.fasta" \
-            > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>/dev/null
+            > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
+        local tree_rc=$?
+        set -e
+        if [[ "$tree_rc" -ne 0 ]] || [[ ! -s "$outdir/RAxML_bestTree.${cluster_id}.unrooted" ]]; then
+            echo "  WARNING: $TREE_BIN failed for cluster $cluster_id (exit $tree_rc). Log:"
+            tail -20 "$outdir/${cluster_id}_tree.log"
+            return 1
+        fi
     else
         # RAxML (CruxV2 uses raxmlHPC-PTHREADS with GTR+Gamma)
         local raxml_dir="$outdir/${cluster_id}_RAxML"
@@ -239,8 +266,15 @@ build_cluster_tree() {
     fi
 
     # Midpoint rooting
+    set +e
     nw_reroot "$outdir/RAxML_bestTree.${cluster_id}.unrooted" \
         > "$outdir/RAxML_bestTree.${cluster_id}.reroot" 2>/dev/null
+    local reroot_rc=$?
+    set -e
+    if [[ "$reroot_rc" -ne 0 ]] || [[ ! -s "$outdir/RAxML_bestTree.${cluster_id}.reroot" ]]; then
+        echo "  WARNING: nw_reroot failed for cluster $cluster_id, using unrooted tree"
+        cp "$outdir/RAxML_bestTree.${cluster_id}.unrooted" "$outdir/RAxML_bestTree.${cluster_id}.reroot"
+    fi
 
     echo "  Cluster $cluster_id: done"
 }
@@ -255,11 +289,24 @@ for cluster_fasta in "$AC_DIR"/*.fasta; do
         continue
     fi
 
-    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR"
+    # Skip if already cached
+    if [[ -f "$NEWICK_DIR/RAxML_bestTree.${cluster_id}.reroot" ]] && [[ -s "$NEWICK_DIR/RAxML_bestTree.${cluster_id}.reroot" ]]; then
+        echo "  Cluster $cluster_id ($n_seqs seqs): CACHED, skipping"
+        continue
+    fi
 
-    # Copy taxonomy
+    set +e
+    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR"
+    cluster_rc=$?
+    set -e
+    if [[ "$cluster_rc" -ne 0 ]]; then
+        echo "  WARNING: Cluster $cluster_id failed, skipping"
+        continue
+    fi
+
+    # Copy taxonomy (deduplicated to match FASTA dedup)
     if [[ -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
-        cp "$AC_DIR/${cluster_id}_taxonomy.txt" "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
+        awk -F'\t' '!seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
     fi
 done
 

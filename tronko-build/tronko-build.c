@@ -623,10 +623,16 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		return;
 	}
 	int partitionCount=-1;
+	int freeSlots=0;
 	for(i=MAX_NUMBEROFROOTS-1;i>=0;i--){
 		if(SPscoreArr[i]==-1){
 			partitionCount=i;
+			freeSlots++;
 		}
+	}
+	if (freeSlots < 3){
+		fprintf(stderr, "ERROR: partition slot limit reached (%d). Too many partitions for this dataset/threshold combination.\n", MAX_NUMBEROFROOTS);
+		exit(EXIT_FAILURE);
 	}
 	SPscoreArr[partitionCount]=1;
 	SPscoreArr[partitionCount+1]=1;
@@ -701,9 +707,9 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 					}*/
 			}
 			if ( opt.prefix[0] == '\0' ){
-				snprintf(buf,BUFFER_SIZE,"sed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/partition%d_MSA.fasta",opt.partitions_directory,which);
+				snprintf(buf,BUFFER_SIZE,"gsed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/partition%d_MSA.fasta",opt.partitions_directory,which);
 			}else{
-				snprintf(buf,BUFFER_SIZE,"sed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+				snprintf(buf,BUFFER_SIZE,"gsed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
 			}
 			status = system(buf);
 			if (opt.prefix[0] == '\0' ){
@@ -716,13 +722,13 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				if ( opt.fasttree==0 ){
 					snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n partition%d -p 1234 -T 8 -s %s/partition%d_MSA.phymlAln",opt.partitions_directory,which,opt.partitions_directory,which);
 				}else{
-					snprintf(buf,BUFFER_SIZE,"FastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
+					snprintf(buf,BUFFER_SIZE,"VeryFastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
 				}
 			}else{
 				if ( opt.fasttree==0 ){
 					snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n %spartition%d -p 1234 -T 8 -s %s/%spartition%d_MSA.phymlAln",opt.partitions_directory,opt.prefix,which,opt.partitions_directory,opt.prefix,which);
 				}else{
-					snprintf(buf,BUFFER_SIZE,"FastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
+					snprintf(buf,BUFFER_SIZE,"VeryFastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
 				}
 			}
 			status = system(buf);
@@ -805,7 +811,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		}
 		sprintf(t->index,"%d",which-1);
 		if ((partition = gzopen(buf,"r")) == NULL ){
-			fprintf(stderr, "Cannot open %s: %s\n", buffer, strerror(errno));
+			fprintf(stderr, "Cannot open %s: %s\n", buf, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 		t->numspec=setNumspecArr(partition);
@@ -818,7 +824,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		t->msa=(int**)malloc(t->numspec*sizeof(int*));
 		t->taxonomy=(char***)malloc(t->numspec*sizeof(char**));
 		if ((partition = gzopen(buf,"r")) == NULL ){
-			fprintf(stderr, "Cannot open %s: %s\n", buffer, strerror(errno));
+			fprintf(stderr, "Cannot open %s: %s\n", buf, strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 		readSeqArr(partition,max_nodename,t);
@@ -1430,7 +1436,7 @@ int main(int argc, char **argv){
 				exit(-1);
 			}
 			if ( opt.fasttree == 1 ){
-				/* FastTree/VeryFastTree can produce multifurcating trees.
+				/* VeryFastTree can produce multifurcating trees.
 				   Use parseNewick+makeBinary to resolve polytomies,
 				   export the binary tree, then re-parse with getcladeArr. */
 				char* newick = readNewickFile(partitionTree);

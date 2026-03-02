@@ -45,7 +45,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
-	-a, use fasttree instead of RAxML\n\
+	-a, use VeryFastTree instead of RAxML\n\
 	\n";
 
 void print_help_statement(){

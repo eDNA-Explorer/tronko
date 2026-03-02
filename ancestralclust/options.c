@@ -17,6 +17,8 @@ static struct option long_options[]=
 	{"number_of_descendants", required_argument, 0, 'p'},
 	{"root_seqs", required_argument, 0, 'q'},
 	{"set_average", required_argument, 0, 'a'},
+	{"min_cluster_size", required_argument, 0, 'm'},
+	{"max_cluster_size", required_argument, 0, 'x'},
 	{0,0,0,0}
 };
 
@@ -36,6 +38,8 @@ char usage[] = "\nancestralclust [OPTIONS]\n\
 	-p, --number_of_descendants		number of descendants to require to cut branch [default: 10]\n\
 	-q, --root_seqs				file to print root sequences\n\
 	-a, --set_average			set the average branch length [double > 0, default: calculates averge]\n\
+	-m, --min_cluster_size			minimum predicted final cluster size [default: 0 = disabled]\n\
+	-x, --max_cluster_size			maximum predicted final cluster size [default: 0 = disabled]\n\
 	\n";
 
 void print_help_statement(){
@@ -51,7 +55,7 @@ void parse_options(int argc, char **argv, Options *opt){
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hfun:b:d:i:t:c:o:l:p:r:q:a:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hfun:b:d:i:t:c:o:l:p:r:q:a:m:x:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
@@ -123,6 +127,16 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%s", opt->root);
 				if (!success)
 					fprintf(stderr, "Invalid root file\n");
+				break;
+			case 'm':
+				success = sscanf(optarg, "%d", &(opt->min_cluster_size));
+				if (!success)
+					fprintf(stderr, "Could not read min cluster size\n");
+				break;
+			case 'x':
+				success = sscanf(optarg, "%d", &(opt->max_cluster_size));
+				if (!success)
+					fprintf(stderr, "Could not read max cluster size\n");
 		}
 	}
 }

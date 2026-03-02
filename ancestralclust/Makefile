@@ -12,7 +12,25 @@ CFLAGS = -w -fpermissive -std=gnu99
 DBGCFLAGS = -g -w -fpermissive -std=gnu99 -fopenmp
 LIBS = -lm -pthread -lz
 OPENMP = -fopenmp
-OPTIMIZATION = -O3
+OPTIMIZATION = -O2
+
+# Architecture-specific optimization (use: make NATIVE_ARCH=1)
+ifdef NATIVE_ARCH
+  ifeq ($(shell uname -m),arm64)
+    ARCH_FLAGS = -mcpu=native
+  else
+    ARCH_FLAGS = -march=native -mtune=native
+  endif
+else
+    ARCH_FLAGS =
+endif
+
+# Link-time optimization (use: make LTO=1)
+ifdef LTO
+    LTO_FLAGS = -flto
+else
+    LTO_FLAGS =
+endif
 
 #sources
 SOURCES = ancestralclust.c options.c math.c opt.c
@@ -26,9 +44,9 @@ TARGET = ancestralclust
 
 all: $(TARGET)
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) $(CFLAGS) $(OPENMP) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(KALIGN) $(WFA2) $(SOURCES) $(LIBS)
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(LTO_FLAGS) $(CFLAGS) $(OPENMP) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(KALIGN) $(WFA2) $(SOURCES) $(LIBS)
 debug: $(TARGET).c
-	$(CC) $(DBGCFLAGS) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(KALIGN) $(WFA2) $(SOURCES) $(LIBS)
+	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(KALIGN) $(WFA2) $(SOURCES) $(LIBS)
 
 clean:
 	$(RM) $(TARGET)

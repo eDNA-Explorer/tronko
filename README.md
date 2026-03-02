@@ -674,6 +674,110 @@ bash tests/test_golden_outputs.sh
 bash tests/benchmark_optimization.sh
 ```
 
+# ancestralclust Performance Optimizations
+
+This section documents performance optimizations applied to `ancestralclust` (the initial clustering step used by `tronko-build`). All optimizations produce **byte-identical output** to the original code — no accuracy or behavioral changes.
+
+## Methodology
+
+### Golden Output Testing
+
+Optimizations are validated using a golden output regression framework. The original binary is run with deterministic settings (`-c 1`, NW mode) and outputs are saved as reference files. After each optimization, the modified binary is run on the same inputs and the cluster FASTA files are compared byte-for-byte.
+
+**Test configuration**: 1,466 Charadriiformes COI sequences, `-b 50 -r 100 -p 10 -c 1`, NW alignment mode. 14 output cluster files checked for sequence count and byte-identical content (28 checks total).
+
+**Test script**: `ancestralclust/test_consistency.sh`
+
+## Results
+
+### Benchmark: 10,000 CO1 sequences, 6 threads, WFA mode, kseq=500
+
+| Phase | Baseline | Optimized | Speedup |
+|-------|----------|-----------|---------|
+| Iter 1: Distance matrix | 86.4s | 85.2s | 1.3% |
+| Iter 1: Assignment (9,500 seqs) | 22.6s | 21.5s | **4.7%** |
+| Iter 2: Distance matrix | 94.9s | 94.2s | 0.8% |
+| **Total** | ~209s | ~205s | **~2%** |
+
+### Benchmark: 1,466 Charadriiformes, 6 threads, WFA mode, kseq=100
+
+| Phase | Baseline | Optimized | Speedup |
+|-------|----------|-----------|---------|
+| Distance matrix | 3.72s | 3.45s | 8% |
+| Tree + clustering | 4.07s | 3.78s | 8% |
+| Assignment | 0.44s | 0.41s | 8% |
+
+### Benchmark: 1,466 Charadriiformes, 1 thread, WFA mode, kseq=100
+
+| Phase | Baseline | Optimized | Speedup |
+|-------|----------|-----------|---------|
+| Distance matrix | 0.180s | 0.090s | **2x** |
+
+At scale (kseq=500), the distance matrix involves ~125,000 WFA pairwise alignments. Runtime is dominated by `wavefront_align()` inner loops — WFA2-lib is already heavily optimized (SIMD, O(ns) complexity). The structural optimizations reduce overhead around the WFA calls but cannot improve WFA itself.
+
+### Golden Output Verification
+
+All benchmarks verified with 28/28 golden output checks passing (byte-identical cluster files).
+
+## Optimization Details
+
+### 1. Nucleotide lookup table (`ancestralclust.c: encode_base`)
+
+The `switch(c)` nucleotide encoder in the inner CIGAR-to-JC distance loop was replaced with a 256-entry static lookup table. Eliminates branch mispredictions in the hot loop of `compute_JC_from_CIGAR`.
+
+### 2. Flat contiguous distance matrix
+
+Two allocation sites changed from N separate `calloc()` calls (one per row) to a single `calloc(dim*dim)` with row-pointer setup. Improves cache locality for the pairwise distance matrix access pattern and reduces allocator overhead.
+
+### 3. Balanced triangular thread partitioning
+
+The upper-triangle distance matrix computation was partitioned by column ranges, causing thread imbalance (column j requires j comparisons). Replaced with work-balanced partitioning using `sqrt(2 * k * total_work / T)` cutpoints so each thread gets equal work.
+
+### 4. Bubble sort → qsort
+
+Branch length sorting used O(N²) bubble sort with parallel array swaps. Replaced with `qsort()` using a struct-of-pairs pattern for O(N log N) sorting.
+
+### 5. O(N) tree diameter (`findLongestTipToTip`)
+
+The original implementation found the longest tip-to-tip path using O(N²) all-pairs LCA distance comparisons. Replaced with a single O(N) iterative post-order DFS that tracks the deepest leaf in each subtree and finds the diameter through each internal node.
+
+### 6. ML estimation malloc elimination
+
+`estimatenucparameters` calls `estimatebranchlengths` (6×) and `getlike_gamma` (indirectly), each of which allocated and freed `templike_nc`, `UFCnc`, and `statevector` arrays. Hoisted allocation to the outer function, passed pre-allocated buffers through the call chain, and freed once at the end.
+
+Additionally, `getlike_gamma` flattened `locloglike` from `double[numbase][NUMCAT]` to `double[numbase]` since `NUMCAT==1`.
+
+### 7. strlen caching in `fillInMat_avg`
+
+Pre-compute and cache `strlen()` results for cluster sequences in VLA arrays before the inner comparison loops, avoiding redundant length computations.
+
+### 8. Build flags: NATIVE_ARCH and LTO
+
+The Makefile supports optional architecture-specific tuning and link-time optimization:
+
+```bash
+# Standard build
+make
+
+# With native CPU tuning and link-time optimization
+make NATIVE_ARCH=1 LTO=1
+```
+
+`NATIVE_ARCH=1` enables `-mcpu=native` on ARM64 or `-march=native -mtune=native` on x86. `LTO=1` enables `-flto` for cross-file inlining (particularly beneficial for WFA2 library calls).
+
+## Reproducing
+
+```bash
+# Build
+cd ancestralclust && make clean && make
+
+# Verify correctness (28 byte-identical checks)
+bash test_consistency.sh
+
+# Benchmark (requires input FASTA)
+bash benchmark.sh <input.fasta> [threads] [label]
+```
+
 # Performance
 
 We performed a leave-one-species-out test comparing Tronko (with LCA cut-offs for the score of 0, 5, 10, 15, and 20 with Needleman-Wunsch alignment) to kraken2, metaphlan2, and MEGAN for 1,467 COI sequences from 253 species from the order Charadriiformes using 150bp x 2 paired-end sequences and 150bp and 300bp single-end sequences using 0, 1, and 2% error/polymorphism.
