@@ -41,7 +41,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-v, compatible only with -y, partition using minimum number of leaf nodes [can't use with -s, use with -f]\n\
 	-f [INT], don't partition less than the minimum number of leaf nodes [can't use with -s, use with -v, use only with -y]\n\
 	-g, don't flag missing data\n\
-	-c, [INT] Number of FAMSA threads to use (0 means use all threads) [default: 1]\n\
+	-c, [INT] Number of FAMSA threads to use (0 means auto-detect) [default: 0 (auto)]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\

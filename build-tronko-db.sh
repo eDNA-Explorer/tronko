@@ -207,9 +207,10 @@ build_cluster_tree() {
     local n_seqs
     n_seqs=$(grep -c '^>' "$cluster_fasta")
 
-    # Deduplicate sequences by header (VeryFastTree requires unique names)
+    # Deduplicate sequences by VeryFastTree-parsed name (truncated at first space or ':')
+    # Also replace ':' with '_' in headers to prevent VeryFastTree name truncation
     local dedup_fasta="$outdir/${cluster_id}_dedup.fasta"
-    awk '/^>/{h=$0; if(seen[h]++){next} p=1; print; next} p{print} /^>/{p=0}' "$cluster_fasta" > "$dedup_fasta"
+    awk '/^>/{gsub(/:/, "_"); split($0,a," "); h=a[1]; if(seen[h]++){p=0; next} p=1; print; next} p{print}' "$cluster_fasta" > "$dedup_fasta"
     local n_dedup
     n_dedup=$(grep -c '^>' "$dedup_fasta")
     if [[ "$n_dedup" -ne "$n_seqs" ]]; then
@@ -304,9 +305,9 @@ for cluster_fasta in "$AC_DIR"/*.fasta; do
         continue
     fi
 
-    # Copy taxonomy (deduplicated to match FASTA dedup)
+    # Copy taxonomy (deduplicated + ':' replaced with '_' to match FASTA dedup)
     if [[ -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
-        awk -F'\t' '!seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
+        awk -F'\t' '{gsub(/:/, "_", $1)} !seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
     fi
 done
 

@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <sys/wait.h>
 #include "global.h"
 #include "opt.h"
 #include "options.h"
@@ -25,7 +27,7 @@ struct node **treeArr;
 int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 char **nodeIDs;
 char ***nodeIDsArr;
-int root,tip,comma=0; /*globals used to read in the tree*/
+__thread int root,tip,comma=0; /*globals used to read in the tree*/
 double Logfactorial[MAXNUMBEROFINDINSPECIES];
 double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
 double LRVECnc[4][4], RRVECnc[4][4], RRVALnc[4], PMATnc[2][4][5];
@@ -49,6 +51,8 @@ int *nodesToCut;
 int *nodesToCutMinVar;
 node **treeArr;
 
+static pthread_mutex_t mastermap_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t spscore_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*This function calculates the number of  desdencents of each node in the tree stored in tree[node].nd*/
 int get_number_descendantsArr(int node, struct masterArr *m){
@@ -367,13 +371,13 @@ char* readNewickFile( FILE *file){
 	buffer[bytesRead] = '\0';
 	return buffer;
 }
-int *findLeavesOfMinVarArr(int node, int *leafNodeList, int size, struct masterArr *m){
+int *findLeavesOfMinVarArr(int node, int *leafNodeList, int size, struct masterArr *m, int local_minVarNode){
 	if (node==-1){ return leafNodeList; }
 	int child0 = m->tree[node].up[0];
 	int child1 = m->tree[node].up[1];
 	int i=0;
 	int currentPos=-1;
-	if ( node == minVarNode ){ return leafNodeList; }
+	if ( node == local_minVarNode ){ return leafNodeList; }
 	if (child0 ==-1 && child1 == -1){
 		for(i=size-1;i>=0;i--){
 			if (leafNodeList[i] == -1){
@@ -383,8 +387,8 @@ int *findLeavesOfMinVarArr(int node, int *leafNodeList, int size, struct masterA
 		leafNodeList[currentPos]=node;
 		return leafNodeList;
 	}
-	findLeavesOfMinVarArr(child0,leafNodeList,size,m);
-	findLeavesOfMinVarArr(child1,leafNodeList,size,m);
+	findLeavesOfMinVarArr(child0,leafNodeList,size,m,local_minVarNode);
+	findLeavesOfMinVarArr(child1,leafNodeList,size,m,local_minVarNode);
 	return leafNodeList;
 }
 char *removeDashArr(int *sequenceWithDash,int length, char *sequenceWithoutDash){
@@ -565,65 +569,354 @@ void exportTreeToNewick(struct masterArr* m, const char* filename){
 	fprintf(file, ";\n"); // Newick format ends with a semicolon
 	fclose(file);
 }
-void findMinVarianceArr(int node, int size, struct masterArr *m){
+void findMinVarianceArr(int node, int size, struct masterArr *m, double *out_minVariance, int *out_minVarNode){
 	if (node==-1){ return; }
 	int child0 = m->tree[node].up[0];
 	int child1 = m->tree[node].up[1];
 	int parent = m->tree[node].down;
 	int i=0;
 	if ( parent == -1 ){
-		findMinVarianceArr(child0,size,m);
-		findMinVarianceArr(child1,size,m);
+		findMinVarianceArr(child0,size,m,out_minVariance,out_minVarNode);
+		findMinVarianceArr(child1,size,m,out_minVariance,out_minVarNode);
 		return;
 	}
 	if (child0 == -1 ){ return; }
-	if (child1 == -1 ){ return; }	
+	if (child1 == -1 ){ return; }
 	int num_children0 = m->tree[child0].nd;
 	int num_children1 = m->tree[child1].nd;
 	int num_ancestors = size-num_children1-num_children0;
 	double mean = (double)(num_children0 + num_children1 + num_ancestors )/3;
 	double variance = (double)((num_ancestors-mean)*(num_ancestors-mean) + (num_children0-mean)*(num_children0-mean) + (num_children1-mean)*(num_children1-mean))/3;
-	if (minVariance > variance){
-		minVariance = variance;
-		minVarNode = node;
+	if (*out_minVariance > variance){
+		*out_minVariance = variance;
+		*out_minVarNode = node;
 	}
-	findMinVarianceArr(child0,size,m);
-	findMinVarianceArr(child1,size,m);
+	findMinVarianceArr(child0,size,m,out_minVariance,out_minVarNode);
+	findMinVarianceArr(child1,size,m,out_minVariance,out_minVarNode);
 	return;
+}
+/* Unwrap multi-line FASTA sequences in-place (replaces gsed call) */
+static void unwrap_fasta_inplace(const char *filepath){
+	FILE *fp = fopen(filepath, "r");
+	if (!fp){ fprintf(stderr, "unwrap_fasta_inplace: cannot open %s\n", filepath); return; }
+	/* Read entire file into memory */
+	fseek(fp, 0, SEEK_END);
+	long fsize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	char *data = (char *)malloc(fsize + 1);
+	if (!data){ fclose(fp); return; }
+	fsize = fread(data, 1, fsize, fp);
+	data[fsize] = '\0';
+	fclose(fp);
+	/* Write back with continuation lines joined */
+	fp = fopen(filepath, "w");
+	if (!fp){ free(data); return; }
+	int at_line_start = 1;
+	long i;
+	for (i = 0; i < fsize; i++){
+		if (data[i] == '\n'){
+			/* Check if next line starts with '>' or is EOF */
+			if (i + 1 >= fsize || data[i + 1] == '>'){
+				fputc('\n', fp);
+				at_line_start = 1;
+			} else {
+				/* continuation line: skip the newline to join */
+				at_line_start = 0;
+			}
+		} else {
+			fputc(data[i], fp);
+			at_line_start = 0;
+		}
+	}
+	fclose(fp);
+	free(data);
+}
+/* Convert FASTA to PHYLIP format (replaces fasta2phyml.pl) */
+static void fasta_to_phylip(const char *fasta_path){
+	FILE *fp = fopen(fasta_path, "r");
+	if (!fp){ fprintf(stderr, "fasta_to_phylip: cannot open %s\n", fasta_path); return; }
+	/* Build output filename: split on first '.' and append .phymlAln */
+	char outpath[BUFFER_SIZE];
+	strncpy(outpath, fasta_path, BUFFER_SIZE - 1);
+	outpath[BUFFER_SIZE - 1] = '\0';
+	char *dot = strchr(outpath, '.');
+	if (dot) *dot = '\0';
+	strncat(outpath, ".phymlAln", BUFFER_SIZE - strlen(outpath) - 1);
+	/* Read all sequences */
+	int capacity = 1024;
+	int nseqs = 0;
+	char **names = (char **)malloc(capacity * sizeof(char *));
+	char **seqs = (char **)malloc(capacity * sizeof(char *));
+	int maxNameLen = 0, maxSeqLen = 0;
+	char line[65536];
+	char *curName = NULL;
+	char *curSeq = NULL;
+	int curSeqLen = 0, curSeqCap = 0;
+	while (fgets(line, sizeof(line), fp)){
+		int len = strlen(line);
+		while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+		if (line[0] == '>'){
+			if (curName){
+				if (nseqs >= capacity){ capacity *= 2; names = realloc(names, capacity * sizeof(char *)); seqs = realloc(seqs, capacity * sizeof(char *)); }
+				names[nseqs] = curName;
+				curSeq[curSeqLen] = '\0';
+				seqs[nseqs] = curSeq;
+				if (curSeqLen > maxSeqLen) maxSeqLen = curSeqLen;
+				nseqs++;
+			}
+			int nameLen = len - 1;
+			curName = (char *)malloc(nameLen + 1);
+			memcpy(curName, line + 1, nameLen);
+			curName[nameLen] = '\0';
+			if (nameLen > maxNameLen) maxNameLen = nameLen;
+			curSeqCap = 4096;
+			curSeqLen = 0;
+			curSeq = (char *)malloc(curSeqCap);
+		} else {
+			if (curSeq){
+				while (curSeqLen + len + 1 > curSeqCap){ curSeqCap *= 2; curSeq = realloc(curSeq, curSeqCap); }
+				memcpy(curSeq + curSeqLen, line, len);
+				curSeqLen += len;
+			}
+		}
+	}
+	if (curName){
+		if (nseqs >= capacity){ capacity *= 2; names = realloc(names, capacity * sizeof(char *)); seqs = realloc(seqs, capacity * sizeof(char *)); }
+		names[nseqs] = curName;
+		curSeq[curSeqLen] = '\0';
+		seqs[nseqs] = curSeq;
+		if (curSeqLen > maxSeqLen) maxSeqLen = curSeqLen;
+		nseqs++;
+	}
+	fclose(fp);
+	/* Write PHYLIP format */
+	FILE *out = fopen(outpath, "w");
+	if (!out){ fprintf(stderr, "fasta_to_phylip: cannot open %s for writing\n", outpath); goto cleanup; }
+	fprintf(out, "  %d %d\n", nseqs, maxSeqLen);
+	int i, j;
+	for (i = 0; i < nseqs; i++){
+		fputs(names[i], out);
+		int padName = 4 + maxNameLen - (int)strlen(names[i]);
+		for (j = 0; j < padName; j++) fputc(' ', out);
+		fputs(seqs[i], out);
+		int padSeq = maxSeqLen - (int)strlen(seqs[i]);
+		for (j = 0; j < padSeq; j++) fputc('-', out);
+		fputc('\n', out);
+	}
+	fclose(out);
+cleanup:
+	for (i = 0; i < nseqs; i++){ free(names[i]); free(seqs[i]); }
+	free(names);
+	free(seqs);
+}
+/* Copy a file using native C I/O (replaces system("cp ...")) */
+static void copy_file(const char *src, const char *dst){
+	FILE *in = fopen(src, "rb");
+	if (!in){ fprintf(stderr, "copy_file: cannot open %s\n", src); return; }
+	FILE *out = fopen(dst, "wb");
+	if (!out){ fclose(in); fprintf(stderr, "copy_file: cannot open %s for writing\n", dst); return; }
+	char buf[8192];
+	size_t n;
+	while ((n = fread(buf, 1, sizeof(buf), in)) > 0){
+		fwrite(buf, 1, n, out);
+	}
+	fclose(in);
+	fclose(out);
+}
+/* Get number of available CPU cores */
+static int get_num_cores(void){
+	long n = sysconf(_SC_NPROCESSORS_ONLN);
+	return (n > 0) ? (int)n : 1;
+}
+
+/* Run the external tool pipeline for one partition:
+   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/VeryFastTree -> [nw_reroot]
+   Returns 0 on success. */
+static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
+	int status;
+	char buf[BUFFER_SIZE];
+	char buf2[BUFFER_SIZE];
+	char buf3[BUFFER_SIZE];
+	char famsa_threads_str[BUFFER_SIZE];
+
+	/* Set thread limits for child processes */
+	if (pipeline_threads > 0){
+		char omp_str[32];
+		snprintf(omp_str, sizeof(omp_str), "%d", pipeline_threads);
+		setenv("OMP_NUM_THREADS", omp_str, 1);
+	}
+
+	/* Step 1: FAMSA alignment */
+	if (opt.prefix[0] == '\0'){
+		snprintf(buf2,BUFFER_SIZE,"%s/partition%d.fasta",opt.partitions_directory,which);
+		snprintf(buf3,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+	}else{
+		snprintf(buf2,BUFFER_SIZE,"%s/%spartition%d.fasta",opt.partitions_directory,opt.prefix,which);
+		snprintf(buf3,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+	}
+	int famsa_t = (opt.famsa_threads > 0) ? opt.famsa_threads : pipeline_threads;
+	if (famsa_t <= 0) famsa_t = 1;
+	snprintf(famsa_threads_str,BUFFER_SIZE,"%d",famsa_t);
+	{
+		pid_t pid = fork();
+		if (pid == -1){
+			fprintf(stderr, "can't fork for famsa, error occurred\n");
+			return -1;
+		}else if (pid == 0){
+			char *arguments[] = {"famsa","-t",famsa_threads_str,buf2,buf3,NULL};
+			execvp("famsa",arguments);
+			_exit(127);
+		}else{
+			waitpid(pid, &status, 0);
+		}
+	}
+
+	/* Step 2: Unwrap FASTA */
+	if (opt.prefix[0] == '\0'){
+		snprintf(buf,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+	}else{
+		snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+	}
+	unwrap_fasta_inplace(buf);
+
+	/* Step 3: FASTA to PHYLIP conversion (RAxML only) */
+	if (opt.fasttree == 0){
+		fasta_to_phylip(buf);
+	}
+
+	/* Step 4: Tree inference */
+	if (opt.fasttree == 0){
+		/* RAxML path */
+		if (opt.prefix[0] == '\0'){
+			snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n partition%d -p 1234 -T %d -s %s/partition%d_MSA.phymlAln",
+				opt.partitions_directory,which,pipeline_threads > 0 ? pipeline_threads : 8,opt.partitions_directory,which);
+		}else{
+			snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n %spartition%d -p 1234 -T %d -s %s/%spartition%d_MSA.phymlAln",
+				opt.partitions_directory,opt.prefix,which,pipeline_threads > 0 ? pipeline_threads : 8,opt.partitions_directory,opt.prefix,which);
+		}
+		status = system(buf);
+	}else{
+		/* VeryFastTree path — fork/exec with stdout redirect instead of system() */
+		char vft_input[BUFFER_SIZE], vft_output[BUFFER_SIZE], vft_threads[32];
+		snprintf(vft_threads, sizeof(vft_threads), "%d",
+			pipeline_threads > 0 ? pipeline_threads : get_num_cores());
+		if (opt.prefix[0] == '\0'){
+			snprintf(vft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
+		}else{
+			snprintf(vft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
+		}
+		pid_t vft_pid = fork();
+		if (vft_pid == -1){
+			fprintf(stderr, "can't fork for VeryFastTree\n");
+			return -1;
+		}else if (vft_pid == 0){
+			int fd = open(vft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
+			char *args[] = {"VeryFastTree", "-gtr", "-gamma", "-nt", "-threads", vft_threads, vft_input, NULL};
+			execvp("VeryFastTree", args);
+			fprintf(stderr, "execvp VeryFastTree failed\n");
+			_exit(127);
+		}
+		waitpid(vft_pid, &status, 0);
+	}
+
+	/* Step 5: Reroot tree (RAxML only) */
+	if (opt.fasttree == 0){
+		char buf4[BUFFER_SIZE];
+		char buf5[BUFFER_SIZE];
+		if (opt.prefix[0] == '\0'){
+			snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d",opt.partitions_directory,which);
+			snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
+		}else{
+			snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d",opt.partitions_directory,opt.prefix,which);
+			snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
+		}
+		pid_t pid = fork();
+		if (pid == -1){
+			fprintf(stderr, "can't fork for nw_reroot, error occurred\n");
+			return -1;
+		}else if (pid == 0){
+			char *arguments[] = {"nw_reroot",buf4,NULL};
+			int fd = open(buf5, O_WRONLY | O_CREAT, 0777);
+			if (fd == -1){
+				perror(buf5);
+				_exit(-1);
+			}
+			fclose(stdout);
+			dup2(fd, STDOUT_FILENO);
+			close(fd);
+			execvp(arguments[0],arguments);
+			_exit(127);
+		}else{
+			waitpid(pid, &status, 0);
+		}
+	}
+
+	return 0;
+}
+
+/* Remove partition files using unlink (replaces system("rm ...") calls) */
+static void remove_partition_files(const char *partitions_directory, const char *tempfilename){
+	char path[BUFFER_SIZE];
+	snprintf(path, BUFFER_SIZE, "%s/%s_MSA.fasta", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/%s_taxonomy.txt", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_bestTree.%s", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_bestTree.%s.reroot", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/%s_MSA.phymlAln", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/%s_MSA.phymlAln.reduced", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_log.%s", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_result.%s", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_info.%s", partitions_directory, tempfilename);
+	unlink(path);
+	snprintf(path, BUFFER_SIZE, "%s/RAxML_parsimonyTree.%s", partitions_directory, tempfilename);
+	unlink(path);
 }
 void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
 	int i,j,k,count;
 	char buffer[BUFFER_SIZE];
 	int *leaves;
 	gzFile partition;
-	FILE *partitionTree;
-	minVariance = 99999999999999;
-	findMinVarianceArr(m->root,m->numspec,m);
-	int *partition1 = (int *)malloc(sizeof(int)*m->tree[m->tree[minVarNode].up[0]].nd);
-	for(i=0; i<m->tree[m->tree[minVarNode].up[0]].nd; i++){
+	double local_minVariance = 99999999999999;
+	int local_minVarNode = -1;
+	findMinVarianceArr(m->root,m->numspec,m,&local_minVariance,&local_minVarNode);
+	int *partition1 = (int *)malloc(sizeof(int)*m->tree[m->tree[local_minVarNode].up[0]].nd);
+	for(i=0; i<m->tree[m->tree[local_minVarNode].up[0]].nd; i++){
 		partition1[i]=-1;
 	}
-	int *partition2 = (int *)malloc(sizeof(int)*m->tree[m->tree[minVarNode].up[1]].nd);
-	for(i=0; i<m->tree[m->tree[minVarNode].up[1]].nd; i++){
+	int *partition2 = (int *)malloc(sizeof(int)*m->tree[m->tree[local_minVarNode].up[1]].nd);
+	for(i=0; i<m->tree[m->tree[local_minVarNode].up[1]].nd; i++){
 		partition2[i]=-1;
 	}
-	int *partition3 = (int *)malloc(sizeof(int)*(m->tree[m->root].nd-m->tree[minVarNode].nd));
-	for(i=0; i<(m->tree[m->root].nd-m->tree[minVarNode].nd); i++){
+	int *partition3 = (int *)malloc(sizeof(int)*(m->tree[m->root].nd-m->tree[local_minVarNode].nd));
+	for(i=0; i<(m->tree[m->root].nd-m->tree[local_minVarNode].nd); i++){
 		partition3[i]=-1;
 	}
-	partition1 = findLeavesOfMinVarArr(m->tree[minVarNode].up[0],partition1,m->tree[m->tree[minVarNode].up[0]].nd,m);
-	partition2 = findLeavesOfMinVarArr(m->tree[minVarNode].up[1],partition2,m->tree[m->tree[minVarNode].up[1]].nd,m);
-	partition3 = findLeavesOfMinVarArr(m->root,partition3,(m->tree[m->root].nd-m->tree[minVarNode].nd),m);
+	partition1 = findLeavesOfMinVarArr(m->tree[local_minVarNode].up[0],partition1,m->tree[m->tree[local_minVarNode].up[0]].nd,m,local_minVarNode);
+	partition2 = findLeavesOfMinVarArr(m->tree[local_minVarNode].up[1],partition2,m->tree[m->tree[local_minVarNode].up[1]].nd,m,local_minVarNode);
+	partition3 = findLeavesOfMinVarArr(m->root,partition3,(m->tree[m->root].nd-m->tree[local_minVarNode].nd),m,local_minVarNode);
 	int *partitionSizes = (int *)malloc(sizeof(int)*3);
-	partitionSizes[0]=m->tree[m->tree[minVarNode].up[0]].nd;
-	partitionSizes[1]=m->tree[m->tree[minVarNode].up[1]].nd;
-	partitionSizes[2]=(m->tree[m->root].nd-m->tree[minVarNode].nd);
+	partitionSizes[0]=m->tree[m->tree[local_minVarNode].up[0]].nd;
+	partitionSizes[1]=m->tree[m->tree[local_minVarNode].up[1]].nd;
+	partitionSizes[2]=(m->tree[m->root].nd-m->tree[local_minVarNode].nd);
 	if ( partitionSizes[0] < 4 || partitionSizes[1] < 4 || partitionSizes[2] < 4){
+		pthread_mutex_lock(&spscore_mutex);
 		SPscoreArr[rootCount]=1;
+		pthread_mutex_unlock(&spscore_mutex);
 		return;
 	}
 	int partitionCount=-1;
 	int freeSlots=0;
+	pthread_mutex_lock(&spscore_mutex);
 	for(i=MAX_NUMBEROFROOTS-1;i>=0;i--){
 		if(SPscoreArr[i]==-1){
 			partitionCount=i;
@@ -631,12 +924,14 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		}
 	}
 	if (freeSlots < 3){
+		pthread_mutex_unlock(&spscore_mutex);
 		fprintf(stderr, "ERROR: partition slot limit reached (%d). Too many partitions for this dataset/threshold combination.\n", MAX_NUMBEROFROOTS);
 		exit(EXIT_FAILURE);
 	}
 	SPscoreArr[partitionCount]=1;
 	SPscoreArr[partitionCount+1]=1;
 	SPscoreArr[partitionCount+2]=1;
+	pthread_mutex_unlock(&spscore_mutex);
 	partitionCount++;
 	if (partitionCount > opt.restart){
 		printPartitionsToFileArr(partition1,partitionSizes[0],partition2,partitionSizes[1],partition3,partitionSizes[2],rootCount,partitionCount,opt,m);
@@ -659,152 +954,51 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	free(m->names);
 	free(m->tree);
 	free(m->filename);
+	pthread_mutex_lock(&mastermap_mutex);
 	hashmap_remove(&mastermap,m->index);
+	pthread_mutex_unlock(&mastermap_mutex);
 	free(m);
 	rootCount=partitionCount;
-	//printf("rootCount=%d\n",rootCount);
 	int which,status;
 	char buf[BUFFER_SIZE];
-	for(which=rootCount;which<rootCount+3;which++){
+	/* Fork all 3 partition pipelines concurrently */
+	int total_cores = get_num_cores();
+	int pipeline_threads = total_cores / 3;
+	if (pipeline_threads < 1) pipeline_threads = 1;
+	pid_t pipeline_pids[3];
+	int p;
+	for(p = 0; p < 3; p++){
+		which = rootCount + p;
 		if (rootCount > opt.restart){
-			pid_t pid;
-			int ret = 1;
-			char buf3[BUFFER_SIZE];	
-			char buf2[BUFFER_SIZE];
-			char famsa_threads[BUFFER_SIZE];
-			if ( opt.prefix[0] == '\0' ){
-				snprintf(buf2,BUFFER_SIZE,"%s/partition%d.fasta",opt.partitions_directory,which);
-				snprintf(buf3,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			}else{
-				snprintf(buf2,BUFFER_SIZE,"%s/%spartition%d.fasta",opt.partitions_directory,opt.prefix,which);
-				snprintf(buf3,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+			pipeline_pids[p] = fork();
+			if (pipeline_pids[p] == -1){
+				fprintf(stderr, "can't fork pipeline for partition %d\n", which);
+			}else if (pipeline_pids[p] == 0){
+				/* Child process: run the entire pipeline */
+				int rc = run_partition_pipeline(which, opt, pipeline_threads);
+				_exit(rc);
 			}
-			char dasht[BUFFER_SIZE];
-			snprintf(dasht,BUFFER_SIZE,"-t");
-			snprintf(famsa_threads,BUFFER_SIZE,"%d",opt.famsa_threads);
-			pid=fork();
-			if (pid==-1){
-			//pid==-1 means error occured
-				printf("can't fork, error occured\n");
-			}else if (pid==0){
-				//printf("child process, pid = %u\n",getpid());
-				char *arguments[] = {"famsa",dasht,famsa_threads,buf2,buf3,NULL};
-				printf("ARGUMENTS: %s %s %s %s\n",arguments[0],arguments[1],arguments[2],arguments[3],arguments[4]);
-				execvp("famsa",arguments);
-				exit(0);
-			}else{
-				//printf("parent process, pid = %u\n",getppid());
-				if (waitpid(pid, &status, 0) > 0){
-					//if (WIFEXITED(status) && !WEXITSTATUS(status))
-					//printf("program execution successful\n");
-				}else if (WIFEXITED(status) && WEXITSTATUS(status)) {
-					if (WEXITSTATUS(status) == 127) {
-						printf("execv failed\n");
-					}else printf("program terminated normally but returned a non-zero status\n");
-				}else printf("program didn't terminate normally\n");
-					/*}else{
-						printf("waitpid() failed\n");
-					}*/
-			}
-			if ( opt.prefix[0] == '\0' ){
-				snprintf(buf,BUFFER_SIZE,"gsed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			}else{
-				snprintf(buf,BUFFER_SIZE,"gsed -i ':a; $!N; /^>/!s/\\n\\([^>]\\)/\\1/; ta; P; D' %s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-			}
-			status = system(buf);
-			if (opt.prefix[0] == '\0' ){
-				snprintf(buf,BUFFER_SIZE,"fasta2phyml.pl %s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			}else{
-				snprintf(buf,BUFFER_SIZE,"fasta2phyml.pl %s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-			}
-			status = system(buf);
-			if (opt.prefix[0] == '\0' ){
-				if ( opt.fasttree==0 ){
-					snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n partition%d -p 1234 -T 8 -s %s/partition%d_MSA.phymlAln",opt.partitions_directory,which,opt.partitions_directory,which);
-				}else{
-					snprintf(buf,BUFFER_SIZE,"VeryFastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
-				}
-			}else{
-				if ( opt.fasttree==0 ){
-					snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n %spartition%d -p 1234 -T 8 -s %s/%spartition%d_MSA.phymlAln",opt.partitions_directory,opt.prefix,which,opt.partitions_directory,opt.prefix,which);
-				}else{
-					snprintf(buf,BUFFER_SIZE,"VeryFastTree -gtr -gamma -nt %s/partition%d_MSA.fasta > %s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which,opt.partitions_directory,which); 
-				}
-			}
-			status = system(buf);
-			char buf4[BUFFER_SIZE];
-			char buf5[BUFFER_SIZE];
-			if ( opt.prefix[0] == '\0' ){
-				snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d",opt.partitions_directory,which);
-				snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
-			}else{
-				snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d",opt.partitions_directory,opt.prefix,which);
-				snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
-			}
-			pid=0;
-			//int pipefd[2];
-			//pipe(pipefd);
-			pid=fork();
-			if (pid==-1){
-				printf("can't fork, error occured\n");
-			}else if (pid==0){	
-				//printf("child process reroot, pid = %u\n",getpid());
-				//int reroot_file;
-				//reroot_file = open(buf5, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
-				//dup2(reroot_file,1);
-				//close(reroot_file);
-				/*char *arguments[3];
-				arguments[0]="nw_reroot";
-				arguments[1]=buf4;
-				arguments[2]=NULL;
-				ret=execvp("nw_reroot",arguments);
-				exit(0);*/
-				//close(pipefd[0]);
-				//dup2(pipefd[1], STDOUT_FILENO);
-				int fd;
-				char *arguments[] = {"nw_reroot",buf4,NULL};
-				fd = open(buf5, O_WRONLY | O_CREAT, 0777 );
-				if (fd == -1 ){
-					perror(buf5);
-					printf("system call failure\n");
-					exit(-1);
-				}
-				fclose(stdout);
-				dup2( fd, STDOUT_FILENO);
-				close(fd);
-				execvp(arguments[0],arguments);
-				exit(0);
-			}else{
-				//printf("parent process, pid = %u\n",getppid());
-				if (waitpid(pid, &status, 0) > 0){
-					if (WIFEXITED(status) && !WEXITSTATUS(status)){
-						//printf("program execution successful\n");
-					}else if (WIFEXITED(status) && WEXITSTATUS(status)) {
-						if (WEXITSTATUS(status) == 127) {
-							printf("execv failed\n");
-						}else printf("program terminated normally but returned a non-zero status\n");
-					}else printf("program didn't terminate normally\n");
-				}else{
-					printf("waitpid() failed\n");
-				}
-			}
-			/*close(pipefd[1]);
-			fcntl(pipefd[0], F_SETFL, fcntl(pipefd[0], F_GETFL) | O_NONBLOCK );
-			char* child_process_output_fd = pipefd[0];
-			FILE *reroot_file = fopen(buf5, "w");
-			if (reroot_file != NULL ){
-				fputs(child_process_output_fd, reroot_file);
-				fclose(reroot_file);
-			}*/
+		}else{
+			pipeline_pids[p] = -1;
 		}
+	}
+	/* Wait for all 3 pipelines to complete */
+	for(p = 0; p < 3; p++){
+		if (pipeline_pids[p] > 0){
+			waitpid(pipeline_pids[p], &status, 0);
+		}
+	}
+	/* Sequential loading/parsing/scoring of the 3 partitions */
+	for(which=rootCount;which<rootCount+3;which++){
 		if ( opt.prefix[0] == '\0' ){
 			snprintf(buf,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
 		}else{
 			snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
 		}
 		printf("buffer: %s\n",buf);
-		struct masterArr *t=malloc(sizeof(masterArr));;
-		//itoa(which-1,t->index,10);
+		struct masterArr *t=malloc(sizeof(masterArr));
+		t->tree = NULL;
+		t->treeCapacity = 0;
 		t->filename = (malloc)(300*sizeof(char));
 		for(i=0; i<300; i++){
 			t->filename[i] = '\0';
@@ -837,17 +1031,14 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		strcpy(t->filename,buf);
 		if ( opt.fasttree == 0 ){
 			allocateTreeArrMemory(t,max_nodename);
-			if (NULL==(partitionTree=fopen(buf,"r"))){ puts("Cannot open partition tree file!"); exit(-1);}
 			comma=0;
 			tip=0;
-			t->root=getcladeArr(partitionTree,t,max_nodename)-1;
-			fclose(partitionTree);
+			t->root=getcladeArr_fast(buf,t,max_nodename)-1;
 			t->tree[t->root].down = -1;
 		}
 		if ( opt.fasttree == 1 ){
 			t->numspec = 0;
 			t->numNodes = 0;
-			//const char* newick = "((A,B,C),(D,E));";
 			FILE *fasttreefile = fopen(buf,"r");
 			if (fasttreefile == NULL ){
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
@@ -855,7 +1046,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			}
 			char* newick = readNewickFile(fasttreefile);
 			fclose(fasttreefile);
-			srand(time(NULL)); // Seed random number generator
+			srand(time(NULL));
 			parseNewick(t, newick, max_nodename);
 			free(newick);
 			makeBinary(t,max_nodename);
@@ -871,14 +1062,11 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				newNode->bl = 0.0;
 			}
 			for(idx=0; idx<2*t->numspec-1; idx++){
-				//t->tree[idx].name = malloc((max_nodename+1)*sizeof(char));
 				memset(t->tree[idx].name, '\0', max_nodename+1);
 			}
-			if (NULL==(partitionTree=fopen(buf,"r"))){ puts("Cannot open partition tree file!"); exit(-1);}
 			comma=0;
 			tip=0;
-			t->root=getcladeArr(partitionTree,t,max_nodename)-1;
-			fclose(partitionTree);
+			t->root=getcladeArr_fast(buf,t,max_nodename)-1;
 			t->tree[t->root].down = -1;
 		}
 		get_number_descendantsArr(t->root,t);
@@ -900,31 +1088,43 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		}
 		assignTaxonomyToLeavesArr(buf,t,max_nodename,max_lineTaxonomy);
 		{ int _tax_out[2]; getTaxonomyArr(t->root,t,_tax_out); }
+		pthread_mutex_lock(&mastermap_mutex);
 		hashmap_put(&mastermap, t->index, t);
+		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
 		if ( opt.use_spscore==1 && opt.use_min_leaves==0){
 				initialSPscore = calculateSPArr(t);
-				if (initialSPscore < /*0.05*/opt.sp_score){
+				if (initialSPscore < opt.sp_score){
+					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
+					pthread_mutex_unlock(&spscore_mutex);
 					createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 				}else{
+					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=1;
+					pthread_mutex_unlock(&spscore_mutex);
 				}
 		}
 		if ( opt.use_spscore==0 && opt.use_min_leaves==1  ){
 			if ( t->numspec > opt.min_leaves ){
+				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=0;
+				pthread_mutex_unlock(&spscore_mutex);
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
+				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=1;
+				pthread_mutex_unlock(&spscore_mutex);
 			}
 		}
 		if ( opt.use_spscore==1 && opt.use_min_leaves==1 ){
 			initialSPscore = calculateSPArr(t);
-			if (initialSPscore < /*0.05*/opt.sp_score && t->numspec > opt.min_leaves){
+			if (initialSPscore < opt.sp_score && t->numspec > opt.min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
+				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=1;
+				pthread_mutex_unlock(&spscore_mutex);
 			}
 		}
 	}
@@ -994,12 +1194,19 @@ void populate(int* nodes, char** taxnames, int node){
 }*/
 int createNode( struct masterArr* m, int max_nodename){
 	int newIndex = m->numNodes++;
-	node* newTree = realloc(m->tree, m->numNodes * sizeof(node));
-	if ( newTree == NULL ){
-		fprintf(stderr, "Error: Memory allocation failed in createNode().\n");
-		exit(EXIT_FAILURE);
+	if (m->numNodes > m->treeCapacity){
+		/* Double capacity to amortize realloc cost and reduce pointer invalidation */
+		int newCap = m->treeCapacity * 2;
+		if (newCap < m->numNodes) newCap = m->numNodes;
+		if (newCap < 64) newCap = 64;
+		node* newTree = realloc(m->tree, newCap * sizeof(node));
+		if ( newTree == NULL ){
+			fprintf(stderr, "Error: Memory allocation failed in createNode().\n");
+			exit(EXIT_FAILURE);
+		}
+		m->tree = newTree;
+		m->treeCapacity = newCap;
 	}
-	m->tree = newTree;
 	node* newNode = &m->tree[newIndex];
 	//newNode->up[0] = -1;
 	//newNode->up[1] = -1;
@@ -1030,6 +1237,20 @@ void parseNewick( struct masterArr* m, const char* newick, int max_nodename ){
 	int current = -1;
 	int tipIndex = 0;
 	int parent = -1;
+	/* Pre-allocate tree capacity: count '(' and ',' to estimate nodes.
+	   Each '(' is an internal node, each ',' + 1 gives leaf count within a clade.
+	   Upper bound: 2 * (commas + 1) for a binary tree. Add 50% extra for polytomy resolution. */
+	{
+		int est_nodes = 0;
+		const char *q = newick;
+		while (*q){ if (*q == '(' || *q == ',') est_nodes++; q++; }
+		est_nodes = est_nodes * 3; /* generous overallocation for resolvePolytomy */
+		if (est_nodes < 64) est_nodes = 64;
+		if (m->tree) free(m->tree);
+		m->tree = malloc(est_nodes * sizeof(node));
+		m->treeCapacity = est_nodes;
+		m->numNodes = 0;
+	}
 	const char* p = newick;
 	while( *p ){
 		if ( *p == '(' ){
@@ -1216,7 +1437,7 @@ int main(int argc, char **argv){
 	opt.two_step = 0;
 	opt.number_of_partitions = 0;
 	opt.number_of_trees = 0;
-	opt.famsa_threads = 1;
+	opt.famsa_threads = 0; /* 0 = auto-detect in pipeline */
 	opt.remove_unused = 0;
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
@@ -1240,9 +1461,7 @@ int main(int argc, char **argv){
 		numberOfTrees=1;
 		struct masterArr *m = malloc(sizeof(masterArr));
 		m->tree = malloc(sizeof(node *));
-		//numspecArr = (int *)malloc(sizeof(int));
-		//numbaseArr = (int *)malloc(sizeof(int));
-		//rootArr = (int *)malloc(sizeof(int));
+		m->treeCapacity = 0;
 		int *specifications = (int*)malloc(3*sizeof(int));
 		specifications[0]=0;
 		specifications[1]=0;
@@ -1275,13 +1494,7 @@ int main(int argc, char **argv){
 		allocateTreeArrMemory(m,max_nodename);
 		comma=0;
 		tip=0;
-		FILE* treefile;
-		if (( treefile = fopen(opt.tree_file,"r")) == (FILE *) NULL){
-			fprintf(stderr,"*** tree file could not be opened: %s\n", opt.tree_file);
-			exit(-1);
-		}
-		m->root=getcladeArr(treefile,m,max_nodename)-1;
-		fclose(treefile);
+		m->root=getcladeArr_fast(opt.tree_file,m,max_nodename)-1;
 		m->tree[m->root].down = -1;
 		get_number_descendantsArr(m->root,m);
 		int child0 = m->tree[m->root].up[0];
@@ -1377,7 +1590,6 @@ int main(int argc, char **argv){
 		int max_numbase = specifications[2];
 		free(specifications);
 		gzFile partition;
-		FILE *partitionTree;
 		int status;
 		int partition_count = opt.number_of_partitions;
 		for(i=0; i<partition_count; i++){
@@ -1400,7 +1612,8 @@ int main(int argc, char **argv){
 		}*/
 		for(i=0; i<partition_count; i++){
 			struct masterArr *m = malloc(sizeof(masterArr));
-			//itoa(i,m->index,10);
+			m->tree = NULL;
+			m->treeCapacity = 0;
 			sprintf(m->index,"%d",i);
 			snprintf(buffer,BUFFER_SIZE,"%s/%s",opt.readdir,pf->msa_files[i]);
 			if ((partition=gzopen(buffer,"r"))==NULL){
@@ -1431,16 +1644,14 @@ int main(int argc, char **argv){
 			allocateTreeArrMemory(m,max_nodename);
 			snprintf(buffer,BUFFER_SIZE,"%s/%s",opt.readdir,pf->tree_files[i]);
 			strcpy(m->filename,buffer);
-			if (( partitionTree = fopen(buffer,"r")) == (FILE *) NULL){
-				fprintf(stderr, "*** tree file could not be opened: %s\n", buffer);
-				exit(-1);
-			}
 			if ( opt.fasttree == 1 ){
 				/* VeryFastTree can produce multifurcating trees.
 				   Use parseNewick+makeBinary to resolve polytomies,
-				   export the binary tree, then re-parse with getcladeArr. */
-				char* newick = readNewickFile(partitionTree);
-				fclose(partitionTree);
+				   export the binary tree, then re-parse with getcladeArr_fast. */
+				FILE *tmpTree = fopen(buffer, "r");
+				if (!tmpTree){ fprintf(stderr, "*** tree file could not be opened: %s\n", buffer); exit(-1); }
+				char* newick = readNewickFile(tmpTree);
+				fclose(tmpTree);
 				m->numspec = 0;
 				m->numNodes = 0;
 				srand(time(NULL));
@@ -1461,15 +1672,10 @@ int main(int argc, char **argv){
 				for(idx=0; idx<2*m->numspec-1; idx++){
 					memset(m->tree[idx].name, '\0', max_nodename+1);
 				}
-				if (( partitionTree = fopen(buffer,"r")) == (FILE *) NULL){
-					fprintf(stderr, "*** resolved tree could not be re-opened: %s\n", buffer);
-					exit(-1);
-				}
 			}
 			comma=0;
 			tip=0;
-			m->root=getcladeArr(partitionTree,m,max_nodename)-1;
-			fclose(partitionTree);
+			m->root=getcladeArr_fast(buffer,m,max_nodename)-1;
 			m->tree[m->root].down = -1;
 			get_number_descendantsArr(m->root,m);
 			int child0 = m->tree[m->root].up[0];
@@ -1552,38 +1758,7 @@ int main(int argc, char **argv){
 						}
 						if ( found == 0 ){
 							printf("removing %s...\n",tempfilename);
-							char partition_buffer2[BUFFER_SIZE];
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.fasta",opt.partitions_directory,tempfilename);
-							int status=0;
-							status=system(partition_buffer2);	
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_taxonomy.txt",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_bestTree.%s",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_bestTree.%s.reroot",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.phymlAln",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/%s_MSA.phymlAln.reduced",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_log.%s",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_result.%s",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_info.%s",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
-							snprintf(partition_buffer2,BUFFER_SIZE,"rm %s/RAxML_parsimonyTree.%s",opt.partitions_directory,tempfilename);
-							status=0;
-							status=system(partition_buffer2);
+							remove_partition_files(opt.partitions_directory, tempfilename);
 						}
 						free(tempfilename);
 						free(tempfilename2);
@@ -1643,19 +1818,20 @@ int main(int argc, char **argv){
         				strncpy(directory, final->filename, directory_length);
         				directory[directory_length] = '\0'; // Null-terminate the string
 					if ( strcmp(directory,opt.readdir)==0 ){
-						char command[BUFFER_SIZE];
-						snprintf(command,BUFFER_SIZE,"cp %s/RAxML_bestTree.%s.reroot %s",opt.readdir,substring,opt.partitions_directory);
-						int status=0;
+						char src_path[BUFFER_SIZE];
+						char dst_path[BUFFER_SIZE];
 						printf("copying %s/RAxML_bestTree.%s.reroot to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						status=system(command);
-						snprintf(command,BUFFER_SIZE,"cp %s/%s_MSA.fasta %s",opt.readdir,substring,opt.partitions_directory);
-						status=0;
+						snprintf(src_path,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.readdir,substring);
+						snprintf(dst_path,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.partitions_directory,substring);
+						copy_file(src_path, dst_path);
 						printf("copying %s/%s_MSA.fasta to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						status=system(command);
-						snprintf(command,BUFFER_SIZE,"cp %s/%s_taxonomy.txt %s",opt.readdir,substring,opt.partitions_directory);
-						status=0;
+						snprintf(src_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,substring);
+						snprintf(dst_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.partitions_directory,substring);
+						copy_file(src_path, dst_path);
 						printf("copying %s/%s_taxonomy.txt to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						status=system(command);
+						snprintf(src_path,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.readdir,substring);
+						snprintf(dst_path,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.partitions_directory,substring);
+						copy_file(src_path, dst_path);
 					}
     				}	
 			}

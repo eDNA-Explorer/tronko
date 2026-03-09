@@ -26,7 +26,7 @@
 extern FILE *infile, *outfile, *treefile;
 extern int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 extern int *rootArr, *numspecArr, *numbaseArr, ***seqArr;
-extern int root,tip,comma; /*globals used to read in the tree*/
+extern __thread int root,tip,comma; /*globals used to read in the tree*/
 extern double Logfactorial[MAXNUMBEROFINDINSPECIES];
 extern double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
 #pragma omp threadprivate(LRVEC, RRVEC, RRVAL, PMAT1, PMAT2)
@@ -136,6 +136,7 @@ typedef struct masterArr{
 	char ***taxonomy;
 	int numspec;
 	int numNodes;
+	int treeCapacity; /* allocated slots in tree array (for createNode growth) */
 	int root;
 	int numbase;
 	char **names;
