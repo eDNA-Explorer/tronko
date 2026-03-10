@@ -266,6 +266,14 @@ build_cluster_tree() {
         fi
     fi
 
+    # Strip support values from FastTree trees: )0.996:0.068 -> ):0.068
+    # (tronko-build's Newick parser doesn't handle support values)
+    python3 -c "
+import re, sys
+with open(sys.argv[1]) as f: data = f.read()
+with open(sys.argv[1], 'w') as f: f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data))
+" "$outdir/RAxML_bestTree.${cluster_id}.unrooted"
+
     # Midpoint rooting
     set +e
     nw_reroot "$outdir/RAxML_bestTree.${cluster_id}.unrooted" \
@@ -392,17 +400,36 @@ echo ""
 echo "=== Step 5/5: Finalize (FASTA concat + BWA index) ==="
 STEP5_START=$(date +%s)
 
-# Concatenate all cluster FASTAs and taxonomy
-cat "$MERGED_DIR"/*_MSA.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || \
-    cat "$MERGED_DIR"/*.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || true
-cat "$MERGED_DIR"/*_taxonomy.txt > "$OUTPUT_DIR/${PRIMER}_taxonomy.txt" 2>/dev/null || true
+# Concatenate final partition raw FASTAs (gap-free) and taxonomy
+# final_partitions.txt is written by tronko-build listing leaf-level partition numbers
+if [ -f "$OUTPUT_DIR/final_partitions.txt" ]; then
+    echo "Using final_partitions.txt to build ${PRIMER}.fasta from raw partition FASTAs..."
+    > "$OUTPUT_DIR/${PRIMER}.fasta"
+    > "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
+    while read -r partnum; do
+        cat "$OUTPUT_DIR/partition${partnum}.fasta" >> "$OUTPUT_DIR/${PRIMER}.fasta"
+        cat "$OUTPUT_DIR/partition${partnum}_taxonomy.txt" >> "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
+    done < "$OUTPUT_DIR/final_partitions.txt"
+else
+    echo "WARNING: final_partitions.txt not found, falling back to merged dir FASTAs"
+    cat "$MERGED_DIR"/*_MSA.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || \
+        cat "$MERGED_DIR"/*.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || true
+    cat "$MERGED_DIR"/*_taxonomy.txt > "$OUTPUT_DIR/${PRIMER}_taxonomy.txt" 2>/dev/null || true
+fi
 
 # BWA index
 echo "Building BWA index..."
 bwa index "$OUTPUT_DIR/${PRIMER}.fasta"
 
-# Compress reference tree
-gzip "$OUTPUT_DIR/reference_tree.txt"
+# Convert reference tree to .trkb binary format (required by tronko-assign)
+if command -v tronko-convert &> /dev/null; then
+    echo "Converting reference tree to .trkb format..."
+    tronko-convert -i "$OUTPUT_DIR/reference_tree.txt" -o "$OUTPUT_DIR/reference_tree.trkb"
+    gzip "$OUTPUT_DIR/reference_tree.txt"
+else
+    echo "WARNING: tronko-convert not found, keeping .txt.gz only (tronko-assign may require .trkb)"
+    gzip "$OUTPUT_DIR/reference_tree.txt"
+fi
 
 STEP5_END=$(date +%s)
 echo "Step 5 complete in $((STEP5_END - STEP5_START))s"

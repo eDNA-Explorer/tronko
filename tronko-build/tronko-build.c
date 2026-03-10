@@ -64,7 +64,8 @@ void changePP_Arr (int node, int whichRoot){
 	int child0 = treeArr[whichRoot][node].up[0];
 	int child1 = treeArr[whichRoot][node].up[1];
 	int i,j;
-	if ( treeArr[whichRoot][node].up[0]==-1 && treeArr[whichRoot][node].up[1]==-1){
+	if ( child0 < 0 || child1 < 0 ){
+		/* Leaf node or degenerate node with missing child — mark gaps */
 		for (i=0; i<numbaseArr[whichRoot]; i++){
 			if ( seqArr[whichRoot][node-numspecArr[whichRoot]+1][i] == 4 ){
 				for(j=0;j<4;j++){
@@ -80,25 +81,31 @@ void changePP_Arr (int node, int whichRoot){
 	}
 }
 void changePP_parents_Arr(int node, int whichRoot){
-	int parent = treeArr[whichRoot][node].down;
-	int child0 = treeArr[whichRoot][node].up[0];	
-	int child1 = treeArr[whichRoot][node].up[1];
-	if ( parent==-1 ){
-		return;
-	}
-	if ( child0== -1 && child1== -1 ){
-		changePP_parents_Arr(parent,whichRoot);
-		return;
-	}
-	int i,j;
-	for( i=0; i<numbaseArr[whichRoot]; i++){
-		for (j=0; j<4; j++){
-			if ( treeArr[whichRoot][child0].posteriornc[i][j] == -1 && treeArr[whichRoot][child1].posteriornc[i][j] == -1 ){
-				treeArr[whichRoot][node].posteriornc[i][j]=-1;
+	int maxNodes = 2 * numspecArr[whichRoot] - 1;
+	int iter = 0;
+	while (iter < maxNodes) {
+		int parent = treeArr[whichRoot][node].down;
+		if ( parent < 0 ){
+			return;
+		}
+		int child0 = treeArr[whichRoot][node].up[0];
+		int child1 = treeArr[whichRoot][node].up[1];
+		if ( child0 < 0 || child1 < 0 ){
+			node = parent;
+			iter++;
+			continue;
+		}
+		int i,j;
+		for( i=0; i<numbaseArr[whichRoot]; i++){
+			for (j=0; j<4; j++){
+				if ( treeArr[whichRoot][child0].posteriornc[i][j] == -1 && treeArr[whichRoot][child1].posteriornc[i][j] == -1 ){
+					treeArr[whichRoot][node].posteriornc[i][j]=-1;
+				}
 			}
 		}
+		node = parent;
+		iter++;
 	}
-	changePP_parents_Arr(parent,whichRoot);
 }
 void assignDepthArr(int node0, int node1, int depth, struct masterArr *m){
 	if( node0 != -1 && node1 != -1){
@@ -342,9 +349,8 @@ void readSeqArr(gzFile partitionsFile, int maxname, struct masterArr *master){
 					else if (c=='t' || c=='T') master->msa[row][m] = 3;
 					else if (c=='n'||c=='-'||c=='~' || c=='N') master->msa[row][m] = 4;
 					else{
-						printf("\nBAD BASE (%c) in species %i base %i",c ,row+1,m+1);
-						scanf("%i",&row);
-						exit(-1);
+						/* IUPAC ambiguity codes (Y,R,W,S,K,M,B,D,H,V,etc.) → treat as missing data */
+						master->msa[row][m] = 4;
 					}
 				}
 			}
@@ -611,21 +617,24 @@ static void unwrap_fasta_inplace(const char *filepath){
 	/* Write back with continuation lines joined */
 	fp = fopen(filepath, "w");
 	if (!fp){ free(data); return; }
-	int at_line_start = 1;
+	int in_header = 0;
 	long i;
 	for (i = 0; i < fsize; i++){
-		if (data[i] == '\n'){
-			/* Check if next line starts with '>' or is EOF */
-			if (i + 1 >= fsize || data[i + 1] == '>'){
+		if (data[i] == '>'){
+			in_header = 1;
+			fputc(data[i], fp);
+		} else if (data[i] == '\n'){
+			if (in_header){
+				/* End of header line: always keep this newline */
 				fputc('\n', fp);
-				at_line_start = 1;
-			} else {
-				/* continuation line: skip the newline to join */
-				at_line_start = 0;
+				in_header = 0;
+			} else if (i + 1 >= fsize || data[i + 1] == '>'){
+				/* End of sequence or EOF: keep newline */
+				fputc('\n', fp);
 			}
+			/* Otherwise: skip newline to join continuation sequence lines */
 		} else {
 			fputc(data[i], fp);
-			at_line_start = 0;
 		}
 	}
 	fclose(fp);
@@ -763,6 +772,8 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 			fprintf(stderr, "can't fork for famsa, error occurred\n");
 			return -1;
 		}else if (pid == 0){
+			int devnull = open("/dev/null", O_WRONLY);
+			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
 			char *arguments[] = {"famsa","-t",famsa_threads_str,buf2,buf3,NULL};
 			execvp("famsa",arguments);
 			_exit(127);
@@ -814,9 +825,16 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 		}else if (vft_pid == 0){
 			int fd = open(vft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
-			char *args[] = {"VeryFastTree", "-gtr", "-gamma", "-nt", "-threads", vft_threads, vft_input, NULL};
-			execvp("VeryFastTree", args);
-			fprintf(stderr, "execvp VeryFastTree failed\n");
+			int devnull = open("/dev/null", O_WRONLY);
+			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
+			/* Try VeryFastTree first, fall back to FastTree */
+			char *vft_args[] = {"VeryFastTree", "-gtr", "-gamma", "-nt", "-quiet", "-nosupport", "-threads", vft_threads, vft_input, NULL};
+			execvp("VeryFastTree", vft_args);
+			/* VeryFastTree not found — try FastTree (single-threaded, has support values) */
+			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", vft_input, NULL};
+			execvp("FastTree", ft_args);
+			/* Neither found */
+			fprintf(stderr, "Neither VeryFastTree nor FastTree found\n");
 			_exit(127);
 		}
 		waitpid(vft_pid, &status, 0);
@@ -1051,19 +1069,19 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			free(newick);
 			makeBinary(t,max_nodename);
 			exportTreeToNewick(t,buf);
+			/* Free parseNewick tree and re-allocate for getcladeArr_fast */
 			int idx;
-			for(idx=0; idx<2*t->numspec-1; idx++){
-				node* newNode = &t->tree[idx];
-				newNode->up[0] = -1;
-				newNode->up[1] = -1;
-				newNode->down = -1;
-				newNode->nd = 0;
-				newNode->depth = 0;
-				newNode->bl = 0.0;
+			for(idx=0; idx<t->numNodes; idx++){
+				free(t->tree[idx].name);
+				free(t->tree[idx].like);
+				free(t->tree[idx].posterior);
 			}
-			for(idx=0; idx<2*t->numspec-1; idx++){
-				memset(t->tree[idx].name, '\0', max_nodename+1);
-			}
+			free(t->tree);
+			t->numspec = t->numspec;  /* parseNewick set this */
+			t->tree = malloc((2*t->numspec-1) * sizeof(node));
+			t->treeCapacity = 2*t->numspec-1;
+			t->numNodes = 2*t->numspec-1;
+			allocateTreeArrMemory(t,max_nodename);
 			comma=0;
 			tip=0;
 			t->root=getcladeArr_fast(buf,t,max_nodename)-1;
@@ -1208,10 +1226,8 @@ int createNode( struct masterArr* m, int max_nodename){
 		m->treeCapacity = newCap;
 	}
 	node* newNode = &m->tree[newIndex];
-	//newNode->up[0] = -1;
-	//newNode->up[1] = -1;
 	int i;
-	for(i=0; i<1000; i++){
+	for(i=0; i<MAX_NODE_CHILDREN; i++){
 		newNode->up[i] = -1;
 	}
 	newNode->down = -2;
@@ -1228,6 +1244,26 @@ int createNode( struct masterArr* m, int max_nodename){
 }
 int addChild( struct masterArr* m, int parentIndex, int childIndex){
 	node* parent = &m->tree[parentIndex];
+	if (parent->nd >= MAX_NODE_CHILDREN - 1) {
+		/* Overflow: create intermediate node to hold half the children,
+		   keeping parent degree manageable for resolvePolytomy later */
+		int intermediateIndex = createNode(m, 30);
+		parent = &m->tree[parentIndex]; /* refresh after potential realloc */
+		node* intermediate = &m->tree[intermediateIndex];
+		int half = parent->nd / 2;
+		int i;
+		for (i = half; i < parent->nd; i++) {
+			intermediate->up[intermediate->nd] = parent->up[i];
+			m->tree[parent->up[i]].down = intermediateIndex;
+			intermediate->nd++;
+			parent->up[i] = -1;
+		}
+		parent->nd = half;
+		intermediate->down = parentIndex;
+		parent->up[parent->nd] = intermediateIndex;
+		parent->nd++;
+	}
+	parent = &m->tree[parentIndex];
 	node* child = &m->tree[childIndex];
 	parent->up[parent->nd] = childIndex;
 	parent->nd++;
@@ -1413,7 +1449,28 @@ void resolvePolytomy(struct masterArr* m, int nodeIndex, int max_nodename){
 	}
 }
 void makeBinary( struct masterArr* m, int max_nodename){
+	/* Pre-allocate tree capacity for all nodes that resolvePolytomy will create.
+	   Each polytomy of degree d creates d-2 new internal nodes. */
+	int extraNodes = 0;
 	int i;
+	for(i=0; i<m->numNodes; i++){
+		if (m->tree[i].nd > 2){
+			extraNodes += m->tree[i].nd - 2;
+		}
+	}
+	if (extraNodes > 0) {
+		int needed = m->numNodes + extraNodes;
+		if (needed > m->treeCapacity) {
+			int newCap = needed + 64;
+			node* newTree = realloc(m->tree, newCap * sizeof(node));
+			if (newTree == NULL) {
+				fprintf(stderr, "Error: Memory allocation failed in makeBinary pre-alloc.\n");
+				exit(EXIT_FAILURE);
+			}
+			m->tree = newTree;
+			m->treeCapacity = newCap;
+		}
+	}
 	for(i=0; i<m->numNodes; i++){
 		node* n = &m->tree[i];
 		// Skip leaves
@@ -1439,6 +1496,7 @@ int main(int argc, char **argv){
 	opt.number_of_trees = 0;
 	opt.famsa_threads = 0; /* 0 = auto-detect in pipeline */
 	opt.remove_unused = 0;
+	opt.export_subtrees = 0;
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
 		opt.partitions_directory[i] = '\0';
@@ -1652,6 +1710,7 @@ int main(int argc, char **argv){
 				if (!tmpTree){ fprintf(stderr, "*** tree file could not be opened: %s\n", buffer); exit(-1); }
 				char* newick = readNewickFile(tmpTree);
 				fclose(tmpTree);
+				int saved_numspec = m->numspec;
 				m->numspec = 0;
 				m->numNodes = 0;
 				srand(time(NULL));
@@ -1659,19 +1718,19 @@ int main(int argc, char **argv){
 				free(newick);
 				makeBinary(m, max_nodename);
 				exportTreeToNewick(m, buffer);
+				/* Free parseNewick tree and re-allocate for getcladeArr_fast */
 				int idx;
-				for(idx=0; idx<2*m->numspec-1; idx++){
-					node* nd = &m->tree[idx];
-					nd->up[0] = -1;
-					nd->up[1] = -1;
-					nd->down = -1;
-					nd->nd = 0;
-					nd->depth = 0;
-					nd->bl = 0.0;
+				for(idx=0; idx<m->numNodes; idx++){
+					free(m->tree[idx].name);
+					free(m->tree[idx].like);
+					free(m->tree[idx].posterior);
 				}
-				for(idx=0; idx<2*m->numspec-1; idx++){
-					memset(m->tree[idx].name, '\0', max_nodename+1);
-				}
+				free(m->tree);
+				m->numspec = saved_numspec;
+				m->tree = malloc((2*m->numspec-1) * sizeof(node));
+				m->treeCapacity = 2*m->numspec-1;
+				m->numNodes = 2*m->numspec-1;
+				allocateTreeArrMemory(m,max_nodename);
 			}
 			comma=0;
 			tip=0;
@@ -1775,6 +1834,10 @@ int main(int argc, char **argv){
 			snprintf(newick_buf,BUFFER_SIZE,"%s/tree_list.txt",opt.partitions_directory);
 			FILE* list_newick_files = fopen(newick_buf,"w");
 			if ( list_newick_files == NULL ){ printf("Error opening tree_list.txt file!\n"); exit(1); }
+			char fp_buf2[BUFFER_SIZE];
+			snprintf(fp_buf2,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
+			FILE* fp_file2 = fopen(fp_buf2,"w");
+			if ( fp_file2 == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
 			hashmap_foreach(key,final,&mastermap){
 				fprintf(list_newick_files,"%s\n",final->filename);
 				char directory[BUFFER_SIZE]; // Adjust size as needed
@@ -1833,9 +1896,18 @@ int main(int argc, char **argv){
 						snprintf(dst_path,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.partitions_directory,substring);
 						copy_file(src_path, dst_path);
 					}
-    				}	
+    				}
+				/* Write partition number to final_partitions.txt */
+				{
+					char *pnum = strstr(substring, "partition");
+					if (pnum) {
+						pnum += strlen("partition");
+						fprintf(fp_file2, "%s\n", pnum);
+					}
+				}
 			}
 			fclose(list_newick_files);
+			fclose(fp_file2);
 			exit(1);
 		}
 		printf("Using %d trees... \n",opt.number_of_partitions);
@@ -1859,6 +1931,10 @@ int main(int argc, char **argv){
 	snprintf(newick_buf,BUFFER_SIZE,"%s/tree_list.txt",opt.partitions_directory);
 	FILE* list_newick_files = fopen(newick_buf,"w");
 	if ( list_newick_files == NULL ){ printf("Error opening list.txt file!\n"); exit(1); }
+	char fp_buf[BUFFER_SIZE];
+	snprintf(fp_buf,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
+	FILE* fp_file = fopen(fp_buf,"w");
+	if ( fp_file == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
 	hashmap_foreach(key,final,&mastermap){
 		treeArr[index] = final->tree;
 		taxonomyArr[index] =  final->taxonomy;
@@ -1869,14 +1945,120 @@ int main(int argc, char **argv){
 		//printtreeArr(index);
 		index++;
 		fprintf(list_newick_files,"%s\n",final->filename);
+		/* Extract partition number from filename for final_partitions.txt */
+		{
+			char *fn = strrchr(final->filename, '/');
+			fn = fn ? fn + 1 : final->filename;
+			char *start = strstr(fn, "partition");
+			if (start) {
+				start += strlen("partition");
+				char *end = strchr(start, '.');
+				if (end) {
+					fprintf(fp_file, "%.*s\n", (int)(end - start), start);
+				}
+			}
+		}
 	}
 	fclose(list_newick_files);
+	fclose(fp_file);
+
+	/* Export final subtrees for ablation studies */
+	if (opt.export_subtrees) {
+		char export_dir[BUFFER_SIZE];
+		snprintf(export_dir, BUFFER_SIZE, "%s/exported_subtrees", opt.partitions_directory);
+		struct stat est = {0};
+		if (stat(export_dir, &est) == -1) {
+			mkdir(export_dir, 0755);
+		}
+
+		int export_idx = 0;
+		struct masterArr* efinal;
+		int ekey;
+		hashmap_foreach(ekey, efinal, &mastermap) {
+			/* Export Newick tree */
+			char tree_path[BUFFER_SIZE];
+			snprintf(tree_path, BUFFER_SIZE, "%s/RAxML_bestTree.%d.reroot", export_dir, export_idx);
+			exportTreeToNewick(efinal, tree_path);
+
+			/* Export unaligned FASTA */
+			char fasta_path[BUFFER_SIZE];
+			snprintf(fasta_path, BUFFER_SIZE, "%s/%d_MSA.fasta", export_dir, export_idx);
+			FILE *efp = fopen(fasta_path, "w");
+			if (efp == NULL) {
+				fprintf(stderr, "Error: Cannot open %s for writing\n", fasta_path);
+				exit(EXIT_FAILURE);
+			}
+			char *eseq = malloc((efinal->numbase + 1) * sizeof(char));
+			for (int s = 0; s < efinal->numspec; s++) {
+				fprintf(efp, ">%s\n", efinal->names[s]);
+				removeDashArr(efinal->msa[s], efinal->numbase, eseq);
+				fprintf(efp, "%s\n", eseq);
+			}
+			free(eseq);
+			fclose(efp);
+
+			/* Export taxonomy */
+			char tax_path[BUFFER_SIZE];
+			snprintf(tax_path, BUFFER_SIZE, "%s/%d_taxonomy.txt", export_dir, export_idx);
+			FILE *etp = fopen(tax_path, "w");
+			if (etp == NULL) {
+				fprintf(stderr, "Error: Cannot open %s for writing\n", tax_path);
+				exit(EXIT_FAILURE);
+			}
+			for (int s = 0; s < efinal->numspec; s++) {
+				int ti = efinal->tree[s + efinal->numspec - 1].taxIndex[0];
+				fprintf(etp, "%s\t%s;%s;%s;%s;%s;%s;%s\n", efinal->names[s],
+					efinal->taxonomy[ti][6], efinal->taxonomy[ti][5],
+					efinal->taxonomy[ti][4], efinal->taxonomy[ti][3],
+					efinal->taxonomy[ti][2], efinal->taxonomy[ti][1],
+					efinal->taxonomy[ti][0]);
+			}
+			fclose(etp);
+			export_idx++;
+		}
+		printf("Exported %d subtrees to %s\n", export_idx, export_dir);
+	}
+
 	allocatetreememory_for_nucleotide_Arr(numberOfTrees);
+
+	/* Open progress file for external monitoring */
+	char progress_path[BUFFER_SIZE];
+	snprintf(progress_path, BUFFER_SIZE, "%s/_progress.txt", opt.partitions_directory);
+	FILE *progress_fp = fopen(progress_path, "w");
+	if (progress_fp) {
+		fprintf(progress_fp, "stage=posteriors\ntrees_total=%d\ntrees_done=0\n", numberOfTrees);
+		fflush(progress_fp);
+	}
+
+	printf("Computing posteriors for %d trees...\n", numberOfTrees);
+	fflush(stdout);
+	int trees_done = 0;
 	#pragma omp parallel for schedule(dynamic) private(i)
 	for(i=0; i<numberOfTrees; i++){
 		double local_params[10] = {0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
 		estimatenucparameters_Arr(local_params,i);
 		getposterior_nc_Arr(local_params,i);
+		int done;
+		#pragma omp atomic capture
+		done = ++trees_done;
+		if (done == numberOfTrees || done % 10 == 0){
+			printf("  Posteriors: %d/%d trees done\n", done, numberOfTrees);
+			fflush(stdout);
+			if (progress_fp) {
+				fseek(progress_fp, 0, SEEK_SET);
+				ftruncate(fileno(progress_fp), 0);
+				fprintf(progress_fp, "stage=posteriors\ntrees_total=%d\ntrees_done=%d\n", numberOfTrees, done);
+				fflush(progress_fp);
+			}
+		}
+	}
+	printf("Posterior computation complete.\n");
+	if (progress_fp) {
+		fseek(progress_fp, 0, SEEK_SET);
+		ftruncate(fileno(progress_fp), 0);
+		fprintf(progress_fp, "stage=done\ntrees_total=%d\ntrees_done=%d\n", numberOfTrees, numberOfTrees);
+		fflush(progress_fp);
+		fclose(progress_fp);
 	}
 	//FILE *for_monica = fopen("/space/s1/lenore/trout_copy/s2_copy/for_monica/OU061397_1_PP.txt","w");
 	//if ( for_monica == NULL ){ printf("Error opening file!\n"); exit(1); }
@@ -1890,6 +2072,8 @@ int main(int argc, char **argv){
 	//fclose(for_monica);
 	//exit(1);
 	if (opt.missing_data==1){
+		printf("Adjusting posteriors for missing data (%d trees)...\n", numberOfTrees);
+		fflush(stdout);
 		#pragma omp parallel for schedule(dynamic) private(i, j)
 		for(i=0; i<numberOfTrees; i++){
 			changePP_Arr(rootArr[i],i);
@@ -1898,7 +2082,12 @@ int main(int argc, char **argv){
 			}
 		}
 	}
+	printf("Missing data adjustment complete.\n");
+	fflush(stdout);
+	printf("Writing reference_tree.txt...\n");
+	fflush(stdout);
 	printTreeFile(numberOfTrees,max_nodename,max_tax_name,max_lineTaxonomy,opt);
+	printf("Done.\n");
 	/*hashmap_foreach(key,final,&mastermap){
 		for(i=0; i<final->numspec; i++){
 			free(final->names[i]);
