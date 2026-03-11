@@ -1449,10 +1449,47 @@ void resolvePolytomy(struct masterArr* m, int nodeIndex, int max_nodename){
 	}
 }
 void makeBinary( struct masterArr* m, int max_nodename){
-	/* Pre-allocate tree capacity for all nodes that resolvePolytomy will create.
+	int i, changed;
+
+	/* Pass 1: Suppress unifurcations (nd == 1) produced by nw_prune.
+	   Repeat until none remain since splicing may create new unifurcations. */
+	do {
+		changed = 0;
+		for(i=0; i<m->numNodes; i++){
+			if (m->tree[i].nd != 1) continue;
+			int child = m->tree[i].up[0];
+			if (i == m->root) {
+				/* Root unifurcation: promote the single child to root */
+				m->tree[child].down = -1;
+				m->tree[child].bl = 0.0;
+				m->root = child;
+				/* Mark old root inactive */
+				m->tree[i].nd = 0;
+				m->tree[i].up[0] = -1;
+			} else {
+				/* Internal unifurcation: splice out, connect parent to child */
+				int parent = m->tree[i].down;
+				m->tree[child].down = parent;
+				m->tree[child].bl += m->tree[i].bl;
+				/* Replace i with child in parent's up[] array */
+				int j;
+				for(j=0; j<m->tree[parent].nd; j++){
+					if (m->tree[parent].up[j] == i){
+						m->tree[parent].up[j] = child;
+						break;
+					}
+				}
+				/* Mark spliced node inactive */
+				m->tree[i].nd = 0;
+				m->tree[i].up[0] = -1;
+			}
+			changed = 1;
+		}
+	} while(changed);
+
+	/* Pass 2: Pre-allocate tree capacity for all nodes that resolvePolytomy will create.
 	   Each polytomy of degree d creates d-2 new internal nodes. */
 	int extraNodes = 0;
-	int i;
 	for(i=0; i<m->numNodes; i++){
 		if (m->tree[i].nd > 2){
 			extraNodes += m->tree[i].nd - 2;
@@ -1471,9 +1508,11 @@ void makeBinary( struct masterArr* m, int max_nodename){
 			m->treeCapacity = newCap;
 		}
 	}
+
+	/* Pass 3: Resolve polytomies (nd > 2) */
 	for(i=0; i<m->numNodes; i++){
 		node* n = &m->tree[i];
-		// Skip leaves
+		// Skip leaves and inactive nodes
 		if ( n->nd <= 2 ){
 			continue;
 		}
@@ -1578,6 +1617,8 @@ int main(int argc, char **argv){
 		}
 		assignTaxonomyToLeavesArr(opt.taxonomy_file,m,max_nodename,max_tax_name);
 		{ int _tax_out[2]; getTaxonomyArr(m->root,m,_tax_out); }
+		m->filename = malloc(strlen(opt.tree_file)+1);
+		strcpy(m->filename, opt.tree_file);
 		hashmap_put(&mastermap,m->index,m);
 		/*treeArr = malloc(sizeof(node*));
 		treeArr[0] = m->tree;
@@ -1980,7 +2021,7 @@ int main(int argc, char **argv){
 			snprintf(tree_path, BUFFER_SIZE, "%s/RAxML_bestTree.%d.reroot", export_dir, export_idx);
 			exportTreeToNewick(efinal, tree_path);
 
-			/* Export unaligned FASTA */
+			/* Export aligned MSA (preserving gaps for correct posterior computation) */
 			char fasta_path[BUFFER_SIZE];
 			snprintf(fasta_path, BUFFER_SIZE, "%s/%d_MSA.fasta", export_dir, export_idx);
 			FILE *efp = fopen(fasta_path, "w");
@@ -1991,7 +2032,17 @@ int main(int argc, char **argv){
 			char *eseq = malloc((efinal->numbase + 1) * sizeof(char));
 			for (int s = 0; s < efinal->numspec; s++) {
 				fprintf(efp, ">%s\n", efinal->names[s]);
-				removeDashArr(efinal->msa[s], efinal->numbase, eseq);
+				/* Write aligned sequence (int-encoded MSA → nucleotide chars with gaps) */
+				for (int b = 0; b < efinal->numbase; b++) {
+					switch (efinal->msa[s][b]) {
+						case 0: eseq[b] = 'A'; break;
+						case 1: eseq[b] = 'C'; break;
+						case 2: eseq[b] = 'G'; break;
+						case 3: eseq[b] = 'T'; break;
+						default: eseq[b] = '-'; break;
+					}
+				}
+				eseq[efinal->numbase] = '\0';
 				fprintf(efp, "%s\n", eseq);
 			}
 			free(eseq);

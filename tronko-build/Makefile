@@ -1,5 +1,8 @@
 # the compiler: gcc for C program
-CC = gcc
+# On macOS, 'gcc' is often Apple clang which lacks -fopenmp.
+# Auto-detect real GCC from Homebrew; fall back to 'gcc'.
+CC := $(shell for v in 15 14 13 12 11; do \
+    if command -v gcc-$$v >/dev/null 2>&1; then echo gcc-$$v; exit; fi; done; echo gcc)
 
 #compiler flags:
 # -g adds debugging information to the executable file
@@ -21,7 +24,7 @@ all: $(TARGET)
 $(TARGET): $(TARGET).c
 	$(CC) $(OPTIMIZATION) -fopenmp -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
 debug: $(TARGET).c
-	$(CC) $(DBGCFLAGS) -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
+	$(CC) -g -O0 -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
 
 asan: $(TARGET).c
 	$(CC) -g -O0 -fsanitize=address -fno-omit-frame-pointer \

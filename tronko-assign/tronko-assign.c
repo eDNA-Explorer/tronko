@@ -139,6 +139,8 @@ void store_PPs_Arr(int numberOfRoots, double c){
 				for (l=0; l<4; l++){
 					if ( treeArr[i][j].posteriornc[PP_IDX(k, l)] == -1 ){   //Missing data
 						treeArr[i][j].posteriornc[PP_IDX(k, l)]=1;
+					}else if ( isnan(treeArr[i][j].posteriornc[PP_IDX(k, l)]) || isinf(treeArr[i][j].posteriornc[PP_IDX(k, l)]) ){
+						treeArr[i][j].posteriornc[PP_IDX(k, l)]=1;  //Treat NaN/Inf as missing data
 					}else{
 							//treeArr[i][j].posteriornc[PP_IDX(k, l)] = log((c/3) + ((1-(((4*c)/3) * treeArr[i][j].posteriornc[PP_IDX(k, l)]))));
 							double d = 1-c;

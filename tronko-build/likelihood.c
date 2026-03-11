@@ -421,12 +421,14 @@ void makeconnc_Arr(int node, double lambda, int whichRoot){
       }
       //might be worth with some code here dealing with the case of max=0+epsilon
 
-      if (max<0.00000000001) printf("Warning, max = %lf\n",max);
-
-      for (i=0; i<4; i++)
-        treeArr[whichRoot][node].likenc[site][i]=treeArr[whichRoot][node].likenc[site][i]/max;
-      //  if (node ==root && site==0) printf("Node %i, Conditional likes: %lf %lf %lf %lf, ",node,tree[node].likenc[site][0],tree[node].likenc[site][1],tree[node].likenc[site][2],tree[node].likenc[site][3]);
-      UFCnc[site] = UFCnc[site] + log(max);
+      if (max < 1e-300) {
+        for (i=0; i<4; i++)
+          treeArr[whichRoot][node].likenc[site][i] = 0.25;
+      } else {
+        for (i=0; i<4; i++)
+          treeArr[whichRoot][node].likenc[site][i]=treeArr[whichRoot][node].likenc[site][i]/max;
+        UFCnc[site] = UFCnc[site] + log(max);
+      }
       //  printf("max: %lf, UFC: %lf\n", max,UFCnc[site]);
     }
   }
@@ -469,8 +471,15 @@ void inittransitionmatrixnc(double pi[4], double par[10])
        }*/
   if (eigen(1, A[0], 4, RRVALnc, RIVAL, RRVECnc[0], RIVEC[0], workspace) != 0)
   {
-    printf("Transitions matrix did not converge or contained non-real values!\n");
-    exit(-1);
+    fprintf(stderr, "WARNING: Transitions matrix did not converge (using identity fallback)\n");
+    /* Use identity eigenvectors as fallback for degenerate trees */
+    int ii, jj;
+    for (ii=0; ii<4; ii++){
+      RRVALnc[ii] = -1.0;
+      for (jj=0; jj<4; jj++){
+        RRVECnc[ii][jj] = (ii == jj) ? 1.0 : 0.0;
+      }
+    }
   }
 
   for (i=0; i<4; i++)
@@ -1164,8 +1173,13 @@ void makeposterior_nc_Arr(int node, int whichRoot)
           max=treeArr[whichRoot][node].posteriornc[s][i];//more underflow protection
       }
     }
-    for (i=0; i<4; i++)
-      treeArr[whichRoot][node].posteriornc[s][i]=treeArr[whichRoot][node].posteriornc[s][i]/max;
+    if (max < 1e-300) {
+      for (i=0; i<4; i++)
+        treeArr[whichRoot][node].posteriornc[s][i] = 0.25;
+    } else {
+      for (i=0; i<4; i++)
+        treeArr[whichRoot][node].posteriornc[s][i]=treeArr[whichRoot][node].posteriornc[s][i]/max;
+    }
   }
   //printf("In make posterior node %i: (pa=%lf,pt=%lf) (templikea&t: %lf %lf\n",node,tree[node].posteriornc[0][0],tree[node].posteriornc[0][3],templike_nc[0][0],templike_nc[0][3]);
   if (treeArr[whichRoot][child1].up[0]>-1)
@@ -1275,8 +1289,13 @@ void getposterior_nc_Arr(double par[10], int whichRoot){
         sum = 0.0;
         for (i=0; i<4; i++)
           sum = sum + (treeArr[whichRoot][j].posteriornc[s][i]=treeArr[whichRoot][j].likenc[s][i]*treeArr[whichRoot][j].posteriornc[s][i]*pi[i]);
-        for (i=0; i<4; i++)
-          treeArr[whichRoot][j].posteriornc[s][i] = treeArr[whichRoot][j].posteriornc[s][i]/sum;
+        if (sum < 1e-300) {
+          for (i=0; i<4; i++)
+            treeArr[whichRoot][j].posteriornc[s][i] = 0.25;
+        } else {
+          for (i=0; i<4; i++)
+            treeArr[whichRoot][j].posteriornc[s][i] = treeArr[whichRoot][j].posteriornc[s][i]/sum;
+        }
       }
      // printf("posterior(a)=%lf\n",tree[j].posteriornc[0][0]);
     }
@@ -1294,8 +1313,13 @@ void getposterior_nc_Arr(double par[10], int whichRoot){
               treeArr[whichRoot][j].posteriornc[s][i] += treeArr[whichRoot][parent].posteriornc[s][k]*PMATnc[0][i][k];
             sum = sum + (treeArr[whichRoot][j].posteriornc[s][i]=treeArr[whichRoot][j].posteriornc[s][i]*pi[i]);
           }
-          for (i=0; i<4; i++)
-            treeArr[whichRoot][j].posteriornc[s][i] = treeArr[whichRoot][j].posteriornc[s][i]/sum;
+          if (sum < 1e-300) {
+            for (i=0; i<4; i++)
+              treeArr[whichRoot][j].posteriornc[s][i] = 0.25;
+          } else {
+            for (i=0; i<4; i++)
+              treeArr[whichRoot][j].posteriornc[s][i] = treeArr[whichRoot][j].posteriornc[s][i]/sum;
+          }
         }
         else {
           for (i=0; i<4; i++){
