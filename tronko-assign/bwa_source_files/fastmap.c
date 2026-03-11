@@ -45,6 +45,7 @@ typedef struct {
 	int max_query_length;
 	int max_readname_length;
 	int max_acc_name;
+	int max_bwa_matches;
 } ktp_aux_t;
 
 typedef struct {
@@ -193,7 +194,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 				}
 				if ( j > 0 && whichMat==1 ){
-					for(k=0; k<MAX_NUM_BWA_MATCHES; k++){
+					for(k=0; k<aux->max_bwa_matches; k++){
 						//if ( aux->results[j-1].concordant_matches[k] == -1 ){
 						//	break;
 						//}
@@ -266,7 +267,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					no_add=0;
-					for(k=0; k<MAX_NUM_BWA_MATCHES; k++){
+					for(k=0; k<aux->max_bwa_matches; k++){
 						//if ( aux->results[j-1].discordant_matches[k]== -1 ){
 						//	break;
 						//}
@@ -569,7 +570,7 @@ static void update_a(mem_opt_t *opt, const mem_opt_t *opt0)
 	}
 }
 
-int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaMatches* bwa_results, int concordant, int numberOfTrees, int startline, int paired, int start, int end, int max_query_length, int max_readname_length, int max_acc_name)
+int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaMatches* bwa_results, int concordant, int numberOfTrees, int startline, int paired, int start, int end, int max_query_length, int max_readname_length, int max_acc_name, int max_bwa_matches)
 {
 	mem_opt_t *opt, opt0;
 	int fd, fd2, i, c, ignore_alt = 0, no_mt_io = 0;
@@ -827,6 +828,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	aux.max_query_length = max_query_length;
 	aux.max_readname_length = max_readname_length;
 	aux.max_acc_name = max_acc_name;
+	aux.max_bwa_matches = max_bwa_matches;
 	aux.number_of_seqs = number_of_seqs;
 	aux.results = bwa_results;
 	aux.concordant = concordant;

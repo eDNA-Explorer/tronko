@@ -7,7 +7,9 @@
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/
 #define MAXNUMBEROFINDINSPECIES 500 /*maximum number of individuals belonging to a species*/
 #define MAXQUERYLENGTH 1000 /*the maximum length of the query seqeunce*/
+#ifndef NUMCAT
 #define NUMCAT 1/*number of categories in the discretization of the gamma for the nucleotide substituion model*/
+#endif
 #define MINBL 0.000001
 #define MAXBL 2.0
 #define MAXTIEBREAK 64
@@ -41,8 +43,9 @@ extern type_of_PP ****PP_Arr;
 extern char ***taxonomy;
 extern char ****taxonomyArr;
 
+#define MAX_NODE_CHILDREN 1000
 typedef struct node{
-	int up[1000];
+	int up[MAX_NODE_CHILDREN];
 	int down;
 	int nd;
 	int depth;
@@ -127,6 +130,7 @@ typedef struct Options{
 	int missing_data;
 	int famsa_threads;
 	int fasttree;
+	int export_subtrees;
 }Options;
 
 typedef struct masterArr{

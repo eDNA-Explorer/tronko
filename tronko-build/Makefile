@@ -13,6 +13,8 @@ DBGCFLAGS = -g -w
 #LIBS = -lm -lpthread -lz
 LIBS = -lm -pthread -lz -std=gnu99 -lgomp
 OPTIMIZATION = -O3
+NUMCAT ?= 1
+NUMCAT_FLAGS = -DNUMCAT=$(NUMCAT)
 #sources
 SOURCES = tronko-build.c getclade.c readfasta.c readreference.c allocatetreememory.c math.c likelihood.c opt.c options.c printtree.c
 HASHMAP = hashmap.c
@@ -22,9 +24,9 @@ TARGET = tronko-build
 
 all: $(TARGET)
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) -fopenmp -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
+	$(CC) $(OPTIMIZATION) $(NUMCAT_FLAGS) -fopenmp -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
 debug: $(TARGET).c
-	$(CC) -g -O0 -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
+	$(CC) -g -O0 $(NUMCAT_FLAGS) -w -Wno-error -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-implicit-function-declaration -o $(TARGET) $(HASHMAP) $(SOURCES) $(LIBS)
 
 asan: $(TARGET).c
 	$(CC) -g -O0 -fsanitize=address -fno-omit-frame-pointer \

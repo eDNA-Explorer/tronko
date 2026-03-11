@@ -47,6 +47,11 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+	{"max-bwa-matches",required_argument,0,0},
+	{"consensus-threshold",required_argument,0,0},
+	{"soft-voting",no_argument,0,0},
+	{"vote-temperature",required_argument,0,0},
+	{"trace-read",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
 #endif
@@ -93,6 +98,13 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	\n\
+	Accuracy Tuning Options:\n\
+	--max-bwa-matches [INT], Maximum BWA matches per read [default: 10]\n\
+	--consensus-threshold [FLOAT], Fraction of tree pairs that must agree [default: 1.0]\n\
+	--soft-voting, Use weighted voting instead of binary\n\
+	--vote-temperature [FLOAT], Temperature for soft voting weights [default: 1.0]\n\
+	--trace-read [STR], Print diagnostic trace for a specific read name\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -160,6 +172,31 @@ void parse_options(int argc, char **argv, Options *opt){
 						fprintf(stderr, "Invalid pruning-factor value\n");
 						opt->pruning_factor = 2.0;
 					}
+				}
+				else if (strcmp(long_options[option_index].name, "max-bwa-matches") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_bwa_matches)) != 1 || opt->max_bwa_matches < 1) {
+						fprintf(stderr, "Invalid max-bwa-matches value (must be >= 1)\n");
+						opt->max_bwa_matches = MAX_NUM_BWA_MATCHES;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "consensus-threshold") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->consensus_threshold)) != 1 || opt->consensus_threshold < 0.0 || opt->consensus_threshold > 1.0) {
+						fprintf(stderr, "Invalid consensus-threshold value (must be 0.0-1.0)\n");
+						opt->consensus_threshold = 1.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "soft-voting") == 0) {
+					opt->soft_voting = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "vote-temperature") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->vote_temperature)) != 1 || opt->vote_temperature <= 0.0) {
+						fprintf(stderr, "Invalid vote-temperature value (must be > 0)\n");
+						opt->vote_temperature = 1.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "trace-read") == 0) {
+					strncpy(opt->trace_read, optarg, sizeof(opt->trace_read) - 1);
+					opt->trace_read[sizeof(opt->trace_read) - 1] = '\0';
 				}
 #ifdef ENABLE_PARQUET
 				else if (strcmp(long_options[option_index].name, "parquet") == 0) {

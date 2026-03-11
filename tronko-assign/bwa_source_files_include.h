@@ -7,4 +7,5 @@
 int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads,
              bwaMatches* bwa_results, int concordant, int numberOfTrees,
              int startline, int paired, int start, int end,
-             int max_query_length, int max_readname_length, int max_acc_name);
+             int max_query_length, int max_readname_length, int max_acc_name,
+             int max_bwa_matches);

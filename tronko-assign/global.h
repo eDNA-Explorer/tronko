@@ -118,7 +118,7 @@ typedef struct resultsStruct{
 	alignment_t *aln;
 	scoring_t *scoring;
 	type_of_PP ***nodeScores;
-	int **voteRoot;
+	double **voteRoot;
 	int *positions;
 	char *locQuery;
 	char **taxonPath;
@@ -179,6 +179,12 @@ typedef struct mystruct{
 	int max_strikes;
 	int enable_pruning;
 	type_of_PP pruning_factor;
+	// Accuracy tuning settings
+	int max_bwa_matches;
+	double consensus_threshold;
+	int soft_voting;
+	double vote_temperature;
+	char trace_read[200];
 #ifdef ENABLE_PARQUET
 	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
 	int thread_id;         // Thread index for filename
@@ -256,6 +262,12 @@ typedef struct Options{
 	int max_strikes;            // Maximum strikes before termination (default: 6)
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
+	// Accuracy tuning parameters
+	int max_bwa_matches;        // Max BWA matches per read (default: MAX_NUM_BWA_MATCHES)
+	double consensus_threshold; // Fraction of tree pairs that must agree (default: 1.0 = unanimity)
+	int soft_voting;            // Use weighted voting instead of binary (default: 0)
+	double vote_temperature;    // Temperature for soft voting weights (default: 1.0)
+	char trace_read[200];       // Read name to trace for diagnostics (default: empty = off)
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled

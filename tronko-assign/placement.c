@@ -1,4 +1,5 @@
 #include "placement.h"
+#include <math.h>
 
 int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,char* seq1, char* seq2,char* const pattern_alg,char* const text_alg, char* const ops_alg, int begin_offset, int end_offset){
 	char* const operations = cigar->operations;
@@ -57,7 +58,7 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, int soft_voting, double vote_temperature){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -896,7 +897,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//printf("clearing voteroot...\n");
 	/*for(i=0; i<numberOfTotalRoots; i++){
 		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
+			voteRoot[i][j]=0.0;
 		}
 	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -909,7 +910,11 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
 				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
+					if (soft_voting) {
+						voteRoot[leaf_coordinates[i][0]][k] = exp((nodeScores[i][leaf_coordinates[i][0]][k] - maximum) / vote_temperature);
+					} else {
+						voteRoot[leaf_coordinates[i][0]][k] = 1.0;
+					}
 					index++;
 				}
 			}
@@ -924,7 +929,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, int soft_voting, double vote_temperature){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -1736,7 +1741,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	//printf("clearing voteroot...\n");
 	/*for(i=0; i<numberOfTotalRoots; i++){
 		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
+			voteRoot[i][j]=0.0;
 		}
 	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -1749,7 +1754,11 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
 				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
+					if (soft_voting) {
+						voteRoot[leaf_coordinates[i][0]][k] = exp((nodeScores[i][leaf_coordinates[i][0]][k] - maximum) / vote_temperature);
+					} else {
+						voteRoot[leaf_coordinates[i][0]][k] = 1.0;
+					}
 					index++;
 				}
 			}

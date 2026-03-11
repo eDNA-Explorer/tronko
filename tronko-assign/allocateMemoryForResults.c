@@ -1,6 +1,6 @@
 #include "allocateMemoryForResults.h"
 
-void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes){
+void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes, int max_bwa_matches){
 	int i,j, k;
 	if (use_portion==1){
 		results->positions = malloc((max_query_length+max_query_length+2*padding_size+1)*(sizeof(int)));
@@ -9,8 +9,8 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		results->positions = malloc((max_query_length+max_numbase+1)*(sizeof(int)));
 		results->locQuery = malloc((max_query_length+max_numbase+1)*(sizeof(char)));
 	}
-	results->nodeScores = (type_of_PP ***)malloc(MAX_NUM_BWA_MATCHES*(sizeof(type_of_PP **)));
-	for (i=0; i<MAX_NUM_BWA_MATCHES; i++){
+	results->nodeScores = (type_of_PP ***)malloc(max_bwa_matches*(sizeof(type_of_PP **)));
+	for (i=0; i<max_bwa_matches; i++){
 		results->nodeScores[i] = (type_of_PP **)malloc(numberOfTrees*(sizeof(type_of_PP *)));
 		for (j=0; j<numberOfTrees; j++){
 			results->nodeScores[i][j] = (type_of_PP *)malloc((2*numspecArr[j]-1)*(sizeof(type_of_PP)));
@@ -19,23 +19,23 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 			}
 		}
 	}
-	results->voteRoot = (int **)malloc(numberOfTrees*sizeof(int *));
+	results->voteRoot = (double **)malloc(numberOfTrees*sizeof(double *));
 	for (i=0; i<numberOfTrees; i++){
-		results->voteRoot[i]=(int *)malloc((2*numspecArr[i]-1)*sizeof(int));
+		results->voteRoot[i]=(double *)malloc((2*numspecArr[i]-1)*sizeof(double));
 		for (j=0; j<2*numspecArr[i]-1; j++){
-			results->voteRoot[i][j]=0;
+			results->voteRoot[i][j]=0.0;
 		}
 	}
 	if ( use_portion==1){
-		results->starts_forward = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
+		results->starts_forward = (int *)malloc(max_bwa_matches*sizeof(int));
 		if (paired == 1 ){
-			results->starts_reverse = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
+			results->starts_reverse = (int *)malloc(max_bwa_matches*sizeof(int));
 		}
-		results->cigars_forward = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
+		results->cigars_forward = (char **)malloc(max_bwa_matches*sizeof(char *));
 		if (paired == 1){
-			results->cigars_reverse = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
+			results->cigars_reverse = (char **)malloc(max_bwa_matches*sizeof(char *));
 		}
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
+		for(i=0; i<max_bwa_matches; i++){
 			results->starts_forward[i] = -1;
 			results->cigars_forward[i] = (char *)malloc(MAX_CIGAR*sizeof(char));
 			memset(results->cigars_forward[i],'\0',MAX_CIGAR);
@@ -87,11 +87,11 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		results->leaf_coordinates[i][1]=-1;
 	}
 }
-void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int paired, int use_nw, int use_portion, int maxNumSpec, int number_of_total_nodes){
+void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int paired, int use_nw, int use_portion, int maxNumSpec, int number_of_total_nodes, int max_bwa_matches){
 	int i, j, k;
 	free(results->positions);
 	free(results->locQuery);
-	for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
+	for(i=0; i<max_bwa_matches; i++){
 		for(j=0; j<numberOfTrees; j++){
 			free(results->nodeScores[i][j]);
 		}
@@ -107,7 +107,7 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 		free(results->LCAnames[i]);
 	}
 	if (use_portion == 1){
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
+		for(i=0; i<max_bwa_matches; i++){
 			free(results->cigars_forward[i]);
 			if (paired==1){
 				free(results->cigars_reverse[i]);
