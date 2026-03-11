@@ -4,9 +4,80 @@ This document records benchmark results and experiments conducted to evaluate pe
 
 ## Table of Contents
 
+- [2026-03-11: Correctness Verification — Compiler Isolation](#2026-03-11-correctness-verification--compiler-isolation)
 - [2026-02-25: tronko-build Optimizations — Correctness Verification](#2026-02-25-tronko-build-optimizations--correctness-verification)
 - [2026-01-02: Zstd Compressed Binary Database Format](#2026-01-02-zstd-compressed-binary-database-format)
 - [2026-01-01: Memory Optimization (Float vs Double Precision)](#2026-01-01-memory-optimization-float-vs-double-precision)
+
+---
+
+## 2026-03-11: Correctness Verification — Compiler Isolation
+
+### Objective
+
+Verify that the optimized branch produces identical output to main by isolating code changes from compiler differences. The previous Docker-based verification (2026-02-25) used the same compiler for both. This experiment tests the native macOS build where the two branches use different compilers by default.
+
+### Test Configuration
+
+| Parameter | Value |
+|---|---|
+| Dataset | Charadriiformes (COI), 1,466 sequences, 316 alignment columns |
+| Mode | Single-tree (`-l`) |
+| Platform | macOS (Apple Silicon), Darwin 25.2.0 |
+| Main branch compiler (default) | Apple Clang 17.0.0 |
+| Optimized branch compiler | GCC 15.2.0 (Homebrew) |
+
+### Experiment 1: Default Compilers (Clang vs GCC-15)
+
+Running each branch's binary (compiled with its default compiler) on the same input:
+
+| Metric | Main (Clang) | Optimized (GCC-15) |
+|---|---|---|
+| Output lines | 930,598 | 930,598 |
+| Output bytes | 39,944,265 | 39,932,169 |
+| Structural/text diffs | **0** | **0** |
+| Max relative difference | 1.45e-06 | — |
+| Max absolute difference | 5.38e-08 | — |
+
+All 458,527 differing lines contain only floating-point posterior values — zero differences in tree topology, node structure, or taxonomy.
+
+### Experiment 2: Same Compiler (Both GCC-15)
+
+Rebuilt main branch code with `gcc-15 -O3` to isolate compiler effects:
+
+```
+Main code + gcc-15:      39,932,169 bytes
+Optimized code + gcc-15: 39,932,169 bytes
+diff: BYTE-IDENTICAL
+```
+
+**The code changes introduce zero logic differences.** All Experiment 1 differences were from Apple Clang vs GCC-15 generating different floating-point instruction sequences at `-O3`.
+
+### Experiment 3: Thread Safety
+
+| Configuration | Output |
+|---|---|
+| OMP_NUM_THREADS=1 | 39,932,169 bytes |
+| OMP_NUM_THREADS=4 | 39,932,169 bytes |
+| diff | **BYTE-IDENTICAL** |
+
+### Conclusion
+
+The optimized branch produces **byte-identical output** to main when compiled with the same compiler. Multi-threading introduces no non-determinism. Detailed change classification is in `tests/CORRECTNESS_VERIFICATION.md`.
+
+### Reproduction
+
+```bash
+# Automated verification (creates worktree for main, builds both, compares)
+bash tests/verify_no_logic_change.sh
+
+# For true apples-to-apples, rebuild main's code with gcc-15:
+# (in main branch worktree)
+gcc-15 -O3 -w -o tronko-build hashmap.c tronko-build.c getclade.c \
+    readfasta.c readreference.c allocatetreememory.c math.c \
+    likelihood.c opt.c options.c printtree.c \
+    -lm -pthread -lz -std=gnu99
+```
 
 ---
 
