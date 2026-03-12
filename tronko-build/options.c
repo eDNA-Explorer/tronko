@@ -21,7 +21,8 @@ static struct Options long_options[]=
 	{"two-step-build", no_argument, 0, 'p'},
 	{"remove-unused-trees", no_argument, 0, 'r'},
 	{"prefix", required_argument, 0, 'i'},
-	{"fasttree", no_argument, 0, 'a'}
+	{"fasttree", no_argument, 0, 'a'},
+	{"export-subtrees", no_argument, 0, 'E'}
 };
 
 char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
@@ -46,6 +47,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
 	-a, use VeryFastTree instead of RAxML\n\
+	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	\n";
 
 void print_help_statement(){
@@ -61,7 +63,7 @@ void parse_options(int argc, char **argv, Options *opt){
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hspvlgaryu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hspvlgaryEu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
@@ -152,6 +154,9 @@ void parse_options(int argc, char **argv, Options *opt){
 				break;
 			case 'a':
 				opt->fasttree = 1;
+				break;
+			case 'E':
+				opt->export_subtrees = 1;
 				break;
 			case 'c':
 				success = sscanf(optarg, "%d", &(opt->famsa_threads));

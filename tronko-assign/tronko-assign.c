@@ -17,6 +17,7 @@
 #include "options.h"
 #include "printAlignments.h"
 #include "bwa_source_files_include.h"
+#include "minimap2_wrapper.h"
 #include "hashmap.h"
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
@@ -115,6 +116,7 @@ static pthread_mutex_t g_overflow_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
 FILE *g_tsv_log_file = NULL;
 char ****taxonomyArr;
 struct node **treeArr;
+char g_trace_read[BUFFER_SIZE];
 struct queryMatPaired *pairedQueryMat;
 struct queryMatSingle *singleQueryMat;
 type_of_PP Cinterval;
@@ -298,9 +300,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	type_of_PP pruning_factor = mstr->pruning_factor;
 	// Accuracy tuning settings
 	int max_bwa_matches = mstr->max_bwa_matches;
-	double consensus_threshold = mstr->consensus_threshold;
-	int soft_voting = mstr->soft_voting;
-	double vote_temperature = mstr->vote_temperature;
+	type_of_PP best_leaf_threshold = mstr->best_leaf_threshold;
+	int best_leaf_max_votes = mstr->best_leaf_max_votes;
 	const char *trace_read = mstr->trace_read;
 	/*affine_penalties_t affine_penalties = {
 		.match = 0,
@@ -361,7 +362,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		}
 		bwa_results[i].n_matches = 0;
 	}
-	int trees_search[mstr->ntree];
+	int trees_search[max_bwa_matches];
 	int *leaf_coord_arr;
 	char *leaf_sequence;
 	int *positionsInRoot;
@@ -373,7 +374,11 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		positionsInRoot = (int *)malloc((max_query_length+mstr->max_numbase+1)*sizeof(int));
 	}
 	struct leafMap *leaf_map;	
-	run_bwa(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name, max_bwa_matches);
+	if (strcmp(mstr->aligner, "minimap2") == 0) {
+		run_minimap2(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name, max_bwa_matches, mstr->minimap2_kmer, mstr->minimap2_window);
+	} else {
+		run_bwa(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name, max_bwa_matches);
+	}
 	for ( lineNumber=mstr->start; lineNumber<end; lineNumber++){
 		// Set crash context for current read processing
 		char read_info[64];
@@ -381,7 +386,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		crash_set_current_read(read_info, 1, lineNumber);
 		crash_set_processing_stage("BWA alignment and tree search");
 		
-		for(i=0; i<mstr->ntree; i++){
+		for(i=0; i<max_bwa_matches; i++){
 			trees_search[i]=-1;
 		}
 		j=0;
@@ -390,7 +395,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int leaf_iter=0;
 		dropped_matches_count = 0;  // Reset dropped counter for this read
 		if (bwa_results[iter].concordant_matches_roots[0]==-1 && mstr->concordant==1){
-			for (i=0; i<mstr->ntree; i++){
+			for (i=0; i<max_bwa_matches; i++){
 				if (bwa_results[iter].discordant_matches_roots[0] < 0 ){
 					//for(j=0; j<mstr->ntree;j++){
 					//	results->leaf_coordinates[j][0]=j;
@@ -415,8 +420,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 						}
 					}
 				}
-				int index1=mstr->ntree-1;
-				for(k=mstr->ntree-1; k>=0; k--){
+				int index1=max_bwa_matches-1;
+				for(k=max_bwa_matches-1; k>=0; k--){
 					if (trees_search[k]==-1){
 						index1=k;
 					}
@@ -437,7 +442,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 			}
 		}else if (mstr->concordant==1){
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<max_bwa_matches; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
@@ -454,8 +459,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 							}
 						}
 					}
-					int index1=mstr->ntree-1;
-					for(k=mstr->ntree-1; k>=0; k--){
+					int index1=max_bwa_matches-1;
+					for(k=max_bwa_matches-1; k>=0; k--){
 						if (trees_search[k]==-1){
 							index1=k;
 						}
@@ -478,7 +483,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}else{
 			j=0;
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<max_bwa_matches; i++){
 				//if(strlen(bwa_results[iter].discordant_leaf_matches[i])<=3){
 				if(bwa_results[iter].discordant_matches_roots[i]==-1){
 					break;
@@ -496,8 +501,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 								}
 							}
 						}
-						int index1=mstr->ntree-1;
-						for(k=mstr->ntree-1; k>=0; k--){
+						int index1=max_bwa_matches-1;
+						for(k=max_bwa_matches-1; k>=0; k--){
 							if (trees_search[k]==-1){
 								index1=k;
 							}
@@ -521,7 +526,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					no_add=0;
 				}
 			}
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<max_bwa_matches; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
@@ -539,8 +544,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 								}
 							}
 						}
-					int index1=mstr->ntree-1;
-					for(k=mstr->ntree-1; k>=0; k--){
+					int index1=max_bwa_matches-1;
+					for(k=max_bwa_matches-1; k>=0; k--){
 						if (trees_search[k]==-1){
 							index1=k;
 						}
@@ -595,15 +600,26 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		const char *current_readname = (paired != 0) ?
 			pairedQueryMat->forward_name[lineNumber] :
 			singleQueryMat->name[lineNumber];
-		int is_traced = (trace_read[0] != '\0' && strcmp(current_readname, trace_read) == 0);
+		int is_traced = (trace_read[0] != '\0' &&
+			(trace_read[0] == '*' && trace_read[1] == '\0' ? 1 : strcmp(current_readname, trace_read) == 0));
 		if (is_traced) {
+			/* Count raw BWA hits before dedup */
+			int raw_conc = 0, raw_disc = 0;
+			for (int ri = 0; ri < max_bwa_matches; ri++) {
+				if (bwa_results[iter].concordant_matches_roots[ri] != -1) raw_conc++;
+				if (bwa_results[iter].discordant_matches_roots[ri] != -1) raw_disc++;
+			}
 			fprintf(stderr, "\nTRACE read=%s\n", current_readname);
-			fprintf(stderr, "  BWA hits: %d (max_bwa_matches=%d)\n", leaf_iter, max_bwa_matches);
+			fprintf(stderr, "  BWA hits: %d unique trees (raw: %d concordant + %d discordant, max_bwa_matches=%d)\n", leaf_iter, raw_conc, raw_disc, max_bwa_matches);
 			for(i=0; i<leaf_iter; i++){
 				int tr = results->leaf_coordinates[i][0];
 				int tn = results->leaf_coordinates[i][1];
-				fprintf(stderr, "    hit[%d]: tree=%d node=%d leaf=%s numspec=%d\n",
-					i, tr, tn, treeArr[tr][tn].name, numspecArr[tr]);
+				if (tr >= 0 && tn >= 0 && tn < 2*numspecArr[tr]-1) {
+					fprintf(stderr, "    hit[%d]: tree=%d node=%d leaf=%s numspec=%d\n",
+						i, tr, tn, treeArr[tr][tn].name, numspecArr[tr]);
+				} else {
+					fprintf(stderr, "    hit[%d]: tree=%d node=%d INVALID\n", i, tr, tn);
+				}
 			}
 		}
 
@@ -612,15 +628,15 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			//strcmp(results->cigars_forward[0],"*")!=0 && strcmp(results->cigars_forward[0]," ")!=0){
 		if (paired != 0){
 			if ( use_nw==0 ){
-				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,soft_voting,vote_temperature);
+				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes);
 			}else{
-				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,soft_voting,vote_temperature);
+				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes);
 			}
 		}else{
 			if (use_nw==0){
-				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,soft_voting,vote_temperature);
+				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes);
 			}else{
-				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,soft_voting,vote_temperature);
+				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes);
 			}
 		}
 		numberOfTrees = leaf_iter;
@@ -738,16 +754,15 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 			int correctTax=0;
 			int stop=0;
-			int total_pairs = count * (count - 1) / 2;
-			int required_pairs = (consensus_threshold >= 1.0) ? count - 1 :
-				(int)ceil(consensus_threshold * total_pairs);
+			int required_pairs = count - 1;
 			if (required_pairs < 1) required_pairs = 1;
 			while(stop==0 && minLevel<=6){
+			correctTax=0;
 			for(i=0; i<count;i++){
 				if (treeArr[maxRoots[i]][LCAs[i]].taxIndex[0] != -1){
 				for(j=i+1; j<count; j++){
 					if ( treeArr[maxRoots[j]][LCAs[j]].taxIndex[0] != -1){
-					if ( strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel],taxonomyArr[maxRoots[j]][treeArr[maxRoots[j]][LCAs[j]].taxIndex[0]][minLevel])==0 && taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel] != "NA" ){
+					if ( strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel],taxonomyArr[maxRoots[j]][treeArr[maxRoots[j]][LCAs[j]].taxIndex[0]][minLevel])==0 && strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel], "NA") != 0 ){
 						correctTax++;
 					}
 					}
@@ -766,8 +781,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 			if (is_traced) {
 				const char *level_names[] = {"species","genus","family","order","class","phylum","domain"};
-				fprintf(stderr, "  Consensus: count=%d correctTax=%d required_pairs=%d total_pairs=%d minLevel=%d(%s) unassigned=%d\n",
-					count, correctTax, required_pairs, total_pairs, minLevel,
+				fprintf(stderr, "  Consensus: count=%d correctTax=%d required_pairs=%d minLevel=%d(%s) unassigned=%d\n",
+					count, correctTax, required_pairs, minLevel,
 					(minLevel >= 0 && minLevel <= 6) ? level_names[minLevel] : "beyond",
 					(minLevel > 6) ? 1 : unassigned);
 			}
@@ -803,7 +818,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			const char *readname = (paired != 0) ?
 				pairedQueryMat->forward_name[lineNumber] :
 				singleQueryMat->name[lineNumber];
-			snprintf(resultsPath, resultsPathSize, "%s\tunassigned", readname);
+			snprintf(resultsPath, resultsPathSize, "%s\tunassigned\t0.000000\t0.000000\t0.000000\t-1\t-1", readname);
 			strcpy(results->taxonPath[iter],resultsPath);
 		}else{
 			const char *readname = (paired != 0) ?
@@ -920,12 +935,17 @@ int main(int argc, char **argv){
 	opt.pruning_factor = 2.0;
 	// Accuracy tuning defaults
 	opt.max_bwa_matches = MAX_NUM_BWA_MATCHES;
-	opt.consensus_threshold = 1.0;
-	opt.soft_voting = 0;
-	opt.vote_temperature = 1.0;
+	opt.best_leaf_threshold = 0.0;
+	opt.best_leaf_max_votes = 0;
 	opt.trace_read[0] = '\0';
+	// Aligner selection defaults
+	strcpy(opt.aligner, "bwa");
+	opt.minimap2_kmer = 15;
+	opt.minimap2_window = 5;
 
 	parse_options(argc, argv, &opt);
+	strncpy(g_trace_read, opt.trace_read, sizeof(g_trace_read) - 1);
+	g_trace_read[sizeof(g_trace_read) - 1] = '\0';
 	
 	// Initialize logging based on options
 	if (opt.verbose_level >= 0) {
@@ -1182,7 +1202,7 @@ int main(int argc, char **argv){
 	int numberOfLinesToRead=opt.number_of_lines_to_read;
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
 	if ( strcmp("single",opt.paired_or_single)==0){
-		if (opt.skip_build==0){
+		if (opt.skip_build==0 && strcmp(opt.aligner, "minimap2") != 0){
 			if (opt.verbose_level >= 0) {
 				LOG_INFO("Building BWA index for: %s", opt.fasta_file);
 			}
@@ -1292,10 +1312,12 @@ int main(int argc, char **argv){
 			mstr[i].pruning_factor = opt.pruning_factor;
 			// Accuracy tuning settings
 			mstr[i].max_bwa_matches = opt.max_bwa_matches;
-			mstr[i].consensus_threshold = opt.consensus_threshold;
-			mstr[i].soft_voting = opt.soft_voting;
-			mstr[i].vote_temperature = opt.vote_temperature;
+			mstr[i].best_leaf_threshold = opt.best_leaf_threshold;
+			mstr[i].best_leaf_max_votes = opt.best_leaf_max_votes;
 			strncpy(mstr[i].trace_read, opt.trace_read, sizeof(mstr[i].trace_read));
+			strncpy(mstr[i].aligner, opt.aligner, sizeof(mstr[i].aligner));
+			mstr[i].minimap2_kmer = opt.minimap2_kmer;
+			mstr[i].minimap2_window = opt.minimap2_window;
 		}
 
 		if (opt.verbose_level >= 0) {
@@ -1509,7 +1531,7 @@ int main(int argc, char **argv){
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
-		if (opt.skip_build==0){
+		if (opt.skip_build==0 && strcmp(opt.aligner, "minimap2") != 0){
 			bwa_index(2,opt.fasta_file);
 		}
 		pairedQueryMat = malloc(sizeof(struct queryMatPaired));
@@ -1621,10 +1643,12 @@ int main(int argc, char **argv){
 			mstr[i].pruning_factor = opt.pruning_factor;
 			// Accuracy tuning settings
 			mstr[i].max_bwa_matches = opt.max_bwa_matches;
-			mstr[i].consensus_threshold = opt.consensus_threshold;
-			mstr[i].soft_voting = opt.soft_voting;
-			mstr[i].vote_temperature = opt.vote_temperature;
+			mstr[i].best_leaf_threshold = opt.best_leaf_threshold;
+			mstr[i].best_leaf_max_votes = opt.best_leaf_max_votes;
 			strncpy(mstr[i].trace_read, opt.trace_read, sizeof(mstr[i].trace_read));
+			strncpy(mstr[i].aligner, opt.aligner, sizeof(mstr[i].aligner));
+			mstr[i].minimap2_kmer = opt.minimap2_kmer;
+			mstr[i].minimap2_window = opt.minimap2_window;
 		}
 		while (1){
 			crash_set_processing_stage("Reading paired-end input files");

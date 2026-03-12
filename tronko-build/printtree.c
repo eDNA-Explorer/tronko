@@ -59,6 +59,11 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 			}
 		}
 	}
+	/* Open progress file for write-phase tracking */
+	char progress_path[BUFFER_SIZE];
+	snprintf(progress_path, BUFFER_SIZE, "%s/_progress.txt", opt.partitions_directory);
+	FILE *progress_fp = fopen(progress_path, "w");
+
 	/* Batch formatting: build lines in a local buffer to reduce fprintf call overhead.
 	   Each posterior row is 4 doubles at ~24 chars each + tabs/newline ≈ 120 bytes max.
 	   Use a 64KB buffer and flush when near-full. */
@@ -68,6 +73,16 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 		if (!lbuf){ fprintf(stderr, "Out of memory for print buffer\n"); exit(1); }
 		int lpos = 0;
 		for(i=0; i<numberOfTrees;i++){
+			if (i % 100 == 0 || i == numberOfTrees - 1){
+				printf("  Writing tree %d/%d\n", i+1, numberOfTrees);
+				fflush(stdout);
+				if (progress_fp) {
+					fseek(progress_fp, 0, SEEK_SET);
+					ftruncate(fileno(progress_fp), 0);
+					fprintf(progress_fp, "stage=writing\ntrees_total=%d\ntrees_written=%d\n", numberOfTrees, i+1);
+					fflush(progress_fp);
+				}
+			}
 			int nb = numbaseArr[i];
 			for(j=0;j<2*numspecArr[i]-1;j++){
 				/* Node header line */
@@ -101,6 +116,13 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 	}
 	fclose(outputTree);
 	free(io_buf);
+	if (progress_fp) {
+		fseek(progress_fp, 0, SEEK_SET);
+		ftruncate(fileno(progress_fp), 0);
+		fprintf(progress_fp, "stage=complete\ntrees_total=%d\ntrees_written=%d\n", numberOfTrees, numberOfTrees);
+		fflush(progress_fp);
+		fclose(progress_fp);
+	}
 }
 void printTaxonomyArrToFile(int numberOfTrees){
 	int i,j,k;

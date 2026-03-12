@@ -80,8 +80,8 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 			results->LCAnames[i][j] = '\0';
 		}
 	}
-	results->leaf_coordinates = (int **)malloc(numberOfTrees*sizeof(int *));
-	for(i=0; i<numberOfTrees; i++){
+	results->leaf_coordinates = (int **)malloc(max_bwa_matches*sizeof(int *));
+	for(i=0; i<max_bwa_matches; i++){
 		results->leaf_coordinates[i] = (int *)malloc(2*sizeof(int));
 		results->leaf_coordinates[i][0]=-1;
 		results->leaf_coordinates[i][1]=-1;
@@ -100,6 +100,8 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 	free(results->nodeScores);
 	for(i=0; i<numberOfTrees; i++){
 		free(results->voteRoot[i]);
+	}
+	for(i=0; i<max_bwa_matches; i++){
 		free(results->leaf_coordinates[i]);
 	}
 	free(results->voteRoot);

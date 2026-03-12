@@ -58,7 +58,7 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, int soft_voting, double vote_temperature){
+void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -85,6 +85,9 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_1);
+		if (leaf_coordinates[match][0] == -1 || leaf_coordinates[match][1] == -1) {
+			continue;  /* Skip invalid leaf coordinates */
+		}
 		if (use_leaf_portion==1){
 			if ( cigars_forward[match][0] == '*'){ break; }
 			if ( cigars_forward[match][0] == '\0'){ break; }
@@ -910,11 +913,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
 				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					if (soft_voting) {
-						voteRoot[leaf_coordinates[i][0]][k] = exp((nodeScores[i][leaf_coordinates[i][0]][k] - maximum) / vote_temperature);
-					} else {
-						voteRoot[leaf_coordinates[i][0]][k] = 1.0;
-					}
+					voteRoot[leaf_coordinates[i][0]][k] = 1.0;
 					index++;
 				}
 			}
@@ -922,6 +921,102 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+
+	/* Best-leaf override: if the best-scoring leaf exceeds threshold and
+	   total votes are low, override LCA by keeping only the best leaf's vote */
+	if (best_leaf_max_votes > 0 && number_of_matches > 0) {
+		type_of_PP bl_best = -9999999999999999;
+		int bl_node = -1, bl_tree = -1;
+		int bl_total = 0;
+		for (i = 0; i < number_of_matches; i++) {
+			int t = leaf_coordinates[i][0];
+			if (t == -1) continue;
+			int nn = 2*numspecArr[t]-1;
+			for (k = 0; k < nn; k++) {
+				if (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1) {
+					if (nodeScores[i][t][k] > bl_best) {
+						bl_best = nodeScores[i][t][k];
+						bl_node = k; bl_tree = t;
+					}
+				}
+				if (voteRoot[t][k] > 0.0) bl_total++;
+			}
+		}
+		if (bl_node >= 0 && bl_best > best_leaf_threshold && bl_total < best_leaf_max_votes) {
+			for (i = 0; i < number_of_matches; i++) {
+				int t = leaf_coordinates[i][0];
+				if (t == -1) continue;
+				int nn = 2*numspecArr[t]-1;
+				for (k = 0; k < nn; k++) voteRoot[t][k] = 0.0;
+			}
+			voteRoot[bl_tree][bl_node] = 1.0;
+		}
+	}
+
+	/* Trace: report best-scoring leaf vs best-scoring node overall */
+	if (g_trace_read[0] != '\0') {
+		int is_traced = (g_trace_read[0] == '*' && g_trace_read[1] == '\0') ? 1 : strcmp(forward_name, g_trace_read) == 0;
+		if (is_traced && number_of_matches > 0) {
+			/* Find best leaf, second-best leaf, and count voted leaves/internal */
+			type_of_PP best_leaf_score = -9999999999999999;
+			type_of_PP second_leaf_score = -9999999999999999;
+			int best_leaf_node = -1, best_leaf_tree = -1;
+			int second_leaf_node = -1, second_leaf_tree = -1;
+			int voted_leaves = 0, voted_internal = 0;
+			for (i = 0; i < number_of_matches; i++) {
+				int t = leaf_coordinates[i][0];
+				int num_nodes = 2*numspecArr[t]-1;
+				for (k = 0; k < num_nodes; k++) {
+					int is_leaf = (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1);
+					if (is_leaf) {
+						type_of_PP s = nodeScores[i][t][k];
+						if (s > best_leaf_score) {
+							second_leaf_score = best_leaf_score;
+							second_leaf_node = best_leaf_node;
+							second_leaf_tree = best_leaf_tree;
+							best_leaf_score = s;
+							best_leaf_node = k;
+							best_leaf_tree = t;
+						} else if (s > second_leaf_score) {
+							second_leaf_score = s;
+							second_leaf_node = k;
+							second_leaf_tree = t;
+						}
+					}
+					if (voteRoot[t][k] > 0.0) {
+						if (is_leaf) voted_leaves++;
+						else voted_internal++;
+					}
+				}
+			}
+			int best_is_leaf = (minNode == best_leaf_node && minRoot == best_leaf_tree);
+			fprintf(stderr, "  SCORING: max_node=tree%d:node%d score=%.2f is_leaf=%d\n",
+				minRoot, minNode, (double)maximum, best_is_leaf);
+			if (best_leaf_node >= 0) {
+				int ti0 = treeArr[best_leaf_tree][best_leaf_node].taxIndex[0];
+				int ti1 = treeArr[best_leaf_tree][best_leaf_node].taxIndex[1];
+				fprintf(stderr, "  BEST_LEAF: tree%d:node%d score=%.2f gap=%.2f",
+					best_leaf_tree, best_leaf_node, (double)best_leaf_score,
+					(double)(maximum - best_leaf_score));
+				if (ti0 != -1 && ti1 != -1)
+					fprintf(stderr, " tax=%s", taxonomyArr[best_leaf_tree][ti0][ti1]);
+				fprintf(stderr, "\n");
+			}
+			if (second_leaf_node >= 0) {
+				int ti0 = treeArr[second_leaf_tree][second_leaf_node].taxIndex[0];
+				int ti1 = treeArr[second_leaf_tree][second_leaf_node].taxIndex[1];
+				fprintf(stderr, "  2ND_LEAF: tree%d:node%d score=%.2f gap=%.2f",
+					second_leaf_tree, second_leaf_node, (double)second_leaf_score,
+					(double)(best_leaf_score - second_leaf_score));
+				if (ti0 != -1 && ti1 != -1)
+					fprintf(stderr, " tax=%s", taxonomyArr[second_leaf_tree][ti0][ti1]);
+				fprintf(stderr, "\n");
+			}
+			fprintf(stderr, "  VOTES: %d leaves + %d internal = %d total (Cinterval=%.1f)\n",
+				voted_leaves, voted_internal, voted_leaves + voted_internal, (double)Cinterval);
+		}
+	}
+
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;
@@ -929,7 +1024,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, int soft_voting, double vote_temperature){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -943,6 +1038,9 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_1);
+		if (leaf_coordinates[match][0] == -1 || leaf_coordinates[match][1] == -1) {
+			continue;  /* Skip invalid leaf coordinates */
+		}
 		if (use_leaf_portion==1){
 			if ( cigars_forward[match][0] == '*'){ break; }
 			if ( cigars_forward[match][0] == '\0'){ break; }
@@ -1322,6 +1420,9 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			memset(positionsInRoot, -1, clear_len * sizeof(int));
 		}
 		int query_length = strlen(query_2);
+		if (leaf_coordinates[match][0] == -1 || leaf_coordinates[match][1] == -1) {
+			continue;  /* Skip invalid leaf coordinates */
+		}
 		//needleman_wunsch_align(rootSeqs[topRoots[rootNum]], query_2, scoring, nw, aln);
 		//char *leaf_sequence = (char *)malloc(numbaseArr[leaf_coordinates[rootNum][0]]*sizeof(char));
 		//getSequenceInNode(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence);
@@ -1754,11 +1855,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
 				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					if (soft_voting) {
-						voteRoot[leaf_coordinates[i][0]][k] = exp((nodeScores[i][leaf_coordinates[i][0]][k] - maximum) / vote_temperature);
-					} else {
-						voteRoot[leaf_coordinates[i][0]][k] = 1.0;
-					}
+					voteRoot[leaf_coordinates[i][0]][k] = 1.0;
 					index++;
 				}
 			}
@@ -1766,6 +1863,101 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+
+	/* Best-leaf override (NW path) */
+	if (best_leaf_max_votes > 0 && number_of_matches > 0) {
+		type_of_PP bl_best = -9999999999999999;
+		int bl_node = -1, bl_tree = -1;
+		int bl_total = 0;
+		for (i = 0; i < number_of_matches; i++) {
+			int t = leaf_coordinates[i][0];
+			if (t == -1) continue;
+			int nn = 2*numspecArr[t]-1;
+			for (k = 0; k < nn; k++) {
+				if (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1) {
+					if (nodeScores[i][t][k] > bl_best) {
+						bl_best = nodeScores[i][t][k];
+						bl_node = k; bl_tree = t;
+					}
+				}
+				if (voteRoot[t][k] > 0.0) bl_total++;
+			}
+		}
+		if (bl_node >= 0 && bl_best > best_leaf_threshold && bl_total < best_leaf_max_votes) {
+			for (i = 0; i < number_of_matches; i++) {
+				int t = leaf_coordinates[i][0];
+				if (t == -1) continue;
+				int nn = 2*numspecArr[t]-1;
+				for (k = 0; k < nn; k++) voteRoot[t][k] = 0.0;
+			}
+			voteRoot[bl_tree][bl_node] = 1.0;
+		}
+	}
+
+	/* Trace: report best-scoring leaf vs best-scoring node overall (NW path) */
+	if (g_trace_read[0] != '\0') {
+		int is_traced_nw = (g_trace_read[0] == '*' && g_trace_read[1] == '\0') ? 1 : strcmp(forward_name, g_trace_read) == 0;
+		if (is_traced_nw && number_of_matches > 0) {
+			type_of_PP best_leaf_score_nw = -9999999999999999;
+			type_of_PP second_leaf_score_nw = -9999999999999999;
+			int best_leaf_node_nw = -1, best_leaf_tree_nw = -1;
+			int second_leaf_node_nw = -1, second_leaf_tree_nw = -1;
+			int voted_leaves_nw = 0, voted_internal_nw = 0;
+			for (i = 0; i < number_of_matches; i++) {
+				int t = leaf_coordinates[i][0];
+				if (t == -1) continue;
+				int num_nodes = 2*numspecArr[t]-1;
+				for (k = 0; k < num_nodes; k++) {
+					int is_lf = (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1);
+					if (is_lf) {
+						type_of_PP s = nodeScores[i][t][k];
+						if (s > best_leaf_score_nw) {
+							second_leaf_score_nw = best_leaf_score_nw;
+							second_leaf_node_nw = best_leaf_node_nw;
+							second_leaf_tree_nw = best_leaf_tree_nw;
+							best_leaf_score_nw = s;
+							best_leaf_node_nw = k;
+							best_leaf_tree_nw = t;
+						} else if (s > second_leaf_score_nw) {
+							second_leaf_score_nw = s;
+							second_leaf_node_nw = k;
+							second_leaf_tree_nw = t;
+						}
+					}
+					if (voteRoot[t][k] > 0.0) {
+						if (is_lf) voted_leaves_nw++;
+						else voted_internal_nw++;
+					}
+				}
+			}
+			int best_is_leaf_nw = (minNode == best_leaf_node_nw && minRoot == best_leaf_tree_nw);
+			fprintf(stderr, "  SCORING: max_node=tree%d:node%d score=%.2f is_leaf=%d\n",
+				minRoot, minNode, (double)maximum, best_is_leaf_nw);
+			if (best_leaf_node_nw >= 0) {
+				int ti0 = treeArr[best_leaf_tree_nw][best_leaf_node_nw].taxIndex[0];
+				int ti1 = treeArr[best_leaf_tree_nw][best_leaf_node_nw].taxIndex[1];
+				fprintf(stderr, "  BEST_LEAF: tree%d:node%d score=%.2f gap=%.2f",
+					best_leaf_tree_nw, best_leaf_node_nw, (double)best_leaf_score_nw,
+					(double)(maximum - best_leaf_score_nw));
+				if (ti0 != -1 && ti1 != -1)
+					fprintf(stderr, " tax=%s", taxonomyArr[best_leaf_tree_nw][ti0][ti1]);
+				fprintf(stderr, "\n");
+			}
+			if (second_leaf_node_nw >= 0) {
+				int ti0 = treeArr[second_leaf_tree_nw][second_leaf_node_nw].taxIndex[0];
+				int ti1 = treeArr[second_leaf_tree_nw][second_leaf_node_nw].taxIndex[1];
+				fprintf(stderr, "  2ND_LEAF: tree%d:node%d score=%.2f gap=%.2f",
+					second_leaf_tree_nw, second_leaf_node_nw, (double)second_leaf_score_nw,
+					(double)(best_leaf_score_nw - second_leaf_score_nw));
+				if (ti0 != -1 && ti1 != -1)
+					fprintf(stderr, " tax=%s", taxonomyArr[second_leaf_tree_nw][ti0][ti1]);
+				fprintf(stderr, "\n");
+			}
+			fprintf(stderr, "  VOTES: %d leaves + %d internal = %d total (Cinterval=%.1f)\n",
+				voted_leaves_nw, voted_internal_nw, voted_leaves_nw + voted_internal_nw, (double)Cinterval);
+		}
+	}
+
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;

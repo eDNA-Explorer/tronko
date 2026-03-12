@@ -139,6 +139,26 @@ void getSequenceInNodeWithoutNs(int rootNum, int node, char *sequenceInNode, int
 	type_of_PP maximum;
 	int index,i,j;
 	int count=0;
+	if (rootNum < 0) {
+		fprintf(stderr, "CRASH_GUARD: getSequenceInNodeWithoutNs rootNum=%d negative\n", rootNum);
+		sequenceInNode[0] = '\0';
+		return;
+	}
+	int max_nodes = 2*numspecArr[rootNum]-1;
+	if (node < 0 || node >= max_nodes) {
+		fprintf(stderr, "CRASH_GUARD: getSequenceInNodeWithoutNs node=%d out of range [0,%d) for tree %d\n", node, max_nodes, rootNum);
+		sequenceInNode[0] = '\0';
+		return;
+	}
+	if (treeArr[rootNum][node].posteriornc == NULL) {
+		fprintf(stderr, "CRASH_GUARD: getSequenceInNodeWithoutNs posteriornc is NULL for tree=%d node=%d\n", rootNum, node);
+		sequenceInNode[0] = '\0';
+		return;
+	}
+	if (end_position > numbaseArr[rootNum]) {
+		fprintf(stderr, "CRASH_GUARD: getSequenceInNodeWithoutNs end_position=%d > numbase=%d for tree=%d node=%d\n", end_position, numbaseArr[rootNum], rootNum, node);
+		end_position = numbaseArr[rootNum];
+	}
 	//for(i=0; i<numbaseArr[rootNum];i++){
 	for(i=start_position; i<end_position; i++){
 		//maximum=PP_Arr[rootNum][node][i][0];

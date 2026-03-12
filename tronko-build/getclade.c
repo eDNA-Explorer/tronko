@@ -31,6 +31,12 @@ int getcladeArr_mem(const char **pp, struct masterArr *m, int max_nodename){
 			p++;
 		}
 		if (*p == ')') p++;
+		/* Skip optional support value (e.g. "0.996" in ")0.996:0.068") */
+		if (*p != ':' && *p != ',' && *p != ')' && *p != ';' && *p != '(' && *p != '\0'){
+			char *endptr;
+			strtod(p, (char **)&endptr);
+			if (endptr != p) p = endptr;
+		}
 		/* Read optional branch length */
 		if (*p == ':'){
 			p++;

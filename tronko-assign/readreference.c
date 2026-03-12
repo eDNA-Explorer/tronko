@@ -625,10 +625,10 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 						break;
 					}
 					s = strtok(buffer,";\n");
-					taxonomyArr[i][j][0]=strcpy(taxonomyArr[i][j][0],s);
+					strcpy(taxonomyArr[i][j][0], s ? s : "");
 					for(k=1;k<7;k++){
 						s = strtok(NULL,";\n");
-						taxonomyArr[i][j][k]=strcpy(taxonomyArr[i][j][k],s);
+						strcpy(taxonomyArr[i][j][k], s ? s : "");
 					}
 				}
 			}

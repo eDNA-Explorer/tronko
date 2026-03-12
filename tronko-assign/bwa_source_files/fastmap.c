@@ -221,6 +221,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					if (aux->concordant==1 && no_add==0 && strcmp(read2,"=")!=0){ no_add=1;}
+					if (k >= aux->max_bwa_matches) { no_add=1; }
 					if (no_add==0 && strcmp(read2,"=")==0){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
@@ -254,6 +255,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 					//if (aux->concordant==1){ no_add=1;}
 					if (k==0){ no_add=1; }
+					if (k >= aux->max_bwa_matches) { no_add=1; }
 					if (no_add==0 && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
@@ -293,6 +295,7 @@ static void *process(void *shared, int step, void *_data)
 							}
 						}
 					}
+					if (k >= aux->max_bwa_matches) { no_add=1; }
 					if (no_add==0 && strcmp(read2,"=") != 0){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
@@ -324,6 +327,7 @@ static void *process(void *shared, int step, void *_data)
 						//	no_add=1;
 						//}
 					}
+					if (k >= aux->max_bwa_matches) { no_add=1; }
 					if (no_add==0 && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
@@ -337,7 +341,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					no_add=0;
-					if ( decimal == 0 && aux->results[j-1].use_portion==1){
+					if ( decimal == 0 && aux->results[j-1].use_portion==1 && k < aux->max_bwa_matches){
 						strcpy(aux->results[j-1].cigars_reverse[k],cigar);
 						aux->results[j-1].starts_reverse[k] = start_position;
 					}
@@ -821,7 +825,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	}else{
 		opt->flag |= MEM_F_PE;
 	}
-	//opt->flag |= MEM_F_ALL;
+	opt->flag |= MEM_F_ALL;
 	//aux.names = names;
 	//aux.read1 = read1;
 	//aux.read2 = read2;

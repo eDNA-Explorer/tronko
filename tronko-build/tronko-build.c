@@ -181,6 +181,18 @@ void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, 
 		if (lineAccession == NULL || lineTaxonomy == NULL) continue;
 
 		int *leaf_ptr = hashmap_get(&name_map, lineAccession);
+		/* If exact match fails, try with colons replaced by underscores.
+		   Newick format uses ':' for branch lengths, so tree-building tools
+		   (RAxML/VeryFastTree) replace ':' with '_' in leaf names. */
+		char normalized[BUFFER_SIZE];
+		if (leaf_ptr == NULL && strchr(lineAccession, ':') != NULL) {
+			strncpy(normalized, lineAccession, BUFFER_SIZE - 1);
+			normalized[BUFFER_SIZE - 1] = '\0';
+			for (char *p = normalized; *p; p++) {
+				if (*p == ':') *p = '_';
+			}
+			leaf_ptr = hashmap_get(&name_map, normalized);
+		}
 		if (leaf_ptr != NULL){
 			i = *leaf_ptr;
 			m->tree[i].taxIndex[0] = i - m->numspec + 1;
@@ -539,31 +551,49 @@ double calculateSPArr(struct masterArr *m){
 	return SPscore;
 }
 void writeNewick(FILE* file, masterArr* m, int nodeIndex) {
-	node* current = &m->tree[nodeIndex];
-	if (current->up[0] == -1) {
-		// Leaf node
-		if (current->name != NULL) {
-			fprintf(file, "%s", current->name);
-		}else{
-			fprintf(file, "UnnamedLeaf");
+	/* Iterative Newick writer using an explicit stack to avoid stack overflow on deep trees.
+	   State machine: each frame tracks which child we're about to descend into.
+	   phase 0 = entering node for first time
+	   phase 1..nd = about to descend into child (phase-1); already printed children 0..phase-2 */
+	typedef struct { int node; int phase; } frame_t;
+	int capacity = 2 * m->numspec;
+	frame_t *stack = (frame_t *)malloc(capacity * sizeof(frame_t));
+	if (!stack) { fprintf(stderr, "writeNewick: malloc failed\n"); return; }
+	int sp = 0;
+	stack[0].node = nodeIndex;
+	stack[0].phase = 0;
+	while (sp >= 0) {
+		frame_t *f = &stack[sp];
+		node *cur = &m->tree[f->node];
+		if (cur->up[0] == -1) {
+			/* Leaf: print name:bl and pop */
+			fprintf(file, "%s:%f", cur->name ? cur->name : "UnnamedLeaf", cur->bl);
+			sp--;
+		} else if (f->phase == 0) {
+			/* Entering internal node: print '(' and advance to child 0 */
+			fprintf(file, "(");
+			f->phase = 1;
+			/* Push child 0 */
+			if (sp + 1 >= capacity) { capacity *= 2; stack = realloc(stack, capacity * sizeof(frame_t)); f = &stack[sp]; }
+			sp++;
+			stack[sp].node = cur->up[0];
+			stack[sp].phase = 0;
+		} else if (f->phase < cur->nd) {
+			/* Returned from child (phase-1), more children remain: print ',' and push next */
+			fprintf(file, ",");
+			int next_child = f->phase;
+			f->phase++;
+			if (sp + 1 >= capacity) { capacity *= 2; stack = realloc(stack, capacity * sizeof(frame_t)); f = &stack[sp]; }
+			sp++;
+			stack[sp].node = cur->up[next_child];
+			stack[sp].phase = 0;
+		} else {
+			/* All children done: print '):bl' and pop */
+			fprintf(file, "):%f", cur->bl);
+			sp--;
 		}
-	}else{
-		// Internal node
-		fprintf(file, "(");
-		for (int i = 0; i < current->nd; i++) {
-			if ( i>0 ){
-				fprintf(file, ",");
-			}
-			writeNewick(file, m, current->up[i]);
-		}
-		fprintf(file, ")");
-
-		// Optional: Output the internal node's name if it has one
-		//if (current->name != NULL) {
-		//	fprintf(file, "%s", current->name);
-		//}
 	}
-		fprintf(file, ":%f", current->bl);
+	free(stack);
 }
 void exportTreeToNewick(struct masterArr* m, const char* filename){
 	FILE* file = fopen(filename, "w");
@@ -571,9 +601,13 @@ void exportTreeToNewick(struct masterArr* m, const char* filename){
 		fprintf(stderr, "Error: Cannot open file %s for writing.\n", filename);
 		exit(EXIT_FAILURE);
 	}
+	fprintf(stderr, "  writeNewick start (root=%d, numspec=%d)\n", m->root, m->numspec); fflush(stderr);
 	writeNewick(file, m, m->root);
-	fprintf(file, ";\n"); // Newick format ends with a semicolon
+	fprintf(stderr, "  writeNewick returned\n"); fflush(stderr);
+	fprintf(file, ";\n");
+	fprintf(stderr, "  semicolon written\n"); fflush(stderr);
 	fclose(file);
+	fprintf(stderr, "  fclose done\n"); fflush(stderr);
 }
 void findMinVarianceArr(int node, int size, struct masterArr *m, double *out_minVariance, int *out_minVarNode){
 	if (node==-1){ return; }
@@ -827,14 +861,10 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
 			int devnull = open("/dev/null", O_WRONLY);
 			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			/* Try VeryFastTree first, fall back to FastTree */
-			char *vft_args[] = {"VeryFastTree", "-gtr", "-gamma", "-nt", "-quiet", "-nosupport", "-threads", vft_threads, vft_input, NULL};
-			execvp("VeryFastTree", vft_args);
-			/* VeryFastTree not found — try FastTree (single-threaded, has support values) */
+			/* Use FastTree */
 			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", vft_input, NULL};
 			execvp("FastTree", ft_args);
-			/* Neither found */
-			fprintf(stderr, "Neither VeryFastTree nor FastTree found\n");
+			fprintf(stderr, "FastTree not found\n");
 			_exit(127);
 		}
 		waitpid(vft_pid, &status, 0);
@@ -2016,55 +2046,75 @@ int main(int argc, char **argv){
 		struct masterArr* efinal;
 		int ekey;
 		hashmap_foreach(ekey, efinal, &mastermap) {
-			/* Export Newick tree */
-			char tree_path[BUFFER_SIZE];
-			snprintf(tree_path, BUFFER_SIZE, "%s/RAxML_bestTree.%d.reroot", export_dir, export_idx);
-			exportTreeToNewick(efinal, tree_path);
-
-			/* Export aligned MSA (preserving gaps for correct posterior computation) */
-			char fasta_path[BUFFER_SIZE];
-			snprintf(fasta_path, BUFFER_SIZE, "%s/%d_MSA.fasta", export_dir, export_idx);
-			FILE *efp = fopen(fasta_path, "w");
-			if (efp == NULL) {
-				fprintf(stderr, "Error: Cannot open %s for writing\n", fasta_path);
-				exit(EXIT_FAILURE);
+			/* Derive source file paths from the partition's Newick filename on disk.
+			   Example: /path/to/RAxML_bestTree.partition42.reroot
+			   → MSA:      /path/to/partition42_MSA.fasta
+			   → Taxonomy: /path/to/partition42_taxonomy.txt  */
+			char src_dir[BUFFER_SIZE], partition_name[BUFFER_SIZE];
+			strncpy(src_dir, efinal->filename, BUFFER_SIZE - 1);
+			src_dir[BUFFER_SIZE - 1] = '\0';
+			char *last_slash = strrchr(src_dir, '/');
+			char *base = last_slash ? last_slash + 1 : src_dir;
+			if (last_slash) *last_slash = '\0';
+			else strcpy(src_dir, ".");
+			/* Extract partition name: "RAxML_bestTree.XXXX.reroot" → "XXXX" */
+			char *dot1 = strchr(base, '.');
+			char *dot2 = dot1 ? strrchr(dot1 + 1, '.') : NULL;
+			if (dot1 && dot2 && dot2 > dot1 + 1) {
+				int len = (int)(dot2 - dot1 - 1);
+				strncpy(partition_name, dot1 + 1, len);
+				partition_name[len] = '\0';
+			} else {
+				snprintf(partition_name, BUFFER_SIZE, "%d", export_idx);
 			}
-			char *eseq = malloc((efinal->numbase + 1) * sizeof(char));
-			for (int s = 0; s < efinal->numspec; s++) {
-				fprintf(efp, ">%s\n", efinal->names[s]);
-				/* Write aligned sequence (int-encoded MSA → nucleotide chars with gaps) */
-				for (int b = 0; b < efinal->numbase; b++) {
-					switch (efinal->msa[s][b]) {
-						case 0: eseq[b] = 'A'; break;
-						case 1: eseq[b] = 'C'; break;
-						case 2: eseq[b] = 'G'; break;
-						case 3: eseq[b] = 'T'; break;
-						default: eseq[b] = '-'; break;
-					}
+
+			/* Copy tree file */
+			char dst_tree[BUFFER_SIZE];
+			snprintf(dst_tree, BUFFER_SIZE, "%s/RAxML_bestTree.%d.reroot", export_dir, export_idx);
+			{
+				FILE *src = fopen(efinal->filename, "r");
+				FILE *dst = fopen(dst_tree, "w");
+				if (src && dst) {
+					char cpbuf[65536];
+					size_t n;
+					while ((n = fread(cpbuf, 1, sizeof(cpbuf), src)) > 0) fwrite(cpbuf, 1, n, dst);
 				}
-				eseq[efinal->numbase] = '\0';
-				fprintf(efp, "%s\n", eseq);
+				if (src) fclose(src);
+				if (dst) fclose(dst);
 			}
-			free(eseq);
-			fclose(efp);
 
-			/* Export taxonomy */
-			char tax_path[BUFFER_SIZE];
-			snprintf(tax_path, BUFFER_SIZE, "%s/%d_taxonomy.txt", export_dir, export_idx);
-			FILE *etp = fopen(tax_path, "w");
-			if (etp == NULL) {
-				fprintf(stderr, "Error: Cannot open %s for writing\n", tax_path);
-				exit(EXIT_FAILURE);
+			/* Copy MSA file */
+			char src_msa[BUFFER_SIZE], dst_msa[BUFFER_SIZE];
+			snprintf(src_msa, BUFFER_SIZE, "%s/%s_MSA.fasta", src_dir, partition_name);
+			snprintf(dst_msa, BUFFER_SIZE, "%s/%d_MSA.fasta", export_dir, export_idx);
+			{
+				FILE *src = fopen(src_msa, "r");
+				FILE *dst = fopen(dst_msa, "w");
+				if (src && dst) {
+					char cpbuf[65536];
+					size_t n;
+					while ((n = fread(cpbuf, 1, sizeof(cpbuf), src)) > 0) fwrite(cpbuf, 1, n, dst);
+				}
+				if (src) fclose(src);
+				if (dst) fclose(dst);
 			}
-			for (int s = 0; s < efinal->numspec; s++) {
-				int ti = efinal->tree[s + efinal->numspec - 1].taxIndex[0];
-				fprintf(etp, "%s\t%s;%s;%s;%s;%s;%s;%s\n", efinal->names[s],
-					efinal->taxonomy[ti][6], efinal->taxonomy[ti][5],
-					efinal->taxonomy[ti][4], efinal->taxonomy[ti][3],
-					efinal->taxonomy[ti][2], efinal->taxonomy[ti][1],
-					efinal->taxonomy[ti][0]);
+
+			/* Copy taxonomy file */
+			char src_tax[BUFFER_SIZE], dst_tax[BUFFER_SIZE];
+			snprintf(src_tax, BUFFER_SIZE, "%s/%s_taxonomy.txt", src_dir, partition_name);
+			snprintf(dst_tax, BUFFER_SIZE, "%s/%d_taxonomy.txt", export_dir, export_idx);
+			{
+				FILE *src = fopen(src_tax, "r");
+				FILE *dst = fopen(dst_tax, "w");
+				if (src && dst) {
+					char cpbuf[65536];
+					size_t n;
+					while ((n = fread(cpbuf, 1, sizeof(cpbuf), src)) > 0) fwrite(cpbuf, 1, n, dst);
+				}
+				if (src) fclose(src);
+				if (dst) fclose(dst);
 			}
-			fclose(etp);
+
 			export_idx++;
 		}
 		printf("Exported %d subtrees to %s\n", export_idx, export_dir);

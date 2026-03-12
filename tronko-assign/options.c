@@ -48,10 +48,12 @@ static struct option long_options[]=
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
 	{"max-bwa-matches",required_argument,0,0},
-	{"consensus-threshold",required_argument,0,0},
-	{"soft-voting",no_argument,0,0},
-	{"vote-temperature",required_argument,0,0},
+	{"best-leaf-threshold",required_argument,0,0},
+	{"best-leaf-max-votes",required_argument,0,0},
 	{"trace-read",required_argument,0,0},
+	{"aligner",required_argument,0,0},
+	{"minimap2-kmer",required_argument,0,0},
+	{"minimap2-window",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
 #endif
@@ -63,7 +65,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-h, usage:\n\
 	-r, REQUIRED, use a reference\n\
 	-f [FILE], REQUIRED, path to reference database file, can be gzipped\n\
-	-a [FILE], REQUIRED, path to reference fasta file (for bwa database)\n\
+	-a [FILE], REQUIRED, path to reference fasta file (for aligner index build)\n\
 	-o [FILE], REQUIRED, path to output file\n\
 	-p, use paired-end reads\n\
 	-s, use single reads\n\
@@ -101,10 +103,14 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	\n\
 	Accuracy Tuning Options:\n\
 	--max-bwa-matches [INT], Maximum BWA matches per read [default: 10]\n\
-	--consensus-threshold [FLOAT], Fraction of tree pairs that must agree [default: 1.0]\n\
-	--soft-voting, Use weighted voting instead of binary\n\
-	--vote-temperature [FLOAT], Temperature for soft voting weights [default: 1.0]\n\
+	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: 0 = disabled]\n\
+	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 0 = disabled]\n\
 	--trace-read [STR], Print diagnostic trace for a specific read name\n\
+	\n\
+	Aligner Selection:\n\
+	--aligner [STR], Alignment tool for initial leaf matching: 'bwa' (default) or 'minimap2'\n\
+	--minimap2-kmer [INT], minimap2 k-mer size [default: 15]\n\
+	--minimap2-window [INT], minimap2 minimizer window size [default: 5]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -179,24 +185,42 @@ void parse_options(int argc, char **argv, Options *opt){
 						opt->max_bwa_matches = MAX_NUM_BWA_MATCHES;
 					}
 				}
-				else if (strcmp(long_options[option_index].name, "consensus-threshold") == 0) {
-					if (sscanf(optarg, "%lf", &(opt->consensus_threshold)) != 1 || opt->consensus_threshold < 0.0 || opt->consensus_threshold > 1.0) {
-						fprintf(stderr, "Invalid consensus-threshold value (must be 0.0-1.0)\n");
-						opt->consensus_threshold = 1.0;
-					}
+				else if (strcmp(long_options[option_index].name, "best-leaf-threshold") == 0) {
+				if (sscanf(optarg, "%lf", &(opt->best_leaf_threshold)) != 1) {
+					fprintf(stderr, "Invalid best-leaf-threshold value\n");
+					opt->best_leaf_threshold = 0.0;
 				}
-				else if (strcmp(long_options[option_index].name, "soft-voting") == 0) {
-					opt->soft_voting = 1;
+			}
+			else if (strcmp(long_options[option_index].name, "best-leaf-max-votes") == 0) {
+				if (sscanf(optarg, "%d", &(opt->best_leaf_max_votes)) != 1 || opt->best_leaf_max_votes < 0) {
+					fprintf(stderr, "Invalid best-leaf-max-votes value (must be >= 0)\n");
+					opt->best_leaf_max_votes = 0;
 				}
-				else if (strcmp(long_options[option_index].name, "vote-temperature") == 0) {
-					if (sscanf(optarg, "%lf", &(opt->vote_temperature)) != 1 || opt->vote_temperature <= 0.0) {
-						fprintf(stderr, "Invalid vote-temperature value (must be > 0)\n");
-						opt->vote_temperature = 1.0;
-					}
-				}
-				else if (strcmp(long_options[option_index].name, "trace-read") == 0) {
+			}
+			else if (strcmp(long_options[option_index].name, "trace-read") == 0) {
 					strncpy(opt->trace_read, optarg, sizeof(opt->trace_read) - 1);
 					opt->trace_read[sizeof(opt->trace_read) - 1] = '\0';
+				}
+				else if (strcmp(long_options[option_index].name, "aligner") == 0) {
+					if (strcmp(optarg, "bwa") == 0 || strcmp(optarg, "minimap2") == 0) {
+						strncpy(opt->aligner, optarg, sizeof(opt->aligner) - 1);
+						opt->aligner[sizeof(opt->aligner) - 1] = '\0';
+					} else {
+						fprintf(stderr, "Invalid aligner '%s' (must be 'bwa' or 'minimap2')\n", optarg);
+						exit(1);
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-kmer") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_kmer)) != 1 || opt->minimap2_kmer < 1) {
+						fprintf(stderr, "Invalid minimap2-kmer value (must be >= 1)\n");
+						opt->minimap2_kmer = 15;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-window") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_window)) != 1 || opt->minimap2_window < 1) {
+						fprintf(stderr, "Invalid minimap2-window value (must be >= 1)\n");
+						opt->minimap2_window = 5;
+					}
 				}
 #ifdef ENABLE_PARQUET
 				else if (strcmp(long_options[option_index].name, "parquet") == 0) {
