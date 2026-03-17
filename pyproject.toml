@@ -1,0 +1,17 @@
+[project]
+name = "tronko"
+version = "0.1.0"
+description = "Phylogeny-based method for accurate community profiling of metabarcoding datasets"
+authors = [
+    {name = "Ryan Martin"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "dvc[gs] (>=3.67.0,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
