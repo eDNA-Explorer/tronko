@@ -272,7 +272,7 @@ build_cluster_tree() {
         # FastTree uses OMP_NUM_THREADS env var for threading
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
-        $TREE_BIN -nt -gtr "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
