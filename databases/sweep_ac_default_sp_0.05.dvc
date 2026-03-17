@@ -1,0 +1,6 @@
+outs:
+- md5: e2d0bfb8a55da446710d8d5890c04724.dir
+  size: 1790743425
+  nfiles: 12
+  hash: md5
+  path: sweep_ac_default_sp_0.05

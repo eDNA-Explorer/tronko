@@ -1,0 +1,6 @@
+outs:
+- md5: b622044896c8d19a350e3fad48cd9a69.dir
+  size: 1929298584
+  nfiles: 12
+  hash: md5
+  path: vert12S_fasttree

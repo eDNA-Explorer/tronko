@@ -1,0 +1,6 @@
+outs:
+- md5: 7bc92a277805abb38f6ef818a251c694.dir
+  size: 4575488682
+  nfiles: 12
+  hash: md5
+  path: sweep_ac_fewer_bins_sp_0.20

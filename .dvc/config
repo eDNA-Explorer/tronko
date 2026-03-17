@@ -1,0 +1,4 @@
+[core]
+    remote = tronko
+['remote "tronko"']
+    url = gs://edna-dvc-data/tronko-databases

@@ -1,0 +1,6 @@
+outs:
+- md5: 258a33bdc759cfe59710b7ad69469dd4.dir
+  size: 1639037620
+  nfiles: 12
+  hash: md5
+  path: sweep_ac_single_sp_0.20
