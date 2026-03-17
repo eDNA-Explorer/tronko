@@ -20,6 +20,7 @@
 #   -T  Threads for RAxML/FAMSA (default: 8)
 #   -s  SP-score threshold for tronko-build partitioning (default: 0.1)
 #   -F  Use FastTree instead of RAxML (faster, slightly less accurate)
+#   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
 
@@ -30,10 +31,11 @@ PRIMER="marker"
 THREADS=8
 SP_THRESHOLD=0.1
 USE_FASTTREE=0
+EXPORT_SUBTREES=0
 AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 
-while getopts "f:t:o:p:T:s:FC:B:" opt; do
+while getopts "f:t:o:p:T:s:FEC:B:" opt; do
     case $opt in
         f) INPUT_FASTA="$OPTARG" ;;
         t) INPUT_TAXONOMY="$OPTARG" ;;
@@ -42,9 +44,10 @@ while getopts "f:t:o:p:T:s:FC:B:" opt; do
         T) THREADS="$OPTARG" ;;
         s) SP_THRESHOLD="$OPTARG" ;;
         F) USE_FASTTREE=1 ;;
+        E) EXPORT_SUBTREES=1 ;;
         C) AC_CUTOFF="$OPTARG" ;;
         B) AC_BIN_SIZE="$OPTARG" ;;
-        *) echo "Usage: $0 -f <fasta> -t <taxonomy> -o <outdir> [-p primer] [-T threads] [-s sp_threshold] [-F] [-C cutoff] [-B binsize]" >&2; exit 1 ;;
+        *) echo "Usage: $0 -f <fasta> -t <taxonomy> -o <outdir> [-p primer] [-T threads] [-s sp_threshold] [-F] [-E] [-C cutoff] [-B binsize]" >&2; exit 1 ;;
     esac
 done
 
@@ -367,6 +370,9 @@ STEP4_START=$(date +%s)
 TRONKO_FLAGS=""
 if [[ "$USE_FASTTREE" -eq 1 ]]; then
     TRONKO_FLAGS="-a"
+fi
+if [[ "$EXPORT_SUBTREES" -eq 1 ]]; then
+    TRONKO_FLAGS="$TRONKO_FLAGS -E"
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
