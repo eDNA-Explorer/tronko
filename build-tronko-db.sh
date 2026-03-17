@@ -23,19 +23,22 @@
 #   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
+#   -J  Parallel jobs for Step 2 cluster processing (default: 1)
 
 set -euo pipefail
 
 # Defaults
 PRIMER="marker"
 THREADS=8
+PARALLEL_JOBS=1
 SP_THRESHOLD=0.1
 USE_FASTTREE=0
 EXPORT_SUBTREES=0
 AC_CUTOFF=25000
 AC_BIN_SIZE=20000
+AC_DESCENDANTS=75
 
-while getopts "f:t:o:p:T:s:FEC:B:" opt; do
+while getopts "f:t:o:p:T:s:FEC:B:P:J:" opt; do
     case $opt in
         f) INPUT_FASTA="$OPTARG" ;;
         t) INPUT_TAXONOMY="$OPTARG" ;;
@@ -47,7 +50,9 @@ while getopts "f:t:o:p:T:s:FEC:B:" opt; do
         E) EXPORT_SUBTREES=1 ;;
         C) AC_CUTOFF="$OPTARG" ;;
         B) AC_BIN_SIZE="$OPTARG" ;;
-        *) echo "Usage: $0 -f <fasta> -t <taxonomy> -o <outdir> [-p primer] [-T threads] [-s sp_threshold] [-F] [-E] [-C cutoff] [-B binsize]" >&2; exit 1 ;;
+        P) AC_DESCENDANTS="$OPTARG" ;;
+        J) PARALLEL_JOBS="$OPTARG" ;;
+        *) echo "Usage: $0 -f <fasta> -t <taxonomy> -o <outdir> [-p primer] [-T threads] [-s sp_threshold] [-F] [-E] [-C cutoff] [-B binsize] [-P descendants] [-J parallel_jobs]" >&2; exit 1 ;;
     esac
 done
 
@@ -93,8 +98,10 @@ if [[ "$USE_FASTTREE" -eq 0 ]]; then
 else
     if command -v FastTree &>/dev/null; then
         TREE_BIN="FastTree"
-        TREE_THREAD_FLAG=""
         echo "Using FastTree: $(command -v FastTree)"
+    elif command -v VeryFastTree &>/dev/null; then
+        TREE_BIN="VeryFastTree"
+        echo "Using VeryFastTree: $(command -v VeryFastTree)"
     else
         echo "ERROR: Neither VeryFastTree nor FastTree found on PATH" >&2
         exit 1
@@ -123,6 +130,8 @@ echo "  SP thresh:  $SP_THRESHOLD"
 echo "  Tree tool:  $([ "$USE_FASTTREE" -eq 1 ] && echo "${TREE_BIN:-FastTree}" || echo "RAxML")"
 echo "  AC cutoff:  $AC_CUTOFF (cluster if > this many seqs)"
 echo "  AC binsize: $AC_BIN_SIZE (target seqs per cluster)"
+echo "  AC descend: $AC_DESCENDANTS (ancestralclust -p parameter)"
+echo "  Parallel:   $PARALLEL_JOBS jobs (Step 2)"
 echo "================================================================"
 
 # Helper: unwrap multi-line FASTA to single-line
@@ -131,6 +140,21 @@ unwrap_fasta() {
     local outfile="$2"
     awk '/^>/ { if (seq) print seq; print; seq="" ; next } { seq = seq $0 } END { if (seq) print seq }' "$infile" > "$outfile"
 }
+
+# =========================================================================
+# STEP 0: Sanitize input FASTA (replace IUPAC ambiguity codes with N)
+# =========================================================================
+# AncestralClust only accepts A/C/G/T/N — replace R/Y/W/S/M/K/H/B/V/D with N
+CLEAN_FASTA="$CACHE_DIR/input_clean.fasta"
+if [[ -f "$CLEAN_FASTA" ]]; then
+    echo "Using cached sanitized FASTA: $CLEAN_FASTA"
+else
+    echo "Sanitizing input FASTA (replacing IUPAC ambiguity codes with N)..."
+    sed '/^>/!s/[RYWSMKHBVDrywsmkhbvd]/N/g' "$INPUT_FASTA" > "$CLEAN_FASTA"
+    echo "  Done."
+fi
+# Use sanitized FASTA for clustering (original kept for other steps)
+CLUSTER_INPUT_FASTA="$CLEAN_FASTA"
 
 # =========================================================================
 # STEP 1: AncestralClust pre-clustering
@@ -144,8 +168,8 @@ if [[ -f "$AC_DIR/.step1_done" ]]; then
     echo "  CACHED: Step 1 already complete ($NUM_CLUSTERS clusters). Skipping."
 elif [[ "$NUM_SEQS" -le "$AC_CUTOFF" ]]; then
     echo "Only $NUM_SEQS sequences (below cutoff $AC_CUTOFF) — skipping clustering"
-    # Single cluster: just copy
-    cp "$INPUT_FASTA" "$AC_DIR/0.fasta"
+    # Single cluster: just copy (use sanitized FASTA)
+    cp "$CLUSTER_INPUT_FASTA" "$AC_DIR/0.fasta"
     # Extract taxonomy for these sequences
     cp "$INPUT_TAXONOMY" "$AC_DIR/0_taxonomy.txt"
     NUM_CLUSTERS=1
@@ -158,15 +182,25 @@ else
         NUM_SEEDS=4000
     fi
 
-    echo "AncestralClust: $NUM_SEQS seqs -> $NUM_BINS bins, $NUM_SEEDS seeds"
-    echo "Running: ancestralclust -f -i $INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p 75 -c $THREADS -d $AC_DIR"
+    # Count lines in input for -l parameter (ancestralclust defaults to 10000)
+    NUM_LINES=$(wc -l < "$CLUSTER_INPUT_FASTA")
+
+    echo "AncestralClust: $NUM_SEQS seqs -> $NUM_BINS bins, $NUM_SEEDS seeds, -p $AC_DESCENDANTS, -l $NUM_LINES"
+    echo "Running: ancestralclust -f -i $CLUSTER_INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p $AC_DESCENDANTS -l $NUM_LINES -c $THREADS -d $AC_DIR"
+
+    # Cap ancestralclust threads (segfaults with high thread counts)
+    AC_THREADS="$THREADS"
+    if [[ "$AC_THREADS" -gt 4 ]]; then
+        AC_THREADS=4
+    fi
 
     ancestralclust -f \
-        -i "$INPUT_FASTA" \
+        -i "$CLUSTER_INPUT_FASTA" \
         -b "$NUM_BINS" \
         -r "$NUM_SEEDS" \
-        -p 75 \
-        -c "$THREADS" \
+        -p "$AC_DESCENDANTS" \
+        -l "$NUM_LINES" \
+        -c "$AC_THREADS" \
         -d "$AC_DIR"
 
     # AncestralClust outputs {0..N-1}.fasta in the output directory.
@@ -202,6 +236,7 @@ build_cluster_tree() {
     local cluster_fasta="$1"
     local cluster_id=$(basename "$cluster_fasta" .fasta)
     local outdir="$2"
+    local cluster_threads="${3:-$THREADS}"
 
     local n_seqs
     n_seqs=$(grep -c '^>' "$cluster_fasta")
@@ -213,9 +248,9 @@ build_cluster_tree() {
     local n_dedup
     n_dedup=$(grep -c '^>' "$dedup_fasta")
     if [[ "$n_dedup" -ne "$n_seqs" ]]; then
-        echo "  Cluster $cluster_id ($n_seqs seqs, $n_dedup unique): aligning..."
+        echo "  Cluster $cluster_id ($n_seqs seqs, $n_dedup unique, $cluster_threads threads): aligning..."
     else
-        echo "  Cluster $cluster_id ($n_seqs seqs): aligning..."
+        echo "  Cluster $cluster_id ($n_seqs seqs, $cluster_threads threads): aligning..."
     fi
 
     # Skip clusters that are too small after dedup
@@ -226,7 +261,7 @@ build_cluster_tree() {
     fi
 
     # FAMSA alignment
-    famsa -t "$THREADS" "$dedup_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
+    famsa -t "$cluster_threads" "$dedup_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
     rm -f "$dedup_fasta"
 
     # Unwrap to single-line (tronko-build requirement)
@@ -236,9 +271,16 @@ build_cluster_tree() {
     echo "  Cluster $cluster_id: building tree..."
 
     if [[ "$USE_FASTTREE" -eq 1 ]]; then
+        # Build thread flag for this cluster's thread count
+        local cluster_tree_flag=""
+        if [[ "$TREE_BIN" == "VeryFastTree" ]]; then
+            cluster_tree_flag="-threads $cluster_threads -nosupport -fastexp 2"
+        fi
         # VeryFastTree or FastTree (outputs Newick to stdout)
+        # FastTree uses OMP_NUM_THREADS env var for threading
         set +e
-        $TREE_BIN -nt -gtr $TREE_THREAD_FLAG "$outdir/${cluster_id}_MSA.fasta" \
+        OMP_NUM_THREADS="$cluster_threads" \
+        $TREE_BIN -nt -gtr $cluster_tree_flag "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -254,13 +296,18 @@ build_cluster_tree() {
         fasta2phyml.pl "$outdir/${cluster_id}_MSA.fasta"
         "$RAXML_BIN" --silent -m GTRGAMMA \
             -w "$(cd "$raxml_dir" && pwd)" \
-            -n 1 -p 1234 -T "$THREADS" \
+            -n 1 -p 1234 -T "$cluster_threads" \
             -s "$(cd "$outdir" && pwd)/${cluster_id}_MSA.phymlAln" 2>/dev/null || true
         if [[ -f "$raxml_dir/RAxML_bestTree.1" ]]; then
             cp "$raxml_dir/RAxML_bestTree.1" "$outdir/RAxML_bestTree.${cluster_id}.unrooted"
         else
             echo "  WARNING: RAxML failed for cluster $cluster_id, falling back to ${TREE_BIN:-FastTree}"
-            ${TREE_BIN:-FastTree} -gtr -gamma -nt ${TREE_THREAD_FLAG:-} "$outdir/${cluster_id}_MSA.fasta" \
+            local fallback_flag=""
+            if [[ "${TREE_BIN:-FastTree}" == "VeryFastTree" ]]; then
+                fallback_flag="-threads $cluster_threads -nosupport -fastexp 2"
+            fi
+            OMP_NUM_THREADS="$cluster_threads" \
+            ${TREE_BIN:-FastTree} -nt -gtr $fallback_flag "$outdir/${cluster_id}_MSA.fasta" \
                 > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>/dev/null
         fi
     fi
@@ -287,6 +334,40 @@ with open(sys.argv[1], 'w') as f: f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):',
     echo "  Cluster $cluster_id: done"
 }
 
+# Compute per-cluster thread allocation
+CLUSTER_THREADS=$(( THREADS / PARALLEL_JOBS ))
+if [[ "$CLUSTER_THREADS" -lt 1 ]]; then
+    CLUSTER_THREADS=1
+fi
+echo "  Parallelism: $PARALLEL_JOBS jobs, $CLUSTER_THREADS threads each"
+
+# Create log directory for per-cluster output
+CLUSTER_LOG_DIR="$CACHE_DIR/cluster_logs"
+mkdir -p "$CLUSTER_LOG_DIR"
+
+# Track background job PIDs and their cluster IDs
+declare -A CLUSTER_PIDS
+CLUSTER_FAILURES=0
+
+# Worker function: wraps build_cluster_tree + taxonomy copy, runs as background job
+run_cluster() {
+    local cluster_fasta="$1"
+    local cluster_id=$(basename "$cluster_fasta" .fasta)
+
+    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR" "$CLUSTER_THREADS"
+    local rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        return 1
+    fi
+
+    # Copy taxonomy (deduplicated + ':' replaced with '_' to match FASTA dedup)
+    if [[ -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
+        awk -F'\t' '{gsub(/:/, "_", $1)} !seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
+    fi
+    return 0
+}
+
+RUNNING_JOBS=0
 for cluster_fasta in "$AC_DIR"/*.fasta; do
     cluster_id=$(basename "$cluster_fasta" .fasta)
 
@@ -303,20 +384,54 @@ for cluster_fasta in "$AC_DIR"/*.fasta; do
         continue
     fi
 
-    set +e
-    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR"
-    cluster_rc=$?
-    set -e
-    if [[ "$cluster_rc" -ne 0 ]]; then
-        echo "  WARNING: Cluster $cluster_id failed, skipping"
-        continue
+    # If we've hit the parallel job limit, wait for one to finish
+    if [[ "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]]; then
+        # Wait for any single background job to finish
+        set +e
+        wait -n -p FINISHED_PID "${!CLUSTER_PIDS[@]}" 2>/dev/null
+        wait_rc=$?
+        set -e
+        if [[ "$wait_rc" -ne 0 ]] && [[ -n "${FINISHED_PID:-}" ]]; then
+            echo "  WARNING: Cluster ${CLUSTER_PIDS[$FINISHED_PID]} failed (see log in $CLUSTER_LOG_DIR/)"
+            CLUSTER_FAILURES=$((CLUSTER_FAILURES + 1))
+        fi
+        if [[ -n "${FINISHED_PID:-}" ]]; then
+            unset "CLUSTER_PIDS[$FINISHED_PID]"
+        fi
+        RUNNING_JOBS=$((RUNNING_JOBS - 1))
     fi
 
-    # Copy taxonomy (deduplicated + ':' replaced with '_' to match FASTA dedup)
-    if [[ -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
-        awk -F'\t' '{gsub(/:/, "_", $1)} !seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
+    # Launch cluster processing in background
+    run_cluster "$cluster_fasta" > "$CLUSTER_LOG_DIR/${cluster_id}.log" 2>&1 &
+    CLUSTER_PIDS[$!]="$cluster_id"
+    RUNNING_JOBS=$((RUNNING_JOBS + 1))
+    echo "  Launched cluster $cluster_id (PID $!, $n_seqs seqs)"
+done
+
+# Wait for all remaining background jobs
+for pid in "${!CLUSTER_PIDS[@]}"; do
+    set +e
+    wait "$pid"
+    wait_rc=$?
+    set -e
+    if [[ "$wait_rc" -ne 0 ]]; then
+        echo "  WARNING: Cluster ${CLUSTER_PIDS[$pid]} failed (see log in $CLUSTER_LOG_DIR/)"
+        CLUSTER_FAILURES=$((CLUSTER_FAILURES + 1))
+    else
+        echo "  Cluster ${CLUSTER_PIDS[$pid]}: completed successfully"
     fi
 done
+
+# Print all cluster logs (in order) for visibility
+for logfile in "$CLUSTER_LOG_DIR"/*.log; do
+    if [[ -f "$logfile" ]]; then
+        cat "$logfile"
+    fi
+done
+
+if [[ "$CLUSTER_FAILURES" -gt 0 ]]; then
+    echo "  WARNING: $CLUSTER_FAILURES cluster(s) failed during Step 2"
+fi
 
 STEP2_END=$(date +%s)
 echo "Step 2 complete in $((STEP2_END - STEP2_START))s"
