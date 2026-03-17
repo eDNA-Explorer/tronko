@@ -88,14 +88,10 @@ if [[ "$USE_FASTTREE" -eq 0 ]]; then
     fi
     echo "Using RAxML: $RAXML_BIN"
 else
-    if command -v VeryFastTree &>/dev/null; then
-        TREE_BIN="VeryFastTree"
-        TREE_THREAD_FLAG="-threads $THREADS -nosupport -fastexp 2"
-        echo "Using VeryFastTree: $(command -v VeryFastTree)"
-    elif command -v FastTree &>/dev/null; then
+    if command -v FastTree &>/dev/null; then
         TREE_BIN="FastTree"
         TREE_THREAD_FLAG=""
-        echo "Using FastTree: $(command -v FastTree) (consider installing VeryFastTree for 2-7x speedup)"
+        echo "Using FastTree: $(command -v FastTree)"
     else
         echo "ERROR: Neither VeryFastTree nor FastTree found on PATH" >&2
         exit 1
@@ -239,7 +235,7 @@ build_cluster_tree() {
     if [[ "$USE_FASTTREE" -eq 1 ]]; then
         # VeryFastTree or FastTree (outputs Newick to stdout)
         set +e
-        $TREE_BIN -gtr -gamma -nt $TREE_THREAD_FLAG "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN -nt -gtr $TREE_THREAD_FLAG "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e

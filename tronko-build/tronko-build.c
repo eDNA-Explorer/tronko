@@ -602,6 +602,11 @@ void exportTreeToNewick(struct masterArr* m, const char* filename){
 		exit(EXIT_FAILURE);
 	}
 	fprintf(stderr, "  writeNewick start (root=%d, numspec=%d)\n", m->root, m->numspec); fflush(stderr);
+	if (m->numspec == 0) {
+		fprintf(stderr, "  writeNewick skipped (empty tree)\n"); fflush(stderr);
+		fclose(file);
+		return;
+	}
 	writeNewick(file, m, m->root);
 	fprintf(stderr, "  writeNewick returned\n"); fflush(stderr);
 	fprintf(file, ";\n");
@@ -1058,6 +1063,15 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		}
 		t->numspec=setNumspecArr(partition);
 		gzclose(partition);
+		if (t->numspec < 3){
+			fprintf(stderr, "  Skipping partition %d: only %d sequences (need >= 3)\n", which, t->numspec);
+			free(t->filename);
+			free(t);
+			pthread_mutex_lock(&spscore_mutex);
+			SPscoreArr[which-1]=1;
+			pthread_mutex_unlock(&spscore_mutex);
+			continue;
+		}
 		t->tree=(struct node*)malloc((2*t->numspec-1)*sizeof(struct node));
 		t->names=(char**)malloc(sizeof(char*)*t->numspec);
 		for(i=0; i<t->numspec; i++){
@@ -1077,6 +1091,33 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			snprintf(buf,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
 		}
 		strcpy(t->filename,buf);
+		/* Check if tree file exists and is non-empty before parsing */
+		{
+			FILE *_treechk = fopen(buf, "r");
+			if (_treechk == NULL){
+				fprintf(stderr, "  Skipping partition %d: tree file not found %s\n", which, buf);
+				for(i=0; i<t->numspec; i++){ free(t->names[i]); }
+				free(t->names); free(t->msa); free(t->taxonomy);
+				free(t->tree); free(t->filename); free(t);
+				pthread_mutex_lock(&spscore_mutex);
+				SPscoreArr[which-1]=1;
+				pthread_mutex_unlock(&spscore_mutex);
+				continue;
+			}
+			fseek(_treechk, 0, SEEK_END);
+			long _treesz = ftell(_treechk);
+			fclose(_treechk);
+			if (_treesz < 5){
+				fprintf(stderr, "  Skipping partition %d: tree file too small (%ld bytes) %s\n", which, _treesz, buf);
+				for(i=0; i<t->numspec; i++){ free(t->names[i]); }
+				free(t->names); free(t->msa); free(t->taxonomy);
+				free(t->tree); free(t->filename); free(t);
+				pthread_mutex_lock(&spscore_mutex);
+				SPscoreArr[which-1]=1;
+				pthread_mutex_unlock(&spscore_mutex);
+				continue;
+			}
+		}
 		if ( opt.fasttree == 0 ){
 			allocateTreeArrMemory(t,max_nodename);
 			comma=0;
@@ -1085,8 +1126,6 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			t->tree[t->root].down = -1;
 		}
 		if ( opt.fasttree == 1 ){
-			t->numspec = 0;
-			t->numNodes = 0;
 			FILE *fasttreefile = fopen(buf,"r");
 			if (fasttreefile == NULL ){
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
@@ -1094,6 +1133,26 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			}
 			char* newick = readNewickFile(fasttreefile);
 			fclose(fasttreefile);
+			/* Skip empty or malformed tree files */
+			if (newick == NULL || strlen(newick) < 3){
+				fprintf(stderr, "  Skipping partition %d: empty or malformed tree file %s\n", which, buf);
+				free(newick);
+				for(i=0; i<t->numspec; i++){
+					free(t->names[i]);
+				}
+				free(t->names);
+				free(t->msa);
+				free(t->taxonomy);
+				free(t->tree);
+				free(t->filename);
+				free(t);
+				pthread_mutex_lock(&spscore_mutex);
+				SPscoreArr[which-1]=1;
+				pthread_mutex_unlock(&spscore_mutex);
+				continue;
+			}
+			t->numspec = 0;
+			t->numNodes = 0;
 			srand(time(NULL));
 			parseNewick(t, newick, max_nodename);
 			free(newick);
