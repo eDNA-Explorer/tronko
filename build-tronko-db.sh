@@ -99,11 +99,8 @@ else
     if command -v FastTree &>/dev/null; then
         TREE_BIN="FastTree"
         echo "Using FastTree: $(command -v FastTree)"
-    elif command -v VeryFastTree &>/dev/null; then
-        TREE_BIN="VeryFastTree"
-        echo "Using VeryFastTree: $(command -v VeryFastTree)"
     else
-        echo "ERROR: Neither VeryFastTree nor FastTree found on PATH" >&2
+        echo "ERROR: FastTree not found on PATH" >&2
         exit 1
     fi
 fi
@@ -241,8 +238,8 @@ build_cluster_tree() {
     local n_seqs
     n_seqs=$(grep -c '^>' "$cluster_fasta")
 
-    # Deduplicate sequences by VeryFastTree-parsed name (truncated at first space or ':')
-    # Also replace ':' with '_' in headers to prevent VeryFastTree name truncation
+    # Deduplicate sequences by name (truncated at first space or ':')
+    # Also replace ':' with '_' in headers to prevent tree tool name truncation
     local dedup_fasta="$outdir/${cluster_id}_dedup.fasta"
     awk '/^>/{gsub(/:/, "_"); split($0,a," "); h=a[1]; if(seen[h]++){p=0; next} p=1; print; next} p{print}' "$cluster_fasta" > "$dedup_fasta"
     local n_dedup
@@ -271,16 +268,11 @@ build_cluster_tree() {
     echo "  Cluster $cluster_id: building tree..."
 
     if [[ "$USE_FASTTREE" -eq 1 ]]; then
-        # Build thread flag for this cluster's thread count
-        local cluster_tree_flag=""
-        if [[ "$TREE_BIN" == "VeryFastTree" ]]; then
-            cluster_tree_flag="-threads $cluster_threads -nosupport -fastexp 2"
-        fi
-        # VeryFastTree or FastTree (outputs Newick to stdout)
+        # FastTree (outputs Newick to stdout)
         # FastTree uses OMP_NUM_THREADS env var for threading
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
-        $TREE_BIN -nt -gtr $cluster_tree_flag "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN -nt -gtr "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -301,13 +293,9 @@ build_cluster_tree() {
         if [[ -f "$raxml_dir/RAxML_bestTree.1" ]]; then
             cp "$raxml_dir/RAxML_bestTree.1" "$outdir/RAxML_bestTree.${cluster_id}.unrooted"
         else
-            echo "  WARNING: RAxML failed for cluster $cluster_id, falling back to ${TREE_BIN:-FastTree}"
-            local fallback_flag=""
-            if [[ "${TREE_BIN:-FastTree}" == "VeryFastTree" ]]; then
-                fallback_flag="-threads $cluster_threads -nosupport -fastexp 2"
-            fi
+            echo "  WARNING: RAxML failed for cluster $cluster_id, falling back to FastTree"
             OMP_NUM_THREADS="$cluster_threads" \
-            ${TREE_BIN:-FastTree} -nt -gtr $fallback_flag "$outdir/${cluster_id}_MSA.fasta" \
+            FastTree -nt -gtr "$outdir/${cluster_id}_MSA.fasta" \
                 > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>/dev/null
         fi
     fi
