@@ -1,6 +1,8 @@
 # Tronko Reference Databases
 
-All tronko reference databases built during this project. Tracked with DVC for versioning large files.
+All tronko reference databases built during this project. Each database directory contains a `build_info.json` with exact build parameters and a `pasta_stats.json` (if PASTA-based) with alignment scores.
+
+**Master index**: `metadata.json` — machine-readable inventory of all databases with completeness and ablation-readiness status.
 
 **Marker gene**: 12SV5 (vertebrate 12S rRNA)
 **Input sequences**: 101,088 (filtered) or 176,947 (unfiltered) vertebrate amplicon references from CRUXv2
@@ -11,187 +13,107 @@ All tronko reference databases built during this project. Tracked with DVC for v
 
 ### 1. `charadriiformes_single_tree/`
 
-Small test dataset used for development and correctness verification.
-
-| Property | Value |
-|---|---|
-| Marker | COI (Cytochrome Oxidase I) |
-| Sequences | 1,413 |
-| Alignment columns | 317 bp |
-| Trees | 1 (single-tree mode) |
-| DB size | 38 MB |
-| Build mode | `tronko-build -l` (single tree, no partitioning) |
-
-**Input**: Charadriiformes (shorebirds) from CRUXv2 COI database.
-
-**Build command**:
-```bash
-tronko-build -l \
-    -m Charadriiformes_MSA.fasta \
-    -x Charadriiformes_taxonomy.txt \
-    -t RAxML_bestTree.Charadriiformes.reroot \
-    -d .
-```
+Small COI test dataset (1,413 seqs, 1 tree). Used for development and correctness verification. Not ablation-ready.
 
 ---
 
-### 2. `vert12S_fasttree/`
+### 2-3. `vert12S_fasttree/`, `vert12S_veryfasttree/`
 
-vert12S database built with AncestralClust clustering + FastTree tree inference.
-
-| Property | Value |
-|---|---|
-| Marker | 12SV5 |
-| Input sequences | 101,088 |
-| Tree inference | FastTree 2 |
-| Trees | varies by SP threshold |
-| DB size | 1.4 GB (text), 214 MB (gzipped), 68 MB (trkb/zstd) |
-| Build time | ~45 min |
-
-**Build command**:
-```bash
-./build-tronko-db.sh \
-    -f 12SV5_species.fasta \
-    -t 12SV5_species_taxonomy.txt \
-    -o output_fasttree/ \
-    -T 12 -s 0.1 -F
-```
-
-**Notes**: Contains all three formats (`.txt`, `.txt.gz`, `.trkb`) for format comparison experiments. The `.txt.bak` is a pre-patch_taxonomy version (left in original location).
-
----
-
-### 3. `vert12S_veryfasttree/`
-
-vert12S database built with AncestralClust clustering + VeryFastTree (parallelized FastTree).
-
-| Property | Value |
-|---|---|
-| Marker | 12SV5 |
-| Input sequences | 101,088 |
-| Tree inference | VeryFastTree (multi-threaded) |
-| DB size | 217 MB (gzipped) |
-
-**Build command**:
-```bash
-./build-tronko-db.sh \
-    -f 12SV5_species.fasta \
-    -t 12SV5_species_taxonomy.txt \
-    -o output_veryfasttree/ \
-    -T 12 -s 0.1 -a    # -a enables VeryFastTree
-```
+Early builds using AncestralClust + FastTree/VeryFastTree + SP partitioning. Superseded by PASTA-based approach.
 
 ---
 
 ### 4. `vert12S_pasta/`
 
-vert12S database built using PASTA (SATe-enabled Phylogenetic Alignment and Tree Estimation) for simultaneous alignment and tree building, with SP-score partitioning.
+**The original winning database (F1=0.696).** PASTA tree decomposed into 141 partitions (max_size=1000), FAMSA+FastTree per partition, tronko-build with no SP partitioning and no internal repartitioning. Built with an older tronko-build binary that did not trigger `createNewRoots`.
 
 | Property | Value |
 |---|---|
-| Marker | 12SV5 |
-| Input sequences | 101,088 |
-| Tree inference | PASTA (iterative alignment + FastTree) |
-| DB size | 2.4 GB (text) |
+| Trees | 141 |
+| DB size | 2.4 GB |
+| PASTA | iter=3, sub=200 |
+| Decomposition | centroid, max_size=1000 |
+| Internal repartitioning | none |
+| SP partitioning | none |
 
-**Build command**:
-```bash
-python3 partition_and_build.py \
-    --tree pasta_output/vert12S_pasta1.fixed.tre \
-    --fasta pasta_output/12SV5_species.fixed.fasta \
-    --taxonomy pasta_output/12SV5_species_taxonomy.fixed.txt \
-    --outdir pasta_sp_partitions \
-    --max-diam 25.0 --min-size 3 \
-    --threads 12 --sp-threshold 0.1 \
-    --tronko-build tronko-build/tronko-build \
-    --tronko-outdir pasta_tronko_db
-```
+---
 
-**Notes**: Uses PASTA's guide tree instead of AncestralClust for clustering. PASTA produces a single large tree, which is then partitioned by SP-score threshold.
+### 4b. `vert12S_pasta_sp_0.10/`
+
+PASTA tree + diameter decomposition (max_diam=25) + SP 0.10 recursive partitioning. 7,804 trees. Performed worse than the no-SP version (4b). Ablation-ready with exported subtrees.
 
 ---
 
 ### 5. `12sv5_unfiltered/`
 
-Raw unfiltered 12SV5 dataset (176,947 sequences) with a small test build.
-
-| Property | Value |
-|---|---|
-| Marker | 12SV5 |
-| Input sequences | 176,947 |
-| Status | Partial build (3 partitions only) |
-
-Contains the raw `12SV5_species.fasta` and `12SV5_species_taxonomy.txt` input files along with a few test partitions.
+Input files only (176,947 sequences). PASTA run in progress — databases will appear in `pasta_sweep/` when complete.
 
 ---
 
-### 6-17. `sweep_*` directories
+### 6-17. `sweep_ac_*` (12 databases)
 
-Parameter sweep across 4 AncestralClust clustering configs x 3 SP-score thresholds = 12 databases. All built from the same 101,088 filtered vert12S sequences.
+AncestralClust clustering sweep: 4 configs x 3 SP thresholds. All use SP-score partitioning. Built with `build-tronko-db.sh -F -E`. Ablation-ready via `exported_subtrees/`.
 
-#### Clustering Configurations
+| Config | SP 0.05 | SP 0.10 | SP 0.20 |
+|---|---|---|---|
+| ac_default (bin=20K) | 4,376 trees | 7,992 trees | 10,538 trees |
+| ac_more_bins (bin=10K) | 4,335 trees | 7,995 trees | 10,623 trees |
+| ac_fewer_bins (bin=50K) | 1,574 trees | 2,908 trees | 3,848 trees |
+| ac_single (no clustering) | 2,909 trees | 7,005 trees | 10,605 trees |
 
-| Config | Description |
+---
+
+### 18+. `pasta_sweep/` (PASTA decomposition sweep)
+
+Systematic sweep of PASTA tree decomposition parameters. All databases use **no SP partitioning** and **no internal repartitioning** (`-f 999999`).
+
+#### Two PASTA trees tested
+
+| PASTA Config | Subproblem Size | Final Score | Input |
+|---|---|---|---|
+| sub=200 (original) | 200 | -3,309,385 | 101K filtered |
+| sub=500 | 500 | -3,168,989 (3.5% better) | 101K filtered |
+| sub=500 unfiltered | 500 | (in progress) | 176K unfiltered |
+
+#### Decomposition parameters swept
+
+| Parameter | Values Tested |
 |---|---|
-| `ac_default` | AncestralClust default parameters |
-| `ac_more_bins` | More clustering bins (finer initial clusters) |
-| `ac_fewer_bins` | Fewer clustering bins (coarser initial clusters, larger trees) |
-| `ac_single` | Single cluster (no AncestralClust; one global FastTree, then SP-partitioning only) |
+| `--max-size` | 500, 1000, 2000, 5000 |
+| `--max-diam` | 10, 25 |
+| FastTree `-gamma` | false, true |
+| `norepartition` (`-f 999999`) | all configs use this |
 
-#### SP-Score Thresholds
+#### Pipeline
 
-The SP (Sum-of-Pairs) score threshold controls when tronko-build splits a tree into subtrees. Lower = fewer, larger trees. Higher = more, smaller trees.
-
-| Threshold | Effect |
-|---|---|
-| `sp_0.05` | Fewer, larger trees (less aggressive partitioning) |
-| `sp_0.10` | Default balance |
-| `sp_0.20` | More, smaller trees (more aggressive partitioning) |
-
-#### Sweep Results Summary
-
-| Config | SP | Trees | Leaves/Tree (median) | DB Size | Build Time | Genus Purity | Family Purity |
-|---|---|---|---|---|---|---|---|
-| ac_default | 0.05 | 4,378 | 22 | 1,551 MB | 43 min | 0.60 | 0.77 |
-| ac_default | 0.10 | 7,996 | 12 | 1,473 MB | 45 min | 0.65 | 0.80 |
-| ac_default | 0.20 | 10,602 | 8 | 1,426 MB | 46 min | 0.66 | 0.81 |
-| ac_more_bins | 0.05 | 4,347 | 22 | 1,555 MB | 30 min | 0.57 | 0.74 |
-| ac_more_bins | 0.10 | 8,013 | 12 | 1,474 MB | 32 min | 0.62 | 0.78 |
-| ac_more_bins | 0.20 | 10,575 | 8 | 1,429 MB | 33 min | 0.64 | 0.79 |
-| ac_fewer_bins | 0.05 | 1,574 | — | 4,231 MB | 149 min | 0.41 | 0.52 |
-| ac_fewer_bins | 0.10 | 2,902 | — | 4,200 MB | 150 min | 0.43 | 0.53 |
-| ac_fewer_bins | 0.20 | 3,842 | — | 4,181 MB | 158 min | 0.43 | 0.53 |
-| ac_single | 0.05 | 2,909 | — | 2,000 MB | — | — | — |
-| ac_single | 0.10 | 7,005 | — | 1,600 MB | ~3.5 hr | — | — |
-| ac_single | 0.20 | 10,605 | — | 1,400 MB | — | — | — |
-
-**Key findings**:
-- `ac_fewer_bins` produces 3x larger databases with worse purity — fewer initial clusters lead to larger, more taxonomically heterogeneous trees
-- `ac_default` and `ac_more_bins` produce very similar results (AncestralClust is robust to bin count within this range)
-- Higher SP thresholds improve genus/family purity at the cost of more trees (more partition overhead at assignment time)
-- `ac_single` (no clustering, just SP-partitioning of one big tree) produces competitive results, suggesting AncestralClust may not be strictly necessary
-
-**Build command** (all sweep DBs):
-```bash
-./build-tronko-db.sh \
-    -f 12SV5_species.fasta \
-    -t 12SV5_species_taxonomy.txt \
-    -o dbs/<cluster_config>/<sp_threshold>/ \
-    -T 12 -s <sp_threshold> -a
+```
+PASTA tree (101K or 176K seqs, 3 iterations)
+  → centroid decomposition (max_size or max_diam)
+    → per-partition FAMSA + FastTree
+      → tronko-build -y -E -a -f 999999 (no repartitioning)
+        → marker.fasta + BWA index
 ```
 
-Sweep metadata (build times, tree statistics, purity metrics) in `sweep_metadata/`.
+#### Current databases in `pasta_sweep/`
+
+**sub=200 PASTA tree:**
+- `maxsize{500,1000,2000,5000}_{nogamma,gamma}` — 8 databases
+- `maxdiam{10,25}_{nogamma,gamma}` — 4 databases
+- `maxsize1000_norepartition_{nogamma,gamma}` — 2 databases (identical pipeline, named explicitly)
+
+**sub=500 PASTA tree:**
+- `sub500_maxsize{500,1000,2000,5000}_{nogamma,gamma}` — 8 databases
+- `sub500_maxsize1000_norepartition_{nogamma,gamma}` — 2 databases
+
+**sub=500 unfiltered (176K, in progress):**
+- `unfiltered_maxsize{500,1000,2000,5000}_{nogamma,gamma}` — pending
+- `unfiltered_maxdiam{10,25}_{nogamma,gamma}` — pending
 
 ---
 
 ### `sweep_metadata/`
 
-Logs and metrics from the parameter sweep:
-- `sweep_summary.json` — Per-config statistics (trees, leaves, purity, build time)
-- `sweep_metrics.json` — Extended metrics
-- `sweep_report.html` — Visual report
-- `sweep.log` — Build log
-- `extended_analysis.json` — Additional analysis
+Logs and metrics from the AncestralClust parameter sweep (sweep_summary.json, sweep_metrics.json, etc).
 
 ---
 
@@ -201,33 +123,41 @@ Each complete database directory contains:
 
 | File | Description |
 |---|---|
-| `reference_tree.txt` | Tronko reference database (text format) |
-| `reference_tree.txt.gz` | Gzipped text format |
-| `reference_tree.trkb` | Binary format with zstd compression (smallest) |
-| `marker.fasta` | Concatenated leaf sequences (for BWA indexing) |
+| `reference_tree.txt` | Tronko reference database (text) |
+| `marker.fasta` | Concatenated gap-free leaf sequences (for BWA) |
 | `marker.fasta.{amb,ann,bwt,pac,sa}` | BWA index files |
-| `final_partitions.txt` | Partition manifest (which leaves in which tree) |
+| `marker_taxonomy.txt` | Taxonomy for all sequences in marker.fasta |
+| `build_info.json` | Build parameters and provenance |
+| `pasta_stats.json` | PASTA scores, config, runtime (if PASTA-based) |
+| `exported_subtrees/` | Per-partition MSA + taxonomy + tree (for ablation) |
+| `tree_list.txt` | Partition manifest |
+| `input.fasta`, `input_taxonomy.txt` | Input files used for the build |
 
-Not all directories have all formats. The minimum needed for `tronko-assign` is one reference tree file + `marker.fasta` + BWA index.
-
-## Using a Database with tronko-assign
+## Using a Database
 
 ```bash
 tronko-assign -r \
-    -f databases/<db>/reference_tree.txt.gz \
+    -f databases/<db>/reference_tree.txt \
     -a databases/<db>/marker.fasta \
     -s -g query_reads.fasta \
     -o results.txt -w
 ```
 
-## DVC Tracking
-
-Large database files are tracked with [DVC](https://dvc.org/) and not stored in git.
+## Benchmarking
 
 ```bash
-# Pull databases (after cloning)
-dvc pull
+# Discover all databases and run ablation benchmarks
+cd /path/to/assignment-tool-benchmarking
+poetry run python notebooks/tronko_db_sweep.py --db-only \
+    --db-sweep-root /path/to/tronko-fork/databases
+```
 
-# Check status
-dvc status
+## DVC Tracking
+
+Large files tracked with DVC against `gs://edna-dvc-data/tronko-databases`.
+
+```bash
+poetry install        # sets up DVC
+dvc pull              # all databases
+dvc pull databases/pasta_sweep/maxsize1000_nogamma.dvc  # one database
 ```

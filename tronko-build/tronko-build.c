@@ -961,10 +961,14 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	partitionSizes[0]=m->tree[m->tree[local_minVarNode].up[0]].nd;
 	partitionSizes[1]=m->tree[m->tree[local_minVarNode].up[1]].nd;
 	partitionSizes[2]=(m->tree[m->root].nd-m->tree[local_minVarNode].nd);
+	fprintf(stderr, "  createNewRoots: partitionSizes = [%d, %d, %d], rootCount=%d\n",
+		partitionSizes[0], partitionSizes[1], partitionSizes[2], rootCount);
 	if ( partitionSizes[0] < 4 || partitionSizes[1] < 4 || partitionSizes[2] < 4){
+		fprintf(stderr, "  createNewRoots: partition too small, returning early\n");
 		pthread_mutex_lock(&spscore_mutex);
 		SPscoreArr[rootCount]=1;
 		pthread_mutex_unlock(&spscore_mutex);
+		free(partition1); free(partition2); free(partition3); free(partitionSizes);
 		return;
 	}
 	int partitionCount=-1;

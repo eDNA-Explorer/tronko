@@ -307,7 +307,25 @@ if [[ -f "$PASTA_TREE_FILTERED" ]]; then
         done
     done
 
-    # Also try norepartition with iter5
+    # maxdiam configs
+    for max_diam in 10 25; do
+        for gamma in false true; do
+            label="sub500_maxdiam${max_diam}"
+            [[ "$gamma" == "true" ]] && label="${label}_gamma" || label="${label}_nogamma"
+            part_dir="$SWEEP_DIR/_cache/partitions_sub500_maxdiam${max_diam}"
+            db_dir="$SWEEP_DIR/$label"
+
+            log ""
+            log "--- $label ---"
+
+            run_decomposition "$PASTA_TREE_FILTERED" "$FILTERED_FASTA" "$FILTERED_TAX" \
+                "$part_dir" "--max-diam $max_diam"
+
+            build_tronko_db "$part_dir" "$db_dir" "$label" 0 "$gamma"
+        done
+    done
+
+    # Also try norepartition
     for gamma in false true; do
         label="sub500_maxsize1000_norepartition"
         [[ "$gamma" == "true" ]] && label="${label}_gamma" || label="${label}_nogamma"
@@ -352,6 +370,25 @@ if [[ -f "$PASTA_TREE_UNFILTERED" ]]; then
 
             run_decomposition "$PASTA_TREE_UNFILTERED" "$UNFILTERED_FASTA" "$UNFILTERED_TAX" \
                 "$part_dir" "--max-size $max_size"
+
+            build_tronko_db "$part_dir" "$db_dir" "$label" 0 "$gamma" \
+                "$UNFILTERED_FASTA" "$UNFILTERED_TAX"
+        done
+    done
+
+    # maxdiam configs
+    for max_diam in 10 25; do
+        for gamma in false true; do
+            label="unfiltered_maxdiam${max_diam}"
+            [[ "$gamma" == "true" ]] && label="${label}_gamma" || label="${label}_nogamma"
+            part_dir="$SWEEP_DIR/_cache/partitions_unfiltered_maxdiam${max_diam}"
+            db_dir="$SWEEP_DIR/$label"
+
+            log ""
+            log "--- $label ---"
+
+            run_decomposition "$PASTA_TREE_UNFILTERED" "$UNFILTERED_FASTA" "$UNFILTERED_TAX" \
+                "$part_dir" "--max-diam $max_diam"
 
             build_tronko_db "$part_dir" "$db_dir" "$label" 0 "$gamma" \
                 "$UNFILTERED_FASTA" "$UNFILTERED_TAX"
