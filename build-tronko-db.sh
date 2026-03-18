@@ -23,7 +23,7 @@
 #   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
-#   -J  Parallel jobs for Step 2 cluster processing (default: 1)
+#   -J  Parallel jobs for Step 2 cluster processing AND Step 4 tronko-build partitioning (default: 1)
 
 set -euo pipefail
 
@@ -486,7 +486,8 @@ if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
         -d "$OUTPUT_DIR" \
         -s -u "$SP_THRESHOLD" \
         $TRONKO_FLAGS \
-        -c "$THREADS"
+        -c "$THREADS" \
+        -J "$PARALLEL_JOBS"
 fi
 
 # Check for output

@@ -22,7 +22,8 @@ static struct Options long_options[]=
 	{"remove-unused-trees", no_argument, 0, 'r'},
 	{"prefix", required_argument, 0, 'i'},
 	{"fasttree", no_argument, 0, 'a'},
-	{"export-subtrees", no_argument, 0, 'E'}
+	{"export-subtrees", no_argument, 0, 'E'},
+	{"parallel-jobs", required_argument, 0, 'J'}
 };
 
 char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
@@ -48,6 +49,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
 	-a, use VeryFastTree instead of RAxML\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
+	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
 	\n";
 
 void print_help_statement(){
@@ -63,7 +65,7 @@ void parse_options(int argc, char **argv, Options *opt){
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hspvlgaryEu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hspvlgaryEu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:J:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
@@ -193,6 +195,12 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%d", &(opt->restart));
 				if (!success)
 					fprintf(stderr, "Invalid number\n");
+				break;
+			case 'J':
+				success = sscanf(optarg, "%d", &(opt->parallel_jobs));
+				if (!success)
+					fprintf(stderr, "Invalid number of parallel jobs\n");
+				if (opt->parallel_jobs < 1) opt->parallel_jobs = 1;
 				break;
 		}
 	}

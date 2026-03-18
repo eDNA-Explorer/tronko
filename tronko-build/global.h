@@ -131,6 +131,7 @@ typedef struct Options{
 	int famsa_threads;
 	int fasttree;
 	int export_subtrees;
+	int parallel_jobs;
 }Options;
 
 typedef struct masterArr{
