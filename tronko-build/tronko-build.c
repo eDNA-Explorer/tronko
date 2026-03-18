@@ -2179,74 +2179,72 @@ int main(int argc, char **argv){
 		printf("Exported %d subtrees to %s\n", export_idx, export_dir);
 	}
 
-	allocatetreememory_for_nucleotide_Arr(numberOfTrees);
+	/* Batched posterior computation — process trees in chunks to limit memory usage.
+	   Each tree's likenc/posteriornc is independent, so we allocate, compute, write,
+	   and free in batches rather than loading everything at once. */
+	int BATCH_SIZE = 500;
+
+	/* Write header section (metadata + taxonomy — no posteriors needed) */
+	printf("Writing reference_tree.txt header (%d trees)...\n", numberOfTrees);
+	fflush(stdout);
+	FILE *refTree = printTreeFileHeader(numberOfTrees, max_nodename, max_tax_name, max_lineTaxonomy, opt);
 
 	/* Open progress file for external monitoring */
 	char progress_path[BUFFER_SIZE];
 	snprintf(progress_path, BUFFER_SIZE, "%s/_progress.txt", opt.partitions_directory);
 	FILE *progress_fp = fopen(progress_path, "w");
-	if (progress_fp) {
-		fprintf(progress_fp, "stage=posteriors\ntrees_total=%d\ntrees_done=0\n", numberOfTrees);
-		fflush(progress_fp);
+
+	/* Process trees in batches */
+	printf("Computing and writing posteriors for %d trees in batches of %d...\n", numberOfTrees, BATCH_SIZE);
+	fflush(stdout);
+	int batch_start, batch_end;
+	for (batch_start = 0; batch_start < numberOfTrees; batch_start += BATCH_SIZE) {
+		batch_end = batch_start + BATCH_SIZE;
+		if (batch_end > numberOfTrees) batch_end = numberOfTrees;
+
+		printf("  Batch %d-%d of %d\n", batch_start + 1, batch_end, numberOfTrees);
+		fflush(stdout);
+
+		/* 1. Allocate likenc/posteriornc for this batch */
+		allocatetreememory_for_nucleotide_range(batch_start, batch_end);
+
+		/* 2. Compute posteriors (parallelized within batch) */
+		#pragma omp parallel for schedule(dynamic) private(i)
+		for (i = batch_start; i < batch_end; i++) {
+			double local_params[10] = {0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
+			estimatenucparameters_Arr(local_params, i);
+			getposterior_nc_Arr(local_params, i);
+		}
+
+		/* 3. Missing data adjustment (if enabled) */
+		if (opt.missing_data == 1) {
+			#pragma omp parallel for schedule(dynamic) private(i, j)
+			for (i = batch_start; i < batch_end; i++) {
+				changePP_Arr(rootArr[i], i);
+				for (j = numspecArr[i]-1; j < 2*numspecArr[i]-1; j++) {
+					changePP_parents_Arr(j, i);
+				}
+			}
+		}
+
+		/* 4. Write this batch's posteriors to file */
+		printTreeFilePosteriors(refTree, batch_start, batch_end, opt);
+
+		/* 5. Free this batch's likenc/posteriornc */
+		for (i = batch_start; i < batch_end; i++) {
+			freeTreePosteriorMemory(i);
+		}
+
+		if (progress_fp) {
+			fseek(progress_fp, 0, SEEK_SET);
+			ftruncate(fileno(progress_fp), 0);
+			fprintf(progress_fp, "stage=posteriors\ntrees_total=%d\ntrees_done=%d\n", numberOfTrees, batch_end);
+			fflush(progress_fp);
+		}
 	}
 
-	printf("Computing posteriors for %d trees...\n", numberOfTrees);
-	fflush(stdout);
-	int trees_done = 0;
-	#pragma omp parallel for schedule(dynamic) private(i)
-	for(i=0; i<numberOfTrees; i++){
-		double local_params[10] = {0.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
-		estimatenucparameters_Arr(local_params,i);
-		getposterior_nc_Arr(local_params,i);
-		int done;
-		#pragma omp atomic capture
-		done = ++trees_done;
-		if (done == numberOfTrees || done % 10 == 0){
-			printf("  Posteriors: %d/%d trees done\n", done, numberOfTrees);
-			fflush(stdout);
-			if (progress_fp) {
-				fseek(progress_fp, 0, SEEK_SET);
-				ftruncate(fileno(progress_fp), 0);
-				fprintf(progress_fp, "stage=posteriors\ntrees_total=%d\ntrees_done=%d\n", numberOfTrees, done);
-				fflush(progress_fp);
-			}
-		}
-	}
-	printf("Posterior computation complete.\n");
-	if (progress_fp) {
-		fseek(progress_fp, 0, SEEK_SET);
-		ftruncate(fileno(progress_fp), 0);
-		fprintf(progress_fp, "stage=done\ntrees_total=%d\ntrees_done=%d\n", numberOfTrees, numberOfTrees);
-		fflush(progress_fp);
-		fclose(progress_fp);
-	}
-	//FILE *for_monica = fopen("/space/s1/lenore/trout_copy/s2_copy/for_monica/OU061397_1_PP.txt","w");
-	//if ( for_monica == NULL ){ printf("Error opening file!\n"); exit(1); }
-	//for(i=0; i<numbaseArr[0]; i++){
-	//	fprintf(for_monica,"%d",i);
-	//	for(j=0; j<4; j++){
-	//		fprintf(for_monica,"\t%.17g",treeArr[0][200].posteriornc[i][j]);
-	//	}
-	//	fprintf(for_monica,"\n");
-	//}
-	//fclose(for_monica);
-	//exit(1);
-	if (opt.missing_data==1){
-		printf("Adjusting posteriors for missing data (%d trees)...\n", numberOfTrees);
-		fflush(stdout);
-		#pragma omp parallel for schedule(dynamic) private(i, j)
-		for(i=0; i<numberOfTrees; i++){
-			changePP_Arr(rootArr[i],i);
-			for(j=numspecArr[i]-1;j<2*numspecArr[i]-1;j++){
-				changePP_parents_Arr(j,i);
-			}
-		}
-	}
-	printf("Missing data adjustment complete.\n");
-	fflush(stdout);
-	printf("Writing reference_tree.txt...\n");
-	fflush(stdout);
-	printTreeFile(numberOfTrees,max_nodename,max_tax_name,max_lineTaxonomy,opt);
+	if (progress_fp) fclose(progress_fp);
+	printTreeFileFinalize(refTree, numberOfTrees, opt);
 	printf("Done.\n");
 	/*hashmap_foreach(key,final,&mastermap){
 		for(i=0; i<final->numspec; i++){

@@ -44,6 +44,39 @@ void allocateTreeArrMemory(struct masterArr *m, int max_nodename){
 		memset(m->tree[i].name, '\0', max_nodename+1);
 	}
 }
+void allocatetreememory_for_nucleotide_range(int start, int end){
+  int i, j, k;
+  for(k=start; k<end; k++){
+  	for (i=0; i<(numspecArr[k]*2-1); i++){
+    	int nb = numbaseArr[k];
+    	treeArr[k][i].likenc = malloc(nb*(sizeof(double *)));
+    	treeArr[k][i].posteriornc = malloc(nb*(sizeof(double *)));
+    	double *like_data = malloc(nb * 4 * sizeof(double));
+    	double *post_data = malloc(nb * 4 * sizeof(double));
+    	for (j=0; j<nb; j++){
+      		treeArr[k][i].likenc[j] = &like_data[j*4];
+      		treeArr[k][i].posteriornc[j] = &post_data[j*4];
+    	}
+  	}
+  }
+  for (i=0;i<4;i++){
+    PMATnc[0][i][4]=1.0;
+    PMATnc[1][i][4]=1.0;
+  }
+}
+void freeTreePosteriorMemory(int whichPartition){
+	int i;
+	for(i=0; i<2*numspecArr[whichPartition]-1; i++){
+		if (treeArr[whichPartition][i].likenc && numbaseArr[whichPartition] > 0)
+			free(treeArr[whichPartition][i].likenc[0]);
+		if (treeArr[whichPartition][i].posteriornc && numbaseArr[whichPartition] > 0)
+			free(treeArr[whichPartition][i].posteriornc[0]);
+		free(treeArr[whichPartition][i].likenc);
+		free(treeArr[whichPartition][i].posteriornc);
+		treeArr[whichPartition][i].likenc = NULL;
+		treeArr[whichPartition][i].posteriornc = NULL;
+	}
+}
 void freeTreeMemory(int whichPartition){
 	int i,j,k;
 	for(i=0; i<2*numspecArr[whichPartition]-1; i++){
