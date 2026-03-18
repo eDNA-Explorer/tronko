@@ -1,0 +1,865 @@
+{
+  "generated": "2026-03-18",
+  "total_databases": 42,
+  "ablation_ready_count": 38,
+  "databases": [
+    {
+      "path": "12sv5_unfiltered",
+      "name": "12sv5_unfiltered",
+      "marker": "12SV5",
+      "input_sequences": 176947,
+      "n_trees": 14558,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": ["txt", "trkb"],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_fewer_bins"
+    },
+    {
+      "path": "charadriiformes_single_tree",
+      "name": "charadriiformes_single_tree",
+      "marker": "COI",
+      "input_sequences": 1413,
+      "n_trees": 1,
+      "pipeline": "tronko-build -l (single tree, no partitioning)",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": false,
+      "has_bwa_index": false,
+      "has_marker_taxonomy": false,
+      "ablation_ready": false,
+      "has_pasta_stats": false
+    },
+    {
+      "path": "pasta_sweep/maxdiam10_gamma",
+      "name": "maxdiam10_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 318,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_diam",
+        "value": 10,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxdiam10_nogamma",
+      "name": "maxdiam10_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 318,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_diam",
+        "value": 10,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxdiam25_gamma",
+      "name": "maxdiam25_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 30,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_diam",
+        "value": 25,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxdiam25_nogamma",
+      "name": "maxdiam25_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 30,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_diam",
+        "value": 25,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize1000_gamma",
+      "name": "maxsize1000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 423,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 1000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize1000_nogamma",
+      "name": "maxsize1000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 423,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 1000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize1000_norepartition_gamma",
+      "name": "maxsize1000_norepartition_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 141,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200
+    },
+    {
+      "path": "pasta_sweep/maxsize1000_norepartition_nogamma",
+      "name": "maxsize1000_norepartition_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 141,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200
+    },
+    {
+      "path": "pasta_sweep/maxsize2000_gamma",
+      "name": "maxsize2000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 210,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 2000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize2000_nogamma",
+      "name": "maxsize2000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 210,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 2000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize5000_gamma",
+      "name": "maxsize5000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 87,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 5000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize5000_nogamma",
+      "name": "maxsize5000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 87,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 5000,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize500_gamma",
+      "name": "maxsize500_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 873,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 500,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/maxsize500_nogamma",
+      "name": "maxsize500_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 873,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3309385.351,
+      "pasta_subproblem_size": 200,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 500,
+        "min_size": 3,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize1000_gamma",
+      "name": "sub500_maxsize1000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 456,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize1000_nogamma",
+      "name": "sub500_maxsize1000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 456,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize1000_norepartition_gamma",
+      "name": "sub500_maxsize1000_norepartition_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 152,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize1000_norepartition_nogamma",
+      "name": "sub500_maxsize1000_norepartition_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 152,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize2000_gamma",
+      "name": "sub500_maxsize2000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 225,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize2000_nogamma",
+      "name": "sub500_maxsize2000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 225,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize5000_gamma",
+      "name": "sub500_maxsize5000_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 90,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize5000_nogamma",
+      "name": "sub500_maxsize5000_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 90,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize500_gamma",
+      "name": "sub500_maxsize500_gamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 891,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "pasta_sweep/sub500_maxsize500_nogamma",
+      "name": "sub500_maxsize500_nogamma",
+      "marker": "12SV5",
+      "input_sequences": 0,
+      "n_trees": 891,
+      "pipeline": "unknown",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": true,
+      "pasta_final_score": -3168988.702,
+      "pasta_subproblem_size": 500
+    },
+    {
+      "path": "sweep_ac_default_sp_0.05",
+      "name": "sweep_ac_default_sp_0.05",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 4376,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.05,
+      "clustering": "ancestralclust_default"
+    },
+    {
+      "path": "sweep_ac_default_sp_0.10",
+      "name": "sweep_ac_default_sp_0.10",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 7992,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_default"
+    },
+    {
+      "path": "sweep_ac_default_sp_0.20",
+      "name": "sweep_ac_default_sp_0.20",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 10538,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.2,
+      "clustering": "ancestralclust_default"
+    },
+    {
+      "path": "sweep_ac_fewer_bins_sp_0.05",
+      "name": "sweep_ac_fewer_bins_sp_0.05",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 1574,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.05,
+      "clustering": "ancestralclust_fewer_bins"
+    },
+    {
+      "path": "sweep_ac_fewer_bins_sp_0.10",
+      "name": "sweep_ac_fewer_bins_sp_0.10",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 2908,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_fewer_bins"
+    },
+    {
+      "path": "sweep_ac_fewer_bins_sp_0.20",
+      "name": "sweep_ac_fewer_bins_sp_0.20",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 3848,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.2,
+      "clustering": "ancestralclust_fewer_bins"
+    },
+    {
+      "path": "sweep_ac_more_bins_sp_0.05",
+      "name": "sweep_ac_more_bins_sp_0.05",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 4335,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.05,
+      "clustering": "ancestralclust_more_bins"
+    },
+    {
+      "path": "sweep_ac_more_bins_sp_0.10",
+      "name": "sweep_ac_more_bins_sp_0.10",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 7995,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_more_bins"
+    },
+    {
+      "path": "sweep_ac_more_bins_sp_0.20",
+      "name": "sweep_ac_more_bins_sp_0.20",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 10623,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.2,
+      "clustering": "ancestralclust_more_bins"
+    },
+    {
+      "path": "sweep_ac_single_sp_0.05",
+      "name": "sweep_ac_single_sp_0.05",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 2909,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.05,
+      "clustering": "ancestralclust_single"
+    },
+    {
+      "path": "sweep_ac_single_sp_0.10",
+      "name": "sweep_ac_single_sp_0.10",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 7005,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_single"
+    },
+    {
+      "path": "sweep_ac_single_sp_0.20",
+      "name": "sweep_ac_single_sp_0.20",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 10605,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.2,
+      "clustering": "ancestralclust_single"
+    },
+    {
+      "path": "vert12S_fasttree",
+      "name": "vert12S_fasttree",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 0,
+      "pipeline": "build-tronko-db.sh (AncestralClust + FastTree)",
+      "reference_formats": [
+        "txt",
+        "txt.gz",
+        "trkb"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": false,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_default"
+    },
+    {
+      "path": "vert12S_pasta",
+      "name": "vert12S_pasta",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 141,
+      "pipeline": "partition_and_build.py (PASTA tree + centroid decomposition, no SP)",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": false,
+      "has_pasta_stats": false,
+      "decomposition": {
+        "mode": "max_size",
+        "value": 1000,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0
+    },
+    {
+      "path": "vert12S_pasta_sp_0.10",
+      "name": "vert12S_pasta_sp_0.10",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 7804,
+      "pipeline": "partition_and_build.py (PASTA tree + diameter decomposition + SP partitioning)",
+      "reference_formats": [
+        "txt"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": true,
+      "ablation_ready": true,
+      "has_pasta_stats": false,
+      "decomposition": {
+        "mode": "max_diam",
+        "value": 25.0,
+        "strategy": "centroid"
+      },
+      "sp_threshold": 0.1
+    },
+    {
+      "path": "vert12S_veryfasttree",
+      "name": "vert12S_veryfasttree",
+      "marker": "12SV5",
+      "input_sequences": 101088,
+      "n_trees": 0,
+      "pipeline": "build-tronko-db.sh (AncestralClust + VeryFastTree)",
+      "reference_formats": [
+        "txt.gz"
+      ],
+      "has_marker_fasta": true,
+      "has_bwa_index": true,
+      "has_marker_taxonomy": false,
+      "ablation_ready": false,
+      "has_pasta_stats": false,
+      "sp_threshold": 0.1,
+      "clustering": "ancestralclust_default"
+    }
+  ]
+}

@@ -46,7 +46,7 @@ PASTA tree + diameter decomposition (max_diam=25) + SP 0.10 recursive partitioni
 
 ### 5. `12sv5_unfiltered/`
 
-Input files only (176,947 sequences). PASTA run in progress — databases will appear in `pasta_sweep/` when complete.
+Unfiltered 12SV5 dataset (176,947 sequences). AncestralClust (fewer bins, bin=50K) + FastTree + SP 0.10 partitioning. 14,558 trees. Ablation-ready with exported subtrees.
 
 ---
 
