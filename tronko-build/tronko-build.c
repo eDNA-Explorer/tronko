@@ -539,13 +539,11 @@ double calculateSPArr(struct masterArr *m){
 		}
 	}
 	free(partition);
-	//printf("raw SPscore: %lf\n",SPscore);
-	//printf("numpairs: %d\n",numpairs);
-	double exponent;
-	exponent = (-5.0/2.0);
-	//SPscore=SPscore/(m->numspec*exp(exponent));
-	//SPscore=SPscore/(m->numspec*exp(-5/2));
-	SPscore=SPscore/m->numspec;
+	/* Normalize by numpairs only: SPscore = raw_score / numpairs
+	   Range: [-2, +3] where +3 = all pairs identical, -2 = all pairs mismatched.
+	   Previously divided by numspec a second time (bug), which made max achievable
+	   SPscore = 3/numspec — causing any partition with numspec > 3/sp_score to
+	   always fail the threshold regardless of sequence similarity. */
 	SPscore=SPscore/numpairs;
 	printf("SPscore: %lf\n",SPscore);
 	return SPscore;
@@ -1204,8 +1202,21 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		hashmap_put(&mastermap, t->index, t);
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
+		/* Performance heuristic: skip O(N^2) calculateSPArr for very large partitions.
+		   With the corrected normalization (SPscore = raw_score / numpairs, range [-2,+3]),
+		   there is no longer a mathematical upper bound on SPscore based on numspec alone.
+		   However, sub-partitions with thousands of sequences from a diverse reference
+		   database are virtually certain to score below any reasonable threshold in practice.
+		   The calculation is O(numbase * numspec^2): at 5000 seqs x 1800 bases,
+		   that is ~22 billion ops (~22s); at 80K seqs it would take ~12 hours.
+		   Treat partitions above this size as needing splitting without computing the score. */
+		int sp_too_large = (t->numspec > 5000);
 		if ( opt.use_spscore==1 && opt.use_min_leaves==0){
-				initialSPscore = calculateSPArr(t);
+				if (sp_too_large){
+					initialSPscore = -1; /* assume below threshold */
+				}else{
+					initialSPscore = calculateSPArr(t);
+				}
 				if (initialSPscore < opt.sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
@@ -1230,7 +1241,11 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			}
 		}
 		if ( opt.use_spscore==1 && opt.use_min_leaves==1 ){
-			initialSPscore = calculateSPArr(t);
+			if (sp_too_large){
+				initialSPscore = -1;
+			}else{
+				initialSPscore = calculateSPArr(t);
+			}
 			if (initialSPscore < opt.sp_score && t->numspec > opt.min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
