@@ -32,15 +32,15 @@ The tronko-build pipeline was optimized for a **6.3x speedup** on single-tree bu
 
 **Files:** `printtree.c`
 
-#### 4. VeryFastTree fork/exec (`tronko-build.c`)
+#### 4. FastTree fork/exec (`tronko-build.c`)
 
-**Before:** VeryFastTree was invoked via `system()`, which spawns a shell to parse the command string and handle stdout redirection.
+**Before:** FastTree was invoked via `system()`, which spawns a shell to parse the command string and handle stdout redirection.
 
 **After:** Direct `fork/execvp` with manual `dup2` for stdout redirection. Eliminates shell startup overhead and is cleaner for process management in the parallel pipeline.
 
 **Files:** `tronko-build.c` (`run_partition_pipeline()`)
 
-#### 5. VeryFastTree realloc Bug Fix (`tronko-build.c`, `global.h`)
+#### 5. FastTree realloc Bug Fix (`tronko-build.c`, `global.h`)
 
 **Before:** `createNode()` called `realloc(m->tree, numNodes * sizeof(node))` on every single node creation during `parseNewick()` and `resolvePolytomy()`. Each realloc could move the entire tree array, invalidating any existing pointers into it and corrupting leaf names.
 
@@ -50,7 +50,7 @@ The tronko-build pipeline was optimized for a **6.3x speedup** on single-tree bu
 
 #### 6. Parallel Partition Pipelines (`tronko-build.c`)
 
-The 3-partition external tool pipeline (FAMSA → VeryFastTree/RAxML → nw_reroot) now runs all 3 partitions in parallel using `fork()`, with thread counts auto-divided across available cores. Previously these ran sequentially.
+The 3-partition external tool pipeline (FAMSA → FastTree/RAxML → nw_reroot) now runs all 3 partitions in parallel using `fork()`, with thread counts auto-divided across available cores. Previously these ran sequentially.
 
 **Files:** `tronko-build.c` (`run_partition_pipeline()`, `createNewRoots()`)
 

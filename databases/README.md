@@ -17,9 +17,9 @@ Small COI test dataset (1,413 seqs, 1 tree). Used for development and correctnes
 
 ---
 
-### 2-3. `vert12S_fasttree/`, `vert12S_veryfasttree/`
+### 2-3. `vert12S_fasttree/`, `vert12S_veryfasttree/` (legacy names)
 
-Early builds using AncestralClust + FastTree/VeryFastTree + SP partitioning. Superseded by PASTA-based approach.
+Early builds using AncestralClust + FastTree/FastTree + SP partitioning. Superseded by PASTA-based approach.
 
 ---
 

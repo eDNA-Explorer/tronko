@@ -47,7 +47,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
-	-a, use VeryFastTree instead of RAxML\n\
+	-a, use FastTree instead of RAxML\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
 	\n";

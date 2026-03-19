@@ -183,7 +183,7 @@ void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, 
 		int *leaf_ptr = hashmap_get(&name_map, lineAccession);
 		/* If exact match fails, try with colons replaced by underscores.
 		   Newick format uses ':' for branch lengths, so tree-building tools
-		   (RAxML/VeryFastTree) replace ':' with '_' in leaf names. */
+		   (RAxML/FastTree) replace ':' with '_' in leaf names. */
 		char normalized[BUFFER_SIZE];
 		if (leaf_ptr == NULL && strchr(lineAccession, ':') != NULL) {
 			strncpy(normalized, lineAccession, BUFFER_SIZE - 1);
@@ -790,7 +790,7 @@ static int get_num_cores(void){
 }
 
 /* Run the external tool pipeline for one partition:
-   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/VeryFastTree -> [nw_reroot]
+   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/FastTree -> [nw_reroot]
    Returns 0 on success. */
 static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 	int status;
@@ -858,33 +858,30 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 		}
 		status = system(buf);
 	}else{
-		/* VeryFastTree path — fork/exec with stdout redirect instead of system() */
-		char vft_input[BUFFER_SIZE], vft_output[BUFFER_SIZE], vft_threads[32];
-		snprintf(vft_threads, sizeof(vft_threads), "%d",
-			pipeline_threads > 0 ? pipeline_threads : get_num_cores());
+		/* FastTree path — fork/exec with stdout redirect */
+		char ft_input[BUFFER_SIZE], ft_output[BUFFER_SIZE];
 		if (opt.prefix[0] == '\0'){
-			snprintf(vft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
+			snprintf(ft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
 		}else{
-			snprintf(vft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
+			snprintf(ft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
 		}
-		pid_t vft_pid = fork();
-		if (vft_pid == -1){
-			fprintf(stderr, "can't fork for VeryFastTree\n");
+		pid_t ft_pid = fork();
+		if (ft_pid == -1){
+			fprintf(stderr, "can't fork for FastTree\n");
 			return -1;
-		}else if (vft_pid == 0){
-			int fd = open(vft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+		}else if (ft_pid == 0){
+			int fd = open(ft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
 			int devnull = open("/dev/null", O_WRONLY);
 			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			/* Use FastTree */
-			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", vft_input, NULL};
+			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
 			execvp("FastTree", ft_args);
 			fprintf(stderr, "FastTree not found\n");
 			_exit(127);
 		}
-		waitpid(vft_pid, &status, 0);
+		waitpid(ft_pid, &status, 0);
 	}
 
 	/* Step 5: Reroot tree (RAxML only) */

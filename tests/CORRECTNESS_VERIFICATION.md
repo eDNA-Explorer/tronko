@@ -172,8 +172,8 @@ ACGTN- bases), these paths are never reached.
 
 | Change | Description |
 |---|---|
-| VeryFastTree (`-a` flag) | Uses VeryFastTree instead of FastTree for tree inference |
-| Unifurcation suppression | `makeBinary()` removes degree-1 nodes from VeryFastTree output |
+| FastTree (`-a` flag) | Uses FastTree instead of RAxML for tree inference |
+| Unifurcation suppression | `makeBinary()` removes degree-1 nodes from FastTree output |
 | FAMSA threads default | Changed from 1 to 0 (auto-detect) |
 
 These only apply to partition mode (`-y`), not single-tree mode (`-l`).

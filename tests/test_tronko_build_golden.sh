@@ -109,7 +109,7 @@ run_test "single_tree" \
     -x "$EXAMPLE_DIR/single_tree/Charadriiformes_taxonomy.txt" \
     -t "$EXAMPLE_DIR/single_tree/RAxML_bestTree.Charadriiformes.reroot"
 
-# Test 2: Partition mode with VeryFastTree (non-deterministic due to srand(time) - smoke test)
+# Test 2: Partition mode with FastTree (non-deterministic due to srand(time) - smoke test)
 run_smoke_test "partition_vft" \
     -y \
     -e "$EXAMPLE_DIR/multiple_trees/multiple_MSA" \

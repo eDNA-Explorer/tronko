@@ -146,7 +146,7 @@ tronko-build -y -e "$CACHE_DIR" -n "$valid_cluster_count" -d "$OUTPUT_DIR" -v -f
 | `-n` | count | Number of clusters to read |
 | `-v` | — | Enable min-leaves partitioning mode (`use_min_leaves=1`) |
 | `-f` | 999999 | Min leaves threshold = 999999 |
-| `-a` | — | Use VeryFastTree/polytomy resolution path (`fasttree=1`) |
+| `-a` | — | Use FastTree/polytomy resolution path (`fasttree=1`) |
 | `-c` | THREADS | Thread count |
 
 **The partition-skip trick**: At `tronko-build.c:1796`:
@@ -207,7 +207,7 @@ This is the **complete posterior pipeline**: GTR parameters are estimated from s
    - The SP-score of remaining sequences might differ from the original
    - The script mitigates this by dropping clusters with <3 sequences
 
-3. **Tree topology**: The pruned tree inherits the topology from the original RAxML/VeryFastTree estimation. With sequences removed:
+3. **Tree topology**: The pruned tree inherits the topology from the original RAxML/FastTree estimation. With sequences removed:
    - The tree may not be the ML tree for the remaining sequences
    - However, the pruned tree is still a valid, topologically correct subtree of the original
    - Branch length re-optimization partially compensates for topology imprecision
@@ -271,7 +271,7 @@ The ablation produces a **mathematically valid** reference database: the posteri
 - `tronko-build/likelihood.c:1267-1338` — `getposterior_nc_Arr` (complete posterior computation)
 - `tronko-build/likelihood.c:1257-1266` — `set_posteriors` (log-pseudocount transform)
 - `tronko-build/tronko-build.c:2006-2071` — `-E` export subtrees implementation
-- `tronko-build/tronko-build.c:1746-1775` — VeryFastTree polytomy resolution path
+- `tronko-build/tronko-build.c:1746-1775` — FastTree polytomy resolution path
 
 ## Open Questions
 

@@ -35,8 +35,8 @@ All work done on the `optimize-tronko-build` branch, organized by area. This bra
 | 4 | **Hashmap taxonomy lookup** | O(1) hashmap lookup instead of O(N) re-opening taxonomy file for every leaf | `tronko-build.c` |
 | 5 | **Stack-allocated recursion** | `getTaxonomyArr()` uses output param instead of malloc-per-recursive-call | `tronko-build.c` |
 | 6 | **Doubling realloc strategy** | `createNode()` doubles tree capacity instead of realloc-per-node (O(n) -> O(log n) reallocs) | `tronko-build.c`, `global.h` |
-| 7 | **VeryFastTree fork/exec** | Direct `fork/execvp` instead of `system()` shell invocation | `tronko-build.c` |
-| 8 | **Parallel partition pipelines** | FAMSA -> VeryFastTree -> nw_reroot runs 3 partitions concurrently via `fork()` | `tronko-build.c` |
+| 7 | **FastTree fork/exec** | Direct `fork/execvp` instead of `system()` shell invocation | `tronko-build.c` |
+| 8 | **Parallel partition pipelines** | FAMSA -> FastTree -> nw_reroot runs 3 partitions concurrently via `fork()` | `tronko-build.c` |
 | 9 | **OpenMP parallel posteriors** | `#pragma omp parallel for` on outer tree loop for multi-partition databases. Each tree's ML optimization runs on a separate thread with `threadprivate` globals | `tronko-build.c`, `global.h`, `opt.c` |
 
 ### Benchmarks
@@ -112,7 +112,7 @@ Input FASTA + Taxonomy
 2. Per-cluster FAMSA alignment
     |
     v
-3. Per-cluster VeryFastTree tree inference
+3. Per-cluster FastTree tree inference
     |
     v
 4. Tree rerooting (nw_reroot)
@@ -133,10 +133,10 @@ Input FASTA + Taxonomy
 ### Features
 
 - **Checkpoint caching** (`.cache/` directory) — resume on failure without recomputing
-- Colon-to-underscore renaming in FASTA headers (VeryFastTree compatibility)
+- Colon-to-underscore renaming in FASTA headers (FastTree compatibility)
 - Configurable clustering parameters (cutoff, bin size)
 - `final_partitions.txt` manifest for identifying leaf-level partitions
-- Automatic deduplication handling for VeryFastTree name parsing
+- Automatic deduplication handling for FastTree name parsing
 
 ---
 
@@ -146,7 +146,7 @@ Input FASTA + Taxonomy
 
 | Step | Full Rebuild (101K seqs) | Ablation |
 |---|---|---|
-| FAMSA + VeryFastTree | ~30 min | Skipped |
+| FAMSA + FastTree | ~30 min | Skipped |
 | SP-score partitioning | ~15 min | Skipped |
 | Posterior computation | ~5 min | ~5 min |
 | BWA indexing | ~2 min | ~2 min |
@@ -351,7 +351,7 @@ All performance optimizations verified byte-identical to upstream output.
 |---|---|---|
 | Dec 2025 | `1b47897` | Initial tronko-build optimizations + ancestralclust + build pipeline |
 | Dec 2025 | `640f33e` | tronko-assign 28-35% speedup with golden output validation |
-| Jan 2026 | `a3edf44` | AncestralClust optimization, VeryFastTree switch, checkpoint caching |
+| Jan 2026 | `a3edf44` | AncestralClust optimization, FastTree switch, checkpoint caching |
 | Jan 2026 | `00cc57e` | Binary reference tree format + memory optimizations |
 | Jan 2026 | `d47ed01` | tronko-convert native zstd streaming |
 | Jan 2026 | `71f6ec3` | Fix ZSTD streaming decompression buffer overflow |

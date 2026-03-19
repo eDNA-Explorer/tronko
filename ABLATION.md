@@ -154,7 +154,7 @@ all_accs = get_accessions("master/marker.fasta")
 
 ## Accession Format
 
-The build pipeline replaces `:` with `_` in FASTA headers (to prevent VeryFastTree name truncation). Your remove list must use the post-rename format:
+The build pipeline replaces `:` with `_` in FASTA headers (to prevent FastTree name truncation). Your remove list must use the post-rename format:
 
 | Original FASTA header | Remove list entry |
 |---|---|
@@ -195,7 +195,7 @@ tronko-assign -r \
 
 | Step | Full rebuild (101K seqs) | Ablation |
 |---|---|---|
-| FAMSA + VeryFastTree | ~30 min | Skipped |
+| FAMSA + FastTree | ~30 min | Skipped |
 | SP-score partitioning | ~15 min | Skipped |
 | Posterior computation | ~5 min | ~5 min |
 | BWA indexing | ~2 min | ~2 min |

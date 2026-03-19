@@ -92,7 +92,7 @@ Partition mode (-y):
   -v                Use minimum leaf node count for partitioning
   -f [INT]          Minimum leaf nodes threshold (use with -v)
 General:
-  -a                Use FastTree/VeryFastTree instead of RAxML
+  -a                Use FastTree instead of RAxML
   -c [INT]          FAMSA threads (0 = auto-detect, default: 0)
   -g                Don't flag missing data
   -i [STRING]       Prefix for output partition filenames
