@@ -516,26 +516,40 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 }
 double calculateSPArr(struct masterArr *m){
 	int i,j,k;
-	int numpairs=0;
-	double SPscore=0;
-	j=0;
+	/* Build leaf index: leaves sit at [numspec-1 .. 2*numspec-2] in tronko tree layout */
 	int *partition = (int*)malloc(sizeof(int)*m->numspec);
-	for(i=m->numspec-1; i<2*m->numspec-1; i++){
-		partition[j]=i;
-		j++;
-	}	
-	for (i = 0; i<m->numbase; i++){
-		for( j=0; j<m->numspec; j++){
-			for( k=j+1; k<m->numspec; k++){
-				if (m->msa[partition[j]-m->numspec+1][i]==m->msa[partition[k]-m->numspec+1][i]){
-					SPscore=SPscore+3;
-				}else if (m->msa[partition[j]-m->numspec+1][i] != 4 && m->msa[partition[k]-m->numspec+1][i] != 4 && m->msa[partition[j]-m->numspec+1][i]!=m->msa[partition[k]-m->numspec+1][i] ){
-					SPscore=SPscore-2;
-				}else{
-					SPscore--;
-				}
-				numpairs++;
+	for(i=0; i<m->numspec; i++){
+		partition[i] = m->numspec-1+i;
+	}
+	/* Optimized loop order: for j, for k>j, for i
+	   Original order (for i, for j, for k) accessed msa[j][i] and msa[k][i] with
+	   stride = numbase*sizeof(int) between rows — causing O(numspec^2 * numbase)
+	   scattered cache misses on large partitions (144M misses for 80K seqs).
+	   New order keeps row j in L1 cache for all k at the same j level, and reads
+	   row k sequentially so the hardware prefetcher can pipeline it.
+	   Using long long raw accumulation avoids FP rounding and is order-independent. */
+	long long raw_score = 0;
+	long long numpairs = 0;
+	for( j=0; j<m->numspec; j++){
+		int *row_j = m->msa[partition[j]-m->numspec+1];
+		for( k=j+1; k<m->numspec; k++){
+			int *row_k = m->msa[partition[k]-m->numspec+1];
+			long long pair_score = 0;
+			for (i=0; i<m->numbase; i++){
+				int a = row_j[i];
+				int b = row_k[i];
+				/* Branchless scoring — enables auto-vectorization:
+				   eq*(5-gap) - 2 + gap
+				   (a==b, no gap): 1*(5-0)-2+0 =  3
+				   (a!=b, no gap): 0*(5-0)-2+0 = -2
+				   (a!=b, one gap):0*(5-1)-2+1 = -1
+				   (a==b, gap-gap):1*(5-1)-2+1 =  3 */
+				int eq  = (a == b);
+				int gap = (a == 4) | (b == 4);
+				pair_score += eq * (5 - gap) - 2 + gap;
 			}
+			raw_score += pair_score;
+			numpairs += m->numbase;
 		}
 	}
 	free(partition);
@@ -544,7 +558,7 @@ double calculateSPArr(struct masterArr *m){
 	   Previously divided by numspec a second time (bug), which made max achievable
 	   SPscore = 3/numspec — causing any partition with numspec > 3/sp_score to
 	   always fail the threshold regardless of sequence similarity. */
-	SPscore=SPscore/numpairs;
+	double SPscore = (double)raw_score / (double)numpairs;
 	printf("SPscore: %lf\n",SPscore);
 	return SPscore;
 }
@@ -1202,21 +1216,8 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		hashmap_put(&mastermap, t->index, t);
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
-		/* Performance heuristic: skip O(N^2) calculateSPArr for very large partitions.
-		   With the corrected normalization (SPscore = raw_score / numpairs, range [-2,+3]),
-		   there is no longer a mathematical upper bound on SPscore based on numspec alone.
-		   However, sub-partitions with thousands of sequences from a diverse reference
-		   database are virtually certain to score below any reasonable threshold in practice.
-		   The calculation is O(numbase * numspec^2): at 5000 seqs x 1800 bases,
-		   that is ~22 billion ops (~22s); at 80K seqs it would take ~12 hours.
-		   Treat partitions above this size as needing splitting without computing the score. */
-		int sp_too_large = (t->numspec > 5000);
 		if ( opt.use_spscore==1 && opt.use_min_leaves==0){
-				if (sp_too_large){
-					initialSPscore = -1; /* assume below threshold */
-				}else{
-					initialSPscore = calculateSPArr(t);
-				}
+				initialSPscore = calculateSPArr(t);
 				if (initialSPscore < opt.sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
@@ -1241,11 +1242,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 			}
 		}
 		if ( opt.use_spscore==1 && opt.use_min_leaves==1 ){
-			if (sp_too_large){
-				initialSPscore = -1;
-			}else{
-				initialSPscore = calculateSPArr(t);
-			}
+			initialSPscore = calculateSPArr(t);
 			if (initialSPscore < opt.sp_score && t->numspec > opt.min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
