@@ -1032,8 +1032,7 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	char buf[BUFFER_SIZE];
 	/* Fork all 3 partition pipelines concurrently */
 	int total_cores = get_num_cores();
-	int concurrent_clusters = opt.parallel_jobs > 0 ? opt.parallel_jobs : 1;
-	int pipeline_threads = total_cores / (3 * concurrent_clusters);
+	int pipeline_threads = total_cores / 3;
 	if (pipeline_threads < 1) pipeline_threads = 1;
 	pid_t pipeline_pids[3];
 	int p;
@@ -1626,115 +1625,6 @@ void makeBinary( struct masterArr* m, int max_nodename){
 		resolvePolytomy(m,i,max_nodename);
 	}
 }
-/* --- Parallel cluster processing infrastructure --- */
-typedef struct cluster_worker_args {
-	int cluster_index;
-	Options opt;
-	int max_nodename;
-	int max_lineTaxonomy;
-	char *msa_file;
-	char *tree_file;
-	char *tax_file;
-} cluster_worker_args;
-
-static void *cluster_worker(void *arg){
-	cluster_worker_args *cw = (cluster_worker_args *)arg;
-	int i, j, k;
-	char buffer[BUFFER_SIZE];
-	gzFile partition;
-
-	struct masterArr *m = malloc(sizeof(masterArr));
-	m->tree = NULL;
-	m->treeCapacity = 0;
-	sprintf(m->index, "%d", cw->cluster_index);
-	snprintf(buffer, BUFFER_SIZE, "%s/%s", cw->opt.readdir, cw->msa_file);
-	if ((partition = gzopen(buffer, "r")) == NULL){
-		fprintf(stderr, "Cannot open %s: %s\n", buffer, strerror(errno));
-		free(m);
-		return NULL;
-	}
-	m->numspec = setNumspecArr(partition);
-	printf("m->numspec: %d (cluster %d)\n", m->numspec, cw->cluster_index);
-	gzclose(partition);
-	m->numNodes = 0;
-	m->tree = (struct node *)malloc((2 * m->numspec - 1) * sizeof(struct node));
-	m->msa = (int **)malloc(m->numspec * sizeof(int *));
-	m->taxonomy = (char ***)malloc(m->numspec * sizeof(char **));
-	m->names = (char **)malloc(m->numspec * sizeof(char *));
-	m->filename = malloc(300 * sizeof(char));
-	for (j = 0; j < 300; j++){
-		m->filename[j] = '\0';
-	}
-	for (j = 0; j < m->numspec; j++){
-		m->names[j] = (char *)malloc(sizeof(char) * (cw->max_nodename + 1));
-	}
-	if ((partition = gzopen(buffer, "r")) == NULL){
-		fprintf(stderr, "Cannot open %s: %s\n", buffer, strerror(errno));
-		free(m);
-		return NULL;
-	}
-	readSeqArr(partition, cw->max_nodename, m);
-	gzclose(partition);
-	allocateTreeArrMemory(m, cw->max_nodename);
-	snprintf(buffer, BUFFER_SIZE, "%s/%s", cw->opt.readdir, cw->tree_file);
-	strcpy(m->filename, buffer);
-	if (cw->opt.fasttree == 1){
-		FILE *tmpTree = fopen(buffer, "r");
-		if (!tmpTree){ fprintf(stderr, "*** tree file could not be opened: %s\n", buffer); free(m); return NULL; }
-		char *newick = readNewickFile(tmpTree);
-		fclose(tmpTree);
-		int saved_numspec = m->numspec;
-		m->numspec = 0;
-		m->numNodes = 0;
-		srand(time(NULL) ^ (unsigned)pthread_self());
-		parseNewick(m, newick, cw->max_nodename);
-		free(newick);
-		makeBinary(m, cw->max_nodename);
-		exportTreeToNewick(m, buffer);
-		int idx;
-		for (idx = 0; idx < m->numNodes; idx++){
-			free(m->tree[idx].name);
-			free(m->tree[idx].like);
-			free(m->tree[idx].posterior);
-		}
-		free(m->tree);
-		m->numspec = saved_numspec;
-		m->tree = malloc((2 * m->numspec - 1) * sizeof(node));
-		m->treeCapacity = 2 * m->numspec - 1;
-		m->numNodes = 2 * m->numspec - 1;
-		allocateTreeArrMemory(m, cw->max_nodename);
-	}
-	comma = 0;
-	tip = 0;
-	m->root = getcladeArr_fast(buffer, m, cw->max_nodename) - 1;
-	m->tree[m->root].down = -1;
-	get_number_descendantsArr(m->root, m);
-	int child0 = m->tree[m->root].up[0];
-	int child1 = m->tree[m->root].up[1];
-	m->tree[m->root].depth = 0;
-	assignDepthArr(child0, child1, 1, m);
-	snprintf(buffer, BUFFER_SIZE, "%s/%s", cw->opt.readdir, cw->tax_file);
-	m->taxonomy = (char ***)calloc_check(m->numspec, sizeof(char **));
-	for (j = 0; j < m->numspec; j++){
-		m->taxonomy[j] = (char **)calloc_check(7, sizeof(char *));
-		for (k = 0; k < 7; k++){
-			m->taxonomy[j][k] = (char *)calloc_check(cw->max_lineTaxonomy, sizeof(char));
-		}
-	}
-	assignTaxonomyToLeavesArr(buffer, m, cw->max_nodename, cw->max_lineTaxonomy);
-	{ int _tax_out[2]; getTaxonomyArr(m->root, m, _tax_out); }
-	pthread_mutex_lock(&mastermap_mutex);
-	hashmap_put(&mastermap, m->index, m);
-	pthread_mutex_unlock(&mastermap_mutex);
-	if (cw->opt.use_partitions == 1 && m->numspec > cw->opt.min_leaves){
-		pthread_mutex_lock(&spscore_mutex);
-		SPscoreArr[cw->cluster_index] = 0;
-		pthread_mutex_unlock(&spscore_mutex);
-		createNewRoots(cw->cluster_index, cw->opt, cw->max_nodename, cw->max_lineTaxonomy, m);
-	}
-	return NULL;
-}
-
 int main(int argc, char **argv){
 	Options opt;
 	opt.min_leaves=0;
@@ -1925,59 +1815,7 @@ int main(int argc, char **argv){
 				}
 			}
 		}*/
-		if (opt.parallel_jobs > 1 && partition_count > 1){
-			/* Parallel cluster processing */
-			int max_concurrent = opt.parallel_jobs;
-			if (max_concurrent > partition_count) max_concurrent = partition_count;
-			printf("Processing %d clusters with %d parallel jobs\n", partition_count, max_concurrent);
-
-			cluster_worker_args *cw_args = malloc(partition_count * sizeof(cluster_worker_args));
-			pthread_t *threads = malloc(partition_count * sizeof(pthread_t));
-			int *thread_active = calloc(partition_count, sizeof(int));
-
-			for(i=0; i<partition_count; i++){
-				cw_args[i].cluster_index = i;
-				cw_args[i].opt = opt;
-				cw_args[i].max_nodename = max_nodename;
-				cw_args[i].max_lineTaxonomy = max_lineTaxonomy;
-				cw_args[i].msa_file = pf->msa_files[i];
-				cw_args[i].tree_file = pf->tree_files[i];
-				cw_args[i].tax_file = pf->tax_files[i];
-			}
-
-			/* Launch up to max_concurrent threads at a time */
-			int launched = 0;
-			int completed = 0;
-			while (completed < partition_count){
-				/* Launch new threads up to the concurrency limit */
-				while (launched < partition_count && (launched - completed) < max_concurrent){
-					int rc = pthread_create(&threads[launched], NULL, cluster_worker, &cw_args[launched]);
-					if (rc != 0){
-						fprintf(stderr, "Error creating thread for cluster %d: %d\n", launched, rc);
-						exit(EXIT_FAILURE);
-					}
-					thread_active[launched] = 1;
-					launched++;
-				}
-				/* Wait for the oldest active thread to finish */
-				if (completed < launched){
-					pthread_join(threads[completed], NULL);
-					thread_active[completed] = 0;
-					completed++;
-				}
-			}
-
-			for(i=0; i<partition_count; i++){
-				free(pf->tax_files[i]);
-				free(pf->msa_files[i]);
-				free(pf->tree_files[i]);
-			}
-			free(cw_args);
-			free(threads);
-			free(thread_active);
-		}else{
-			/* Sequential cluster processing (original path, J=1) */
-			for(i=0; i<partition_count; i++){
+		for(i=0; i<partition_count; i++){
 				struct masterArr *m = malloc(sizeof(masterArr));
 				m->tree = NULL;
 				m->treeCapacity = 0;
@@ -2065,7 +1903,6 @@ int main(int argc, char **argv){
 				free(pf->msa_files[i]);
 				free(pf->tree_files[i]);
 			}
-		}
 		free(pf->tax_files);
 		free(pf->msa_files);
 		free(pf->tree_files);

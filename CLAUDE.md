@@ -91,8 +91,6 @@ Partition mode (-y):
   -u [FLOAT]        SP-score threshold (default: 0.5)
   -v                Use minimum leaf node count for partitioning
   -f [INT]          Minimum leaf nodes threshold (use with -v)
-  -J [INT]          Parallel cluster jobs during partitioning (default: 1)
-
 General:
   -a                Use FastTree/VeryFastTree instead of RAxML
   -c [INT]          FAMSA threads (0 = auto-detect, default: 0)
@@ -103,11 +101,6 @@ General:
   -E                Export final subtrees to exported_subtrees/ directory
   -h                Show help
 ```
-
-The `-J` flag parallelizes the cluster loading + SP-partitioning loop (Step 4).
-Each cluster is processed in a separate thread. With `-J 4` on a 64-core machine,
-each cluster's 3 pipelines (FAMSA + FastTree + reroot) get ~5 threads each
-(`total_cores / (3 * J)`). Default `-J 1` preserves the original sequential behavior.
 
 ## build-tronko-db.sh Options
 
@@ -130,12 +123,10 @@ Options:
   -C    AncestralClust cutoff — max seqs before clustering (default: 25000)
   -B    AncestralClust bin size — target seqs per cluster (default: 20000)
   -P    AncestralClust descendants parameter (default: 75)
-  -J    Parallel jobs for Step 2 AND Step 4 (default: 1)
+  -J    Parallel jobs for Step 2 cluster processing (default: 1)
 ```
 
-The `-J` flag controls parallelism in two places:
-1. **Step 2**: runs up to J cluster alignments/trees concurrently
-2. **Step 4**: passed to `tronko-build -J` to process clusters concurrently during SP-partitioning
+The `-J` flag runs up to J cluster alignments/trees concurrently in Step 2.
 
 ## Testing
 
@@ -151,10 +142,6 @@ tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA
 # Multi-cluster test (sequential)
 tronko-build -y -e tronko-build/example_datasets/multiple_trees/multiple_MSA \
   -n 5 -d /tmp/test_multi -s -u 0.1
-
-# Multi-cluster test (4 clusters in parallel)
-tronko-build -y -e tronko-build/example_datasets/multiple_trees/multiple_MSA \
-  -n 5 -d /tmp/test_multi_par -s -u 0.1 -J 4
 
 # Test assignment with single-end reads
 tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt \
