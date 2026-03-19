@@ -163,6 +163,18 @@ STEP1_START=$(date +%s)
 if [[ -f "$AC_DIR/.step1_done" ]]; then
     NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l | tr -d ' ')
     echo "  CACHED: Step 1 already complete ($NUM_CLUSTERS clusters). Skipping."
+    # AncestralClust sometimes writes cluster FASTAs after .step1_done is touched.
+    # Generate taxonomy for any clusters that are missing it.
+    for cluster_fasta in "$AC_DIR"/*.fasta; do
+        cluster_id=$(basename "$cluster_fasta" .fasta)
+        if [[ ! -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
+            echo "  Generating missing taxonomy for cluster $cluster_id..."
+            grep '^>' "$cluster_fasta" | sed 's/^>//' | cut -d' ' -f1 | sort > "$CACHE_DIR/accs_${cluster_id}.txt"
+            sort "$INPUT_TAXONOMY" | join -t$'\t' "$CACHE_DIR/accs_${cluster_id}.txt" - > "$AC_DIR/${cluster_id}_taxonomy.txt"
+            rm "$CACHE_DIR/accs_${cluster_id}.txt"
+            echo "  Cluster $cluster_id: $(wc -l < "$AC_DIR/${cluster_id}_taxonomy.txt") taxonomy entries"
+        fi
+    done
 elif [[ "$NUM_SEQS" -le "$AC_CUTOFF" ]]; then
     echo "Only $NUM_SEQS sequences (below cutoff $AC_CUTOFF) — skipping clustering"
     # Single cluster: just copy (use sanitized FASTA)
