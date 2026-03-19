@@ -10,14 +10,18 @@
       "input_sequences": 176947,
       "n_trees": 14558,
       "pipeline": "build-tronko-db.sh (AncestralClust + FastTree + SP partitioning)",
-      "reference_formats": ["txt", "trkb"],
+      "reference_formats": [
+        "txt",
+        "trkb"
+      ],
       "has_marker_fasta": true,
       "has_bwa_index": true,
       "has_marker_taxonomy": false,
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_fewer_bins"
+      "clustering": "ancestralclust_fewer_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "charadriiformes_single_tree",
@@ -568,7 +572,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.05,
-      "clustering": "ancestralclust_default"
+      "clustering": "ancestralclust_default",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_default_sp_0.10",
@@ -587,7 +592,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_default"
+      "clustering": "ancestralclust_default",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_default_sp_0.20",
@@ -606,7 +612,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.2,
-      "clustering": "ancestralclust_default"
+      "clustering": "ancestralclust_default",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_fewer_bins_sp_0.05",
@@ -625,7 +632,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.05,
-      "clustering": "ancestralclust_fewer_bins"
+      "clustering": "ancestralclust_fewer_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_fewer_bins_sp_0.10",
@@ -644,7 +652,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_fewer_bins"
+      "clustering": "ancestralclust_fewer_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_fewer_bins_sp_0.20",
@@ -663,7 +672,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.2,
-      "clustering": "ancestralclust_fewer_bins"
+      "clustering": "ancestralclust_fewer_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_more_bins_sp_0.05",
@@ -682,7 +692,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.05,
-      "clustering": "ancestralclust_more_bins"
+      "clustering": "ancestralclust_more_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_more_bins_sp_0.10",
@@ -701,7 +712,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_more_bins"
+      "clustering": "ancestralclust_more_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_more_bins_sp_0.20",
@@ -720,7 +732,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.2,
-      "clustering": "ancestralclust_more_bins"
+      "clustering": "ancestralclust_more_bins",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_single_sp_0.05",
@@ -739,7 +752,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.05,
-      "clustering": "ancestralclust_single"
+      "clustering": "ancestralclust_single",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_single_sp_0.10",
@@ -758,7 +772,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_single"
+      "clustering": "ancestralclust_single",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "sweep_ac_single_sp_0.20",
@@ -777,7 +792,8 @@
       "ablation_ready": true,
       "has_pasta_stats": false,
       "sp_threshold": 0.2,
-      "clustering": "ancestralclust_single"
+      "clustering": "ancestralclust_single",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "vert12S_fasttree",
@@ -797,7 +813,8 @@
       "ablation_ready": false,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_default"
+      "clustering": "ancestralclust_default",
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "vert12S_pasta",
@@ -841,7 +858,8 @@
         "value": 25.0,
         "strategy": "centroid"
       },
-      "sp_threshold": 0.1
+      "sp_threshold": 0.1,
+      "sp_normalization": "buggy_divided_by_numspec"
     },
     {
       "path": "vert12S_veryfasttree",
@@ -859,7 +877,8 @@
       "ablation_ready": false,
       "has_pasta_stats": false,
       "sp_threshold": 0.1,
-      "clustering": "ancestralclust_default"
+      "clustering": "ancestralclust_default",
+      "sp_normalization": "buggy_divided_by_numspec"
     }
   ]
 }

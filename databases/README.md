@@ -40,13 +40,13 @@ Early builds using AncestralClust + FastTree/VeryFastTree + SP partitioning. Sup
 
 ### 4b. `vert12S_pasta_sp_0.10/`
 
-PASTA tree + diameter decomposition (max_diam=25) + SP 0.10 recursive partitioning. 7,804 trees. Performed worse than the no-SP version (4b). Ablation-ready with exported subtrees.
+PASTA tree + diameter decomposition (max_diam=25) + SP 0.10 recursive partitioning. 7,804 trees. Performed worse than the no-SP version (4). Ablation-ready with exported subtrees. **Note:** Built with buggy SP normalization (see sweep_ac note).
 
 ---
 
 ### 5. `12sv5_unfiltered/`
 
-Unfiltered 12SV5 dataset (176,947 sequences). AncestralClust (fewer bins, bin=50K) + FastTree + SP 0.10 partitioning. 14,558 trees. Ablation-ready with exported subtrees.
+Unfiltered 12SV5 dataset (176,947 sequences). AncestralClust (fewer bins, bin=50K) + FastTree + SP 0.10 partitioning. 14,558 trees. Ablation-ready with exported subtrees. **Note:** Built with buggy SP normalization (see sweep_ac note).
 
 ---
 
@@ -54,7 +54,9 @@ Unfiltered 12SV5 dataset (176,947 sequences). AncestralClust (fewer bins, bin=50
 
 AncestralClust clustering sweep: 4 configs x 3 SP thresholds. All use SP-score partitioning. Built with `build-tronko-db.sh -F -E`. Ablation-ready via `exported_subtrees/`.
 
-| Config | SP 0.05 | SP 0.10 | SP 0.20 |
+**SP normalization bug:** These databases were built with a buggy SP score that divided by `numspec` *and* `numpairs` instead of just `numpairs`. This made the maximum achievable score `3/numspec`, so the SP threshold was effectively a partition-size cutoff (any partition with `numspec > 3/threshold` was always split) rather than a sequence-similarity measure. The SP threshold values in the directory names are on the buggy scale and are **not comparable** to corrected SP thresholds. These databases remain useful as baselines where partitioning was driven primarily by partition size.
+
+| Config | SP 0.05 (max ~60 seqs) | SP 0.10 (max ~30 seqs) | SP 0.20 (max ~15 seqs) |
 |---|---|---|---|
 | ac_default (bin=20K) | 4,376 trees | 7,992 trees | 10,538 trees |
 | ac_more_bins (bin=10K) | 4,335 trees | 7,995 trees | 10,623 trees |

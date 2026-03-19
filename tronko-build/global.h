@@ -102,25 +102,25 @@ typedef struct partition_files{
 }partition_files;
 
 typedef struct Options{
-	char msa_file[200];
-	char tree_file[200];
-	char taxonomy_file[200];
+	char msa_file[2000];
+	char tree_file[2000];
+	char taxonomy_file[2000];
 	int number_of_trees;
 	int two_step;
 	int remove_unused;
 	int reference_mode;
 	int use_partitions;
-	char reference_file[200];
+	char reference_file[2000];
 	char paired_or_single[7];
 	char read1_file[2000];
 	char read2_file[2000];
-	char partitions_directory[200];
-	char results_file[200];
+	char partitions_directory[2000];
+	char results_file[2000];
 	int use_spscore;
 	int use_min_leaves;
 	int min_leaves;
 	double sp_score;
-	char fasta_file[200];
+	char fasta_file[2000];
 	double cinterval;
 	char readdir[2000];
 	int number_of_partitions;
