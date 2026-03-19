@@ -946,7 +946,7 @@ static void remove_partition_files(const char *partitions_directory, const char 
 	snprintf(path, BUFFER_SIZE, "%s/RAxML_parsimonyTree.%s", partitions_directory, tempfilename);
 	unlink(path);
 }
-void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
+void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
 	int i,j,k,count;
 	char buffer[BUFFER_SIZE];
 	int *leaves;
@@ -1002,8 +1002,8 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	SPscoreArr[partitionCount+2]=1;
 	pthread_mutex_unlock(&spscore_mutex);
 	partitionCount++;
-	if (partitionCount > opt.restart){
-		printPartitionsToFileArr(partition1,partitionSizes[0],partition2,partitionSizes[1],partition3,partitionSizes[2],rootCount,partitionCount,opt,m);
+	if (partitionCount > opt->restart){
+		printPartitionsToFileArr(partition1,partitionSizes[0],partition2,partitionSizes[1],partition3,partitionSizes[2],rootCount,partitionCount,*opt,m);
 	}
 	for(i=0; i<m->numspec; i++){
 		for(j=0; j<7; j++){
@@ -1038,13 +1038,13 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	int p;
 	for(p = 0; p < 3; p++){
 		which = rootCount + p;
-		if (rootCount > opt.restart){
+		if (rootCount > opt->restart){
 			pipeline_pids[p] = fork();
 			if (pipeline_pids[p] == -1){
 				fprintf(stderr, "can't fork pipeline for partition %d\n", which);
 			}else if (pipeline_pids[p] == 0){
 				/* Child process: run the entire pipeline */
-				int rc = run_partition_pipeline(which, opt, pipeline_threads);
+				int rc = run_partition_pipeline(which, *opt, pipeline_threads);
 				_exit(rc);
 			}
 		}else{
@@ -1059,10 +1059,10 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 	}
 	/* Sequential loading/parsing/scoring of the 3 partitions */
 	for(which=rootCount;which<rootCount+3;which++){
-		if ( opt.prefix[0] == '\0' ){
-			snprintf(buf,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+		if ( opt->prefix[0] == '\0' ){
+			snprintf(buf,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt->partitions_directory,which);
 		}else{
-			snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+			snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt->partitions_directory,opt->prefix,which);
 		}
 		printf("buffer: %s\n",buf);
 		struct masterArr *t=malloc(sizeof(masterArr));
@@ -1101,10 +1101,10 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		}
 		readSeqArr(partition,max_nodename,t);
 		gzclose(partition);
-		if ( opt.prefix[0] == '\0' ){
-			snprintf(buf,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
+		if ( opt->prefix[0] == '\0' ){
+			snprintf(buf,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt->partitions_directory,which);
 		}else{
-			snprintf(buf,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
+			snprintf(buf,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt->partitions_directory,opt->prefix,which);
 		}
 		strcpy(t->filename,buf);
 		/* Check if tree file exists and is non-empty before parsing */
@@ -1134,14 +1134,14 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				continue;
 			}
 		}
-		if ( opt.fasttree == 0 ){
+		if ( opt->fasttree == 0 ){
 			allocateTreeArrMemory(t,max_nodename);
 			comma=0;
 			tip=0;
 			t->root=getcladeArr_fast(buf,t,max_nodename)-1;
 			t->tree[t->root].down = -1;
 		}
-		if ( opt.fasttree == 1 ){
+		if ( opt->fasttree == 1 ){
 			FILE *fasttreefile = fopen(buf,"r");
 			if (fasttreefile == NULL ){
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
@@ -1197,10 +1197,10 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		int child1 = t->tree[t->root].up[1];
 		t->tree[t->root].depth = 0;
 		assignDepthArr(child0,child1,1,t);
-		if ( opt.prefix[0] == '\0' ){
-			snprintf(buf,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt.partitions_directory,which);
+		if ( opt->prefix[0] == '\0' ){
+			snprintf(buf,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt->partitions_directory,which);
 		}else{
-			snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_taxonomy.txt",opt.partitions_directory,opt.prefix,which);
+			snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_taxonomy.txt",opt->partitions_directory,opt->prefix,which);
 		}
 		printf("buffer: %s\n",buf);
 		for(j=0; j<t->numspec; j++){
@@ -1215,9 +1215,9 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 		hashmap_put(&mastermap, t->index, t);
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
-		if ( opt.use_spscore==1 && opt.use_min_leaves==0){
+		if ( opt->use_spscore==1 && opt->use_min_leaves==0){
 				initialSPscore = calculateSPArr(t);
-				if (initialSPscore < opt.sp_score){
+				if (initialSPscore < opt->sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
 					pthread_mutex_unlock(&spscore_mutex);
@@ -1228,8 +1228,8 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 					pthread_mutex_unlock(&spscore_mutex);
 				}
 		}
-		if ( opt.use_spscore==0 && opt.use_min_leaves==1  ){
-			if ( t->numspec > opt.min_leaves ){
+		if ( opt->use_spscore==0 && opt->use_min_leaves==1  ){
+			if ( t->numspec > opt->min_leaves ){
 				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=0;
 				pthread_mutex_unlock(&spscore_mutex);
@@ -1240,9 +1240,9 @@ void createNewRoots(int rootCount, Options opt, int max_nodename, int max_lineTa
 				pthread_mutex_unlock(&spscore_mutex);
 			}
 		}
-		if ( opt.use_spscore==1 && opt.use_min_leaves==1 ){
+		if ( opt->use_spscore==1 && opt->use_min_leaves==1 ){
 			initialSPscore = calculateSPArr(t);
-			if (initialSPscore < opt.sp_score && t->numspec > opt.min_leaves){
+			if (initialSPscore < opt->sp_score && t->numspec > opt->min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
 				pthread_mutex_lock(&spscore_mutex);
@@ -1897,7 +1897,7 @@ int main(int argc, char **argv){
 				hashmap_put(&mastermap, m->index, m);
 				if ( opt.use_partitions==1 && m->numspec > opt.min_leaves ){
 					SPscoreArr[i]=0;
-					createNewRoots(i,opt,max_nodename,max_lineTaxonomy,m);
+					createNewRoots(i,&opt,max_nodename,max_lineTaxonomy,m);
 				}
 				free(pf->tax_files[i]);
 				free(pf->msa_files[i]);
