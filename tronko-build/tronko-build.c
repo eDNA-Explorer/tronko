@@ -43,6 +43,7 @@ type_of_PP ****PP_Arr;
 char ****taxonomyArr;
 int *SPscoreArr;
 int *numspecArr, *numbaseArr, ***seqArr, *rootArr;
+int **columnMaskArr;
 double minVariance = 99999999999999;
 int minVarNode = -1;
 int returnNode=-1;
@@ -514,7 +515,7 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 	fclose(p3);
 	fclose(p3_tax);
 }
-double calculateSPArr(struct masterArr *m){
+double calculateSPArr(struct masterArr *m, int legacy_sp){
 	int i,j,k;
 	/* Build leaf index: leaves sit at [numspec-1 .. 2*numspec-2] in tronko tree layout */
 	int *partition = (int*)malloc(sizeof(int)*m->numspec);
@@ -559,7 +560,8 @@ double calculateSPArr(struct masterArr *m){
 	   SPscore = 3/numspec — causing any partition with numspec > 3/sp_score to
 	   always fail the threshold regardless of sequence similarity. */
 	double SPscore = (double)raw_score / (double)numpairs;
-	printf("SPscore: %lf\n",SPscore);
+	if (legacy_sp) SPscore = SPscore / (double)m->numspec;
+	printf("SPscore: %lf%s\n",SPscore, legacy_sp ? " (legacy)" : "");
 	return SPscore;
 }
 void writeNewick(FILE* file, masterArr* m, int nodeIndex) {
@@ -1217,7 +1219,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
 		if ( opt->use_spscore==1 && opt->use_min_leaves==0){
-				initialSPscore = calculateSPArr(t);
+				initialSPscore = calculateSPArr(t, opt->legacy_sp);
 				if (initialSPscore < opt->sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
@@ -1242,7 +1244,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 			}
 		}
 		if ( opt->use_spscore==1 && opt->use_min_leaves==1 ){
-			initialSPscore = calculateSPArr(t);
+			initialSPscore = calculateSPArr(t, opt->legacy_sp);
 			if (initialSPscore < opt->sp_score && t->numspec > opt->min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
@@ -1643,6 +1645,8 @@ int main(int argc, char **argv){
 	opt.remove_unused = 0;
 	opt.export_subtrees = 0;
 	opt.parallel_jobs = 1;
+	opt.column_gap_threshold = 1.0; /* 1.0 = no masking (impossible to exceed 100% gaps) */
+	opt.legacy_sp = 0;
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
 		opt.partitions_directory[i] = '\0';
@@ -2191,6 +2195,33 @@ int main(int argc, char **argv){
 			export_idx++;
 		}
 		printf("Exported %d subtrees to %s\n", export_idx, export_dir);
+	}
+
+	/* Column masking: compute per-tree, per-column gap fraction.
+	   Columns exceeding opt.column_gap_threshold are masked (set to 0).
+	   Default threshold is 1.0 (no masking). */
+	columnMaskArr = (int**)malloc(numberOfTrees * sizeof(int*));
+	{
+		int totalMasked = 0, totalCols = 0;
+		for (i = 0; i < numberOfTrees; i++) {
+			int nb = numbaseArr[i];
+			int ns = numspecArr[i];
+			columnMaskArr[i] = (int*)malloc(nb * sizeof(int));
+			totalCols += nb;
+			for (j = 0; j < nb; j++) {
+				int gaps = 0;
+				for (k = 0; k < ns; k++) {
+					if (seqArr[i][k][j] == 4) gaps++;
+				}
+				double gapFrac = (double)gaps / ns;
+				columnMaskArr[i][j] = (gapFrac <= opt.column_gap_threshold) ? 1 : 0;
+				if (!columnMaskArr[i][j]) totalMasked++;
+			}
+		}
+		if (opt.column_gap_threshold < 1.0) {
+			printf("Column masking: %d/%d columns masked (threshold=%.2f)\n",
+				totalMasked, totalCols, opt.column_gap_threshold);
+		}
 	}
 
 	/* Batched posterior computation — process trees in chunks to limit memory usage.

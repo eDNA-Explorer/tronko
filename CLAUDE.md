@@ -99,6 +99,8 @@ General:
   -p                Two-step build (partition only, then exit)
   -r                Remove unused trees (use with -p)
   -E                Export final subtrees to exported_subtrees/ directory
+  -W [FLOAT]        Column gap mask threshold (default: 1.0 = no masking)
+  -L, --legacy-sp   Use legacy SP normalization (divides by numspec, pre-fix behavior)
   -h                Show help
 ```
 
@@ -149,6 +151,49 @@ tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt
   -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
   -o /tmp/test_results.txt -w
 ```
+
+## tronko-assign Accuracy Tuning Options
+
+These flags control how tronko-assign makes taxonomic assignments. All are optional and have safe defaults.
+
+```
+Accuracy Tuning:
+  -c [FLOAT]                  LCA cutoff / Cinterval (default: 5)
+  -u [FLOAT]                  Score constant for Jukes-Cantor correction (default: 0.01)
+  --max-bwa-matches [INT]     Cap on candidate leaf alignments (default: 10)
+  --best-leaf-threshold [FLOAT]   Best-leaf override score threshold (default: 0 = disabled)
+  --best-leaf-max-votes [INT]     Max votes for best-leaf override (default: 0 = disabled)
+  --adaptive-cinterval        Enable adaptive cinterval (default: disabled)
+  --adaptive-gap-scale [FLOAT]    Scaling factor for adaptive cinterval (default: 0.5)
+
+Aligner Selection:
+  --aligner [STR]             'bwa' (default) or 'minimap2'
+  --minimap2-kmer [INT]       minimap2 k-mer size (default: 15)
+  --minimap2-window [INT]     minimap2 window size (default: 5)
+```
+
+## How Adaptive Cinterval Works
+
+tronko-assign places a query by scoring every node in every candidate tree, then voting: all nodes within `Cinterval` log-likelihood units of the best score get a vote. The LCA of voted nodes determines the taxonomic assignment. A fixed `Cinterval` applies the same tolerance to every query, but different queries have fundamentally different score profiles:
+
+- **Clear matches** (e.g. a haplotype that's in the database): the best leaf score is much higher than the second-best. A wide voting window adds irrelevant nodes and pushes the LCA up, losing species-level resolution.
+- **Novel species** (not in the database): scores are spread across multiple distant leaves with no clear winner. A narrow window would pick one arbitrarily; a wider window correctly generalizes to genus level.
+
+`--adaptive-cinterval` analyzes the gap between the top-1 and top-2 leaf scores before voting. When the gap is large (clear match), it shrinks the effective voting window for a more specific call. When scores are ambiguous, it keeps the window near the original `Cinterval` for a conservative call. The `--adaptive-gap-scale` parameter (0.0-1.0) controls how aggressively it shrinks: 0.0 = no adaptation, 1.0 = maximum shrinkage on clear matches.
+
+This is opt-in and disabled by default. Without `--adaptive-cinterval`, behavior is identical to before.
+
+## How Column Gap Masking Works
+
+tronko-build computes posterior probabilities for every node at every alignment column. In diverse partitions (many species in one tree), alignments can have 60-80% gap fraction. Most of this comes from columns where the majority of sequences have gaps — these columns contribute noise to the likelihood calculation without carrying useful phylogenetic signal.
+
+`-W <threshold>` masks columns where the gap fraction exceeds the threshold. Masked columns:
+- Are skipped in the likelihood optimization (so model parameters are estimated from informative columns only)
+- Get uniform posteriors (0.25, 0.25, 0.25, 0.25) in the output, which tronko-assign treats as uninformative
+
+This preserves the tree's broad phylogenetic context (the tree topology and branch lengths are unchanged) while cleaning up the per-node posterior signal. The hypothesis is that this helps haplotype-level discrimination in diverse partitions without hurting species holdout performance.
+
+Default `-W 1.0` means no masking (gap fraction can never exceed 100%). Useful values: `-W 0.5` masks columns with >50% gaps, `-W 0.7` masks only heavily gapped columns.
 
 ## File Naming Conventions
 
