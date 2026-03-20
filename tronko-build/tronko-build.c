@@ -264,7 +264,8 @@ void getTaxonomyArr(int node, struct masterArr *m, int *out){
 				int phylogenyLevel=0;
 				int maxABLevel = (taxIndexA[1] > taxIndexB[1]) ? taxIndexA[1] : taxIndexB[1];
 				for(i=maxABLevel;i<7;i++){
-					if ( strcmp(m->taxonomy[taxIndexA[0]][i],m->taxonomy[taxIndexB[0]][i])==0){
+					if ( m->taxonomy[taxIndexA[0]] != NULL && m->taxonomy[taxIndexB[0]] != NULL &&
+					     strcmp(m->taxonomy[taxIndexA[0]][i],m->taxonomy[taxIndexB[0]][i])==0){
 						phylogenyLevel = i;
 						out[0] = taxIndexA[0];
 						out[1] = phylogenyLevel;
@@ -403,6 +404,10 @@ int *findLeavesOfMinVarArr(int node, int *leafNodeList, int size, struct masterA
 				currentPos = i;
 			}
 		}
+		if (currentPos < 0 || currentPos >= size){
+			fprintf(stderr, "ERROR: findLeavesOfMinVarArr overflow: node=%d, size=%d, currentPos=%d\n", node, size, currentPos);
+			return leafNodeList;
+		}
 		leafNodeList[currentPos]=node;
 		return leafNodeList;
 	}
@@ -457,8 +462,12 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 		fprintf(p1,">%s\n",m->names[partition1[i]-m->numspec+1]);
 		seqWithoutDash = removeDashArr(m->msa[partition1[i]-m->numspec+1],m->numbase,seqWithoutDash);
 		fprintf(p1,"%s\n",seqWithoutDash);
-		int taxnode=0;
-		fprintf(p1_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition1[i]-m->numspec+1],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][6],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][5],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][4],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][3],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][2],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][1],m->taxonomy[m->tree[partition1[i]].taxIndex[0]][0]);
+		int tidx = m->tree[partition1[i]].taxIndex[0];
+		if (tidx >= 0 && tidx < m->numspec) {
+			fprintf(p1_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition1[i]-m->numspec+1],m->taxonomy[tidx][6],m->taxonomy[tidx][5],m->taxonomy[tidx][4],m->taxonomy[tidx][3],m->taxonomy[tidx][2],m->taxonomy[tidx][1],m->taxonomy[tidx][0]);
+		} else {
+			fprintf(p1_tax,"%s\t;;;;;;;\n",m->names[partition1[i]-m->numspec+1]);
+		}
 		for (j=0; j<m->numbase; j++){
 			seqWithoutDash[j]='\0';
 		}
@@ -482,7 +491,12 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 		fprintf(p2,">%s\n",m->names[partition2[i]-m->numspec+1]);
 		seqWithoutDash = removeDashArr(m->msa[partition2[i]-m->numspec+1],m->numbase,seqWithoutDash);
 		fprintf(p2,"%s\n",seqWithoutDash);
-		fprintf(p2_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition2[i]-m->numspec+1],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][6],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][5],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][4],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][3],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][2],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][1],m->taxonomy[m->tree[partition2[i]].taxIndex[0]][0]);
+		int tidx2 = m->tree[partition2[i]].taxIndex[0];
+		if (tidx2 >= 0 && tidx2 < m->numspec) {
+			fprintf(p2_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition2[i]-m->numspec+1],m->taxonomy[tidx2][6],m->taxonomy[tidx2][5],m->taxonomy[tidx2][4],m->taxonomy[tidx2][3],m->taxonomy[tidx2][2],m->taxonomy[tidx2][1],m->taxonomy[tidx2][0]);
+		} else {
+			fprintf(p2_tax,"%s\t;;;;;;;\n",m->names[partition2[i]-m->numspec+1]);
+		}
 		for(j=0; j<m->numbase+1; j++){
 			seqWithoutDash[j]='\0';
 		}
@@ -506,7 +520,12 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 		fprintf(p3,">%s\n",m->names[partition3[i]-m->numspec+1]);
 		seqWithoutDash = removeDashArr(m->msa[partition3[i]-m->numspec+1],m->numbase,seqWithoutDash);
 		fprintf(p3,"%s\n",seqWithoutDash);
-		fprintf(p3_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition3[i]-m->numspec+1],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][6],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][5],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][4],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][3],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][2],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][1],m->taxonomy[m->tree[partition3[i]].taxIndex[0]][0]);
+		int tidx3 = m->tree[partition3[i]].taxIndex[0];
+		if (tidx3 >= 0 && tidx3 < m->numspec) {
+			fprintf(p3_tax,"%s\t%s;%s;%s;%s;%s;%s;%s\n",m->names[partition3[i]-m->numspec+1],m->taxonomy[tidx3][6],m->taxonomy[tidx3][5],m->taxonomy[tidx3][4],m->taxonomy[tidx3][3],m->taxonomy[tidx3][2],m->taxonomy[tidx3][1],m->taxonomy[tidx3][0]);
+		} else {
+			fprintf(p3_tax,"%s\t;;;;;;;\n",m->names[partition3[i]-m->numspec+1]);
+		}
 		for(j=0; j<m->numbase; j++){
 			seqWithoutDash[j]='\0';
 		}

@@ -41,6 +41,8 @@ void allocateTreeArrMemory(struct masterArr *m, int max_nodename){
 		m->tree[i].numsites = -2;
 		m->tree[i].spec = -2;
 		m->tree[i].mrca = -2;
+		m->tree[i].taxIndex[0] = -1;
+		m->tree[i].taxIndex[1] = -1;
 		memset(m->tree[i].name, '\0', max_nodename+1);
 	}
 }
