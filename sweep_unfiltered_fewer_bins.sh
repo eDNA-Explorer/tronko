@@ -4,6 +4,7 @@
 #
 # Usage: nohup bash sweep_unfiltered_default.sh > databases/sweep_unfiltered_default.log 2>&1 &
 set -euo pipefail
+ulimit -s unlimited
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$REPO/bin:$REPO/tronko-build:$PATH"
@@ -223,7 +224,7 @@ for sp in "${THRESHOLDS[@]}"; do
         -s -u "$sp" \
         -a -E \
         -c "$THREADS" \
-        2>&1 | tee "$db_dir/build.log"
+        > "$db_dir/build.log" 2>&1
     t1=$(date +%s)
 
     if [[ ! -f "$db_dir/reference_tree.txt" ]]; then

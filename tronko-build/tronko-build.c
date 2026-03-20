@@ -946,6 +946,10 @@ static void remove_partition_files(const char *partitions_directory, const char 
 	snprintf(path, BUFFER_SIZE, "%s/RAxML_parsimonyTree.%s", partitions_directory, tempfilename);
 	unlink(path);
 }
+/* Forward declarations for functions used in createNewRoots before their definitions */
+void parseNewick(struct masterArr* m, const char* newick, int max_nodename);
+void makeBinary(struct masterArr* m, int max_nodename);
+
 void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
 	int i,j,k,count;
 	char buffer[BUFFER_SIZE];
