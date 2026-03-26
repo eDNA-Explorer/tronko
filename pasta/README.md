@@ -18,6 +18,31 @@ All questions and inquires should be addressed to our user email group: `pasta-u
 * The current PASTA code is heavily based on the [SATé code](http://phylo.bio.ku.edu/software/sate/sate.html) developed by Mark Holder's group at KU. Refer to sate-doc directory for documentation of the SATé code, including the list of authors, license, etc. 
 * [Niema Moshiri](https://github.com/niemasd) has contributed to the import to dendropy 4 and python 3 and to the Docker image. 
 
+# Fork Changes (tronko-fork)
+
+## VeryFastTree Backend
+
+This fork adds a `PASTA_TREE_BACKEND` environment variable to switch between FastTree and VeryFastTree for tree estimation. Set `PASTA_TREE_BACKEND=veryfasttree` to use VeryFastTree with native `-threads` support (scales beyond FastTree's 4-thread cap). Default remains `fasttree`.
+
+## Aggressive Gap Column Masking (95% threshold)
+
+PASTA masks gappy alignment columns before each tree estimation step to reduce runtime. The upstream default removes only columns with >99.9% gaps (`mask_gappy_sites = N/1000`). This fork increases the threshold to 95% (`mask_gappy_sites = N/20`), removing columns where fewer than 5% of sequences have a non-gap character.
+
+For a 318K-sequence 18S amplicon dataset (~130bp avg), the initial alignment is ~15,000 columns wide due to gap accumulation from PASTA's transitivity merge. At the 95% threshold, only ~264 informative columns survive -- a ~57x reduction that translates to a roughly proportional speedup in tree inference (likelihood computation is linear in alignment length per Felsenstein's pruning algorithm).
+
+**Why 95% is safe:**
+
+- Steenwyk et al. (2020) tested ~140K alignments and found that gap-only trimming at a 90% threshold **outperformed all other trimming methods and outperformed no trimming** for phylogenomic inference. They recommend "very high gappiness thresholds."
+- Tan et al. (2015) showed that aggressive filtering (removing 30-70% gapped columns) reliably worsens trees (Spearman rho 0.93-0.96 between aggressiveness and degradation). However, their study did not test the >90% regime separately -- removing near-empty columns is a different operation than removing partially-informative ones.
+- The PASTA paper (Mirarab et al. 2015) states masking "has no significant impact on the tree estimation, but reduces the running time (sometimes dramatically)."
+- Masking only affects the internal tree estimation step; the full alignment is preserved for downstream use. In our pipeline, partitions are re-aligned with FAMSA independently, so the PASTA tree is used only for decomposition topology.
+
+**References:**
+
+- Steenwyk JL, et al. (2020) ClipKIT: A multiple sequence alignment trimming software for accurate phylogenomic inference. *PLOS Biology*. [doi:10.1371/journal.pbio.3001007](https://doi.org/10.1371/journal.pbio.3001007)
+- Tan G, et al. (2015) Current methods for automated filtering of multiple sequence alignments frequently worsen single-gene phylogenetic inference. *Systematic Biology* 64(5):778-791. [doi:10.1093/sysbio/syv033](https://doi.org/10.1093/sysbio/syv033)
+- Mirarab S, et al. (2015) PASTA: Ultra-large multiple sequence alignment for nucleotide and amino-acid sequences. *J Comput Biol* 22(5):377-386. [doi:10.1089/cmb.2014.0156](https://doi.org/10.1089/cmb.2014.0156)
+
 # Documentation
 
 In addition to this README file, you can consult this [Tutorial](pasta-doc/pasta-tutorial.md).
