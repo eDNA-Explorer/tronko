@@ -1,6 +1,6 @@
 #include "options.h"
 
-static struct Options long_options[]=
+static struct option long_options[]=
 {
 	{"help", no_argument, 0, 'h'},
 	{"partition-directory", no_argument, 0, 'y'},
@@ -25,7 +25,8 @@ static struct Options long_options[]=
 	{"export-subtrees", no_argument, 0, 'E'},
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
-	{"legacy-sp", no_argument, 0, 'L'}
+	{"legacy-sp", no_argument, 0, 'L'},
+	{0, 0, 0, 0}
 };
 
 char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
