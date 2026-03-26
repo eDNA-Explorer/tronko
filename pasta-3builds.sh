@@ -66,21 +66,58 @@ run_pasta() {
     pasta_tree=$(ls ${output_dir}/${job_name}*.tre | head -1)
     echo "PASTA tree: $pasta_tree"
 
-    # Fix: strip single quotes from leaf names
-    sed -i "s/'//g" "$pasta_tree"
-
-    # Fix: strip FastTree support values: )0.996:0.068 -> ):0.068
+    # Post-process PASTA tree:
+    # 1. Strip quotes and support values
+    # 2. Restore original names from PASTA's safe-name translation
+    # 3. Quote leaf names containing colons (coordinate ranges) for nw_reroot
+    # 4. Midpoint root, then unquote
+    local name_trans="${output_dir}/${job_name}_temp_name_translation.txt"
     python3 -c "
-import re
+import re, sys
+
+# Load name translation (safe -> original)
+trans = {}
+with open('$name_trans') as f:
+    lines = f.read().strip().split('\n')
+    i = 0
+    while i < len(lines):
+        safe = lines[i].strip()
+        if i+1 < len(lines):
+            orig = lines[i+1].strip()
+            if safe and orig:
+                trans[safe] = orig
+        i += 3
+
 with open('$pasta_tree') as f:
     data = f.read()
+
+# Strip quotes and support values
+data = data.replace(\"'\", '')
+data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data)
+
+# Replace safe names with originals, quoting names that contain colons
+def replace_name(m):
+    safe = m.group(1)
+    orig = trans.get(safe, safe)
+    if ':' in orig:
+        return \"'\" + orig + \"'\"
+    return orig
+
+data = re.sub(r'([A-Za-z0-9_]+)(?=:)', replace_name, data)
+data = data.rstrip().rstrip(';') + ';'
+
 with open('$pasta_tree', 'w') as f:
-    f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data))
+    f.write(data + '\n')
+
+print(f'Restored {len(trans)} names, {sum(1 for v in trans.values() if \":\" in v)} quoted')
 "
 
     # Midpoint root
     local rooted_tree="${output_dir}/${job_name}.rooted.tre"
     nw_reroot "$pasta_tree" > "$rooted_tree"
+
+    # Strip quotes after rerooting — names now safe in Newick context
+    sed -i "s/'//g" "$rooted_tree"
     echo "Rooted tree: $rooted_tree"
 
     # Return path via global
@@ -132,8 +169,8 @@ echo "############################################################"
 echo "# 12S_MiFish_U"
 echo "############################################################"
 
-INPUT_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species.fasta"
-TAX_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_taxonomy.txt"
+INPUT_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_newick_safe.fasta"
+TAX_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_newick_safe_taxonomy.txt"
 
 run_pasta "$INPUT_MIFISH" "12S_MiFish_pasta" "pasta_output_12S_MiFish"
 ROOTED_MIFISH="$_ROOTED_TREE"
