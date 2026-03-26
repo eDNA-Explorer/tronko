@@ -10,11 +10,11 @@ set -euo pipefail
 # ============================================================
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
-THREADS=32
-FAMSA_THREADS=8
+THREADS=128
+FAMSA_THREADS=16
 
 # Paths to tronko-fork tools (uses bundled PASTA copy)
-TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko-fork}"
+TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
 PASTA_DIR="$TRONKO_DIR/pasta"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 export PASTA_TREE_BACKEND="$TREE_BACKEND"
@@ -126,72 +126,26 @@ run_build() {
 }
 
 # ============================================================
-# Marker 1: 18S_Euk (187K seqs)
+# Marker: 12S_MiFish_U filtered (~59K seqs)
 # ============================================================
 echo "############################################################"
-echo "# 18S_Euk"
+echo "# 12S_MiFish_U"
 echo "############################################################"
 
-INPUT_18S="$HOME/rcrux-py/databases/18S_Euk/dc-megablast/18S_Euk_species.fasta"
-TAX_18S="$HOME/rcrux-py/databases/18S_Euk/dc-megablast/18S_Euk_species_taxonomy.txt"
+INPUT_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species.fasta"
+TAX_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_taxonomy.txt"
 
-run_pasta "$INPUT_18S" "18S_pasta" "pasta_output_18S"
-ROOTED_18S="$_ROOTED_TREE"
+run_pasta "$INPUT_MIFISH" "12S_MiFish_pasta" "pasta_output_12S_MiFish"
+ROOTED_MIFISH="$_ROOTED_TREE"
 
-run_build "18S_maxdiam25"   "databases/18S_pasta_maxdiam25"   "$INPUT_18S" "$TAX_18S" "$ROOTED_18S" --max-diam 25
-run_build "18S_maxsize1000" "databases/18S_pasta_maxsize1000" "$INPUT_18S" "$TAX_18S" "$ROOTED_18S" --max-size 1000
-run_build "18S_maxsize500"  "databases/18S_pasta_maxsize500"  "$INPUT_18S" "$TAX_18S" "$ROOTED_18S" --max-size 500
-
-# ============================================================
-# Marker 2: vert12S / 12SV5 (101K seqs)
-# ============================================================
-echo ""
-echo "############################################################"
-echo "# vert12S (12SV5)"
-echo "############################################################"
-
-INPUT_12S="$HOME/rcrux-py/databases/12SV5/dc-megablast/12SV5_species.fasta"
-TAX_12S="$HOME/rcrux-py/databases/12SV5/dc-megablast/12SV5_species_taxonomy.txt"
-
-run_pasta "$INPUT_12S" "vert12S_pasta" "pasta_output_vert12S"
-ROOTED_12S="$_ROOTED_TREE"
-
-run_build "12S_maxdiam25"   "databases/vert12S_pasta_maxdiam25"   "$INPUT_12S" "$TAX_12S" "$ROOTED_12S" --max-diam 25
-run_build "12S_maxsize1000" "databases/vert12S_pasta_maxsize1000" "$INPUT_12S" "$TAX_12S" "$ROOTED_12S" --max-size 1000
-run_build "12S_maxsize500"  "databases/vert12S_pasta_maxsize500"  "$INPUT_12S" "$TAX_12S" "$ROOTED_12S" --max-size 500
-
-# ============================================================
-# Marker 3: vert12S unfiltered / 12SV5 (177K seqs)
-# ============================================================
-echo ""
-echo "############################################################"
-echo "# vert12S unfiltered (12SV5 dc-megablast-unfiltered)"
-echo "############################################################"
-
-INPUT_12S_UF="$HOME/rcrux-py/databases/12SV5/dc-megablast-unfiltered/12SV5_species.fasta"
-TAX_12S_UF="$HOME/rcrux-py/databases/12SV5/dc-megablast-unfiltered/12SV5_species_taxonomy.txt"
-
-run_pasta "$INPUT_12S_UF" "vert12S_unfiltered_pasta" "pasta_output_vert12S_unfiltered"
-ROOTED_12S_UF="$_ROOTED_TREE"
-
-run_build "12S_uf_maxdiam25"   "databases/vert12S_unfiltered_pasta_maxdiam25"   "$INPUT_12S_UF" "$TAX_12S_UF" "$ROOTED_12S_UF" --max-diam 25
-run_build "12S_uf_maxsize1000" "databases/vert12S_unfiltered_pasta_maxsize1000" "$INPUT_12S_UF" "$TAX_12S_UF" "$ROOTED_12S_UF" --max-size 1000
-run_build "12S_uf_maxsize500"  "databases/vert12S_unfiltered_pasta_maxsize500"  "$INPUT_12S_UF" "$TAX_12S_UF" "$ROOTED_12S_UF" --max-size 500
+run_build "MiFish_maxdiam25"   "databases/MiFish_pasta_maxdiam25"   "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-diam 25
+run_build "MiFish_maxsize1000" "databases/MiFish_pasta_maxsize1000" "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 1000
+run_build "MiFish_maxsize500"  "databases/MiFish_pasta_maxsize500"  "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 500
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
-echo "18S databases:"
-echo "  1) databases/18S_pasta_maxdiam25/reference_tree.txt"
-echo "  2) databases/18S_pasta_maxsize1000/reference_tree.txt"
-echo "  3) databases/18S_pasta_maxsize500/reference_tree.txt"
-echo ""
-echo "vert12S (filtered) databases:"
-echo "  4) databases/vert12S_pasta_maxdiam25/reference_tree.txt"
-echo "  5) databases/vert12S_pasta_maxsize1000/reference_tree.txt"
-echo "  6) databases/vert12S_pasta_maxsize500/reference_tree.txt"
-echo ""
-echo "vert12S (unfiltered) databases:"
-echo "  7) databases/vert12S_unfiltered_pasta_maxdiam25/reference_tree.txt"
-echo "  8) databases/vert12S_unfiltered_pasta_maxsize1000/reference_tree.txt"
-echo "  9) databases/vert12S_unfiltered_pasta_maxsize500/reference_tree.txt"
+echo "12S_MiFish_U databases:"
+echo "  1) databases/MiFish_pasta_maxdiam25/reference_tree.txt"
+echo "  2) databases/MiFish_pasta_maxsize1000/reference_tree.txt"
+echo "  3) databases/MiFish_pasta_maxsize500/reference_tree.txt"

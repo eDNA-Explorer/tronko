@@ -18,6 +18,7 @@ cd ~/tronko/pasta/bin && ln -sf ~/sate-tools-linux/* .
 
 # 5. PASTA scripts not in sate-tools-linux
 cp ~/tronko/pasta/resources/scripts/hmmeralign ~/tronko/pasta/bin/hmmeralign
+sed -i '1s|#! /usr/bin/env python|#!/usr/bin/env python3|' ~/tronko/pasta/bin/hmmeralign
 chmod +x ~/tronko/pasta/bin/hmmeralign
 ln -sf "$(which run_treeshrink.py)" ~/tronko/pasta/bin/treeshrink
 
