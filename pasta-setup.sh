@@ -16,6 +16,9 @@ git clone https://github.com/smirarab/sate-tools-linux.git ~/sate-tools-linux
 mkdir -p ~/tronko/pasta/bin
 cd ~/tronko/pasta/bin && ln -sf ~/sate-tools-linux/* .
 
+# Override bundled mafft (v7.149b/2014) with system mafft
+ln -sf "$(which mafft)" ~/tronko/pasta/bin/mafft
+
 # 5. PASTA scripts not in sate-tools-linux
 cp ~/tronko/pasta/resources/scripts/hmmeralign ~/tronko/pasta/bin/hmmeralign
 sed -i '1s|#! /usr/bin/env python|#!/usr/bin/env python3|' ~/tronko/pasta/bin/hmmeralign

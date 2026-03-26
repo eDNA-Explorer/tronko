@@ -163,26 +163,27 @@ run_build() {
 }
 
 # ============================================================
-# Marker: 12S_MiFish_U filtered (~59K seqs)
+# Marker: 16Smamm (~99K seqs)
 # ============================================================
+echo ""
 echo "############################################################"
-echo "# 12S_MiFish_U"
+echo "# 16Smamm"
 echo "############################################################"
 
-INPUT_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_newick_safe.fasta"
-TAX_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_newick_safe_taxonomy.txt"
+INPUT_16S="$HOME/rcrux-py/databases/16Smamm/filtered/16Smamm_species.fasta"
+TAX_16S="$HOME/rcrux-py/databases/16Smamm/filtered/16Smamm_species_taxonomy.txt"
 
-run_pasta "$INPUT_MIFISH" "12S_MiFish_pasta" "pasta_output_12S_MiFish"
-ROOTED_MIFISH="$_ROOTED_TREE"
+run_pasta "$INPUT_16S" "16Smamm_pasta" "pasta_output_16Smamm"
+ROOTED_16S="$_ROOTED_TREE"
 
-run_build "MiFish_maxdiam25"   "databases/MiFish_pasta_maxdiam25"   "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-diam 25
-run_build "MiFish_maxsize1000" "databases/MiFish_pasta_maxsize1000" "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 1000
-run_build "MiFish_maxsize500"  "databases/MiFish_pasta_maxsize500"  "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 500
+run_build "16S_maxdiam25"   "databases/16Smamm_pasta_maxdiam25"   "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-diam 25
+run_build "16S_maxsize1000" "databases/16Smamm_pasta_maxsize1000" "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-size 1000
+run_build "16S_maxsize500"  "databases/16Smamm_pasta_maxsize500"  "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-size 500
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
-echo "12S_MiFish_U databases:"
-echo "  1) databases/MiFish_pasta_maxdiam25/reference_tree.txt"
-echo "  2) databases/MiFish_pasta_maxsize1000/reference_tree.txt"
-echo "  3) databases/MiFish_pasta_maxsize500/reference_tree.txt"
+echo "16Smamm databases:"
+echo "  1) databases/16Smamm_pasta_maxdiam25/reference_tree.txt"
+echo "  2) databases/16Smamm_pasta_maxsize1000/reference_tree.txt"
+echo "  3) databases/16Smamm_pasta_maxsize500/reference_tree.txt"
