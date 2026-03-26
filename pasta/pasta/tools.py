@@ -111,16 +111,22 @@ def read_raxml_results(dir, dirs_to_delete, temp_fs, pasta_products=None, step_n
     return score, tree_str
 
 def read_fasttree_results(dir, fasttree_restults_file, log, delete_dir=False, pasta_products=None, step_num=None):
+        import math
         f = open(fasttree_restults_file, 'r')
         tree_str = f.read().strip()
         f.close()
         score = None
+        tree_log_lk = None
         for line in reversed(open(log, 'r').readlines()):
             if (line.split()[0] == 'Gamma20LogLk'):
-                score = float(line.split()[1])
-                break
+                val = float(line.split()[1])
+                if not math.isnan(val):
+                    score = val
+                    break
             if (line.split()[0] == 'TreeLogLk'):
-                score = float(line.split()[2])
+                tree_log_lk = float(line.split()[2])
+                if score is None:
+                    score = tree_log_lk
                 break
         if score is None:
             message = "FastTree did not report a log-likelhood for the data: the data set is probably too weird"
