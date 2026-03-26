@@ -52,6 +52,7 @@ run_pasta() {
     local output_dir="$3"
 
     echo "=== Running PASTA: $job_name ==="
+    rm -rf "$HOME/.pasta/${job_name}" "$output_dir"
     mkdir -p "$output_dir"
 
     python3 "$PASTA_DIR/run_pasta.py" \
@@ -132,7 +133,7 @@ run_build() {
     local input_fasta="$3"
     local taxonomy="$4"
     local rooted_tree="$5"
-    local partition_dir="pasta_partitions_${label}"
+    local partition_dir="${outdir}/partitions_${label}"
     shift 5
 
     echo ""
@@ -164,29 +165,29 @@ run_build() {
 }
 
 # ============================================================
-# Marker: 12S_MiFish_U filtered (~59K seqs)
+# Marker: ITS2_Plants
 # ============================================================
 echo "############################################################"
-echo "# 12S_MiFish_U"
+echo "# ITS2_Plants"
 echo "############################################################"
 
-INPUT_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species.fasta"
-TAX_MIFISH="$HOME/rcrux-py/databases/12S_MiFish_U/filtered/12S_MiFish_U_species_taxonomy.txt"
+INPUT_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species.fasta"
+TAX_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species_taxonomy.txt"
 
-DB_BASE="databases/12S_MiFish_U"
+DB_BASE="databases/ITS2_Plants"
 PASTA_OUT="${DB_BASE}/pasta_output"
 
-run_pasta "$INPUT_MIFISH" "12S_MiFish_pasta" "$PASTA_OUT"
-ROOTED_MIFISH="$_ROOTED_TREE"
+run_pasta "$INPUT_ITS2" "ITS2_Plants_pasta" "$PASTA_OUT"
+ROOTED_ITS2="$_ROOTED_TREE"
 
-run_build "MiFish_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-diam 25
-run_build "MiFish_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 1000
-run_build "MiFish_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_MIFISH" "$TAX_MIFISH" "$ROOTED_MIFISH" --max-size 500
+run_build "ITS2_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-diam 25
+run_build "ITS2_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 1000
+run_build "ITS2_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 500
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
-echo "12S_MiFish_U PASTA databases:"
+echo "ITS2_Plants PASTA databases:"
 echo "  1) ${DB_BASE}/maxdiam25/reference_tree.txt"
 echo "  2) ${DB_BASE}/maxsize1000/reference_tree.txt"
 echo "  3) ${DB_BASE}/maxsize500/reference_tree.txt"
