@@ -35,6 +35,7 @@ from pasta.scheduler import jobq, start_worker, DispatchableJob, FakeJob,\
 
 from .alignment import Alignment, MultiLocusDataset
 import copy
+import math
 
 _LOG = get_logger(__name__)
 
@@ -111,7 +112,6 @@ def read_raxml_results(dir, dirs_to_delete, temp_fs, pasta_products=None, step_n
     return score, tree_str
 
 def read_fasttree_results(dir, fasttree_restults_file, log, delete_dir=False, pasta_products=None, step_num=None):
-        import math
         f = open(fasttree_restults_file, 'r')
         tree_str = f.read().strip()
         f.close()
