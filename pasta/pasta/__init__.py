@@ -159,7 +159,9 @@ class Messenger(object):
         self.run_log_streams = [sys.stdout]
 
     def _format_msg(self, msg, msg_type):
-        return "PASTA %s: %s\n" % (msg_type, msg)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return "[%s] PASTA %s: %s\n" % (ts, msg_type, msg)
 
     def _write_to_streams(self, streams, msg, flush=True):
         for s in streams:

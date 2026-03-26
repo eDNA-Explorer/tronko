@@ -596,12 +596,14 @@ WARNING: you have specified a max subproblem ({0}) that is equal to or greater
                                 
                 _LOG.debug("Tree obtained. Checking for acceptance.")
 
-                this_iter_score_improved = ( self.best_score is None ) or ( new_score > self.best_score )
+                import math
+                _best_is_nan = self.best_score is None or (isinstance(self.best_score, float) and math.isnan(self.best_score))
+                this_iter_score_improved = _best_is_nan or ( new_score > self.best_score )
 
-                accept_iteration =  ( this_iter_score_improved or 
+                accept_iteration =  ( this_iter_score_improved or
                                       self._get_accept_mode(new_score=new_score, break_strategy_index=break_strategy_index) == AcceptMode.BLIND_MODE )
 
-                if self.score is None:
+                if self.score is None or (isinstance(self.score, float) and math.isnan(self.score)):
                     self.score = new_score
 
 

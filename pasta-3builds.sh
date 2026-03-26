@@ -99,7 +99,7 @@ data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data)
 def replace_name(m):
     safe = m.group(1)
     orig = trans.get(safe, safe)
-    if ':' in orig:
+    if ':' in orig or '|' in orig:
         return \"'\" + orig + \"'\"
     return orig
 
