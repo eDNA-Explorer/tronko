@@ -56,6 +56,7 @@ for SP in 0.05 0.10 0.20; do
         -s "$SP" \
         -F \
         -E \
+        -L \
         -B "$AC_BIN_SIZE" \
         -P "$AC_DESCENDANTS" \
         -J "$PARALLEL_JOBS"

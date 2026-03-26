@@ -34,11 +34,12 @@ PARALLEL_JOBS=1
 SP_THRESHOLD=0.1
 USE_FASTTREE=0
 EXPORT_SUBTREES=0
+LEGACY_SP=0
 AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 AC_DESCENDANTS=75
 
-while getopts "f:t:o:p:T:s:FEC:B:P:J:" opt; do
+while getopts "f:t:o:p:T:s:FELC:B:P:J:" opt; do
     case $opt in
         f) INPUT_FASTA="$OPTARG" ;;
         t) INPUT_TAXONOMY="$OPTARG" ;;
@@ -48,6 +49,7 @@ while getopts "f:t:o:p:T:s:FEC:B:P:J:" opt; do
         s) SP_THRESHOLD="$OPTARG" ;;
         F) USE_FASTTREE=1 ;;
         E) EXPORT_SUBTREES=1 ;;
+        L) LEGACY_SP=1 ;;
         C) AC_CUTOFF="$OPTARG" ;;
         B) AC_BIN_SIZE="$OPTARG" ;;
         P) AC_DESCENDANTS="$OPTARG" ;;
@@ -488,6 +490,9 @@ if [[ "$USE_FASTTREE" -eq 1 ]]; then
 fi
 if [[ "$EXPORT_SUBTREES" -eq 1 ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS -E"
+fi
+if [[ "$LEGACY_SP" -eq 1 ]]; then
+    TRONKO_FLAGS="$TRONKO_FLAGS --legacy-sp"
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
