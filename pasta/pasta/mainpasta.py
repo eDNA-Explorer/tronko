@@ -91,7 +91,7 @@ def get_auto_defaults_from_summary_stats(datatype, ntax_nchar_tuple_list, total_
         'blind_after_total_iter': 0,
         'iter_limit' : 3,
         'after_blind_time_without_imp_limit' : -1,
-        'mask_gappy_sites' : max(total_num_tax / 1000 , 1),
+        'mask_gappy_sites' : max(total_num_tax / 20 , 1),  # remove columns with >95% gaps before tree step
         'build_MST' : False,
         'treeshrink_filter': False
         }
