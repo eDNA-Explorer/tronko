@@ -23,9 +23,7 @@ static struct Options long_options[]=
 	{"prefix", required_argument, 0, 'i'},
 	{"fasttree", no_argument, 0, 'a'},
 	{"export-subtrees", no_argument, 0, 'E'},
-	{"parallel-jobs", required_argument, 0, 'J'},
-	{"column-gap-mask", required_argument, 0, 'W'},
-	{"legacy-sp", no_argument, 0, 'L'}
+	{"parallel-jobs", required_argument, 0, 'J'}
 };
 
 char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
@@ -49,11 +47,9 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
-	-a, use FastTree instead of RAxML\n\
+	-a, use VeryFastTree instead of RAxML\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
-	-W [FLOAT], mask alignment columns with gap fraction above threshold [default: 1.0 = no masking]\n\
-	-L, --legacy-sp, use legacy SP normalization (divides by numspec, pre-fix behavior) for comparison\n\
 	\n";
 
 void print_help_statement(){
@@ -69,7 +65,7 @@ void parse_options(int argc, char **argv, Options *opt){
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hspvlgaryELu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:J:W:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hspvlgaryEu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:J:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
@@ -205,14 +201,6 @@ void parse_options(int argc, char **argv, Options *opt){
 				if (!success)
 					fprintf(stderr, "Invalid number of parallel jobs\n");
 				if (opt->parallel_jobs < 1) opt->parallel_jobs = 1;
-				break;
-			case 'W':
-				success = sscanf(optarg, "%lf", &(opt->column_gap_threshold));
-				if (!success)
-					fprintf(stderr, "Invalid column gap threshold\n");
-				break;
-			case 'L':
-				opt->legacy_sp = 1;
 				break;
 		}
 	}

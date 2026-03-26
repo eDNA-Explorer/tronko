@@ -43,7 +43,6 @@ type_of_PP ****PP_Arr;
 char ****taxonomyArr;
 int *SPscoreArr;
 int *numspecArr, *numbaseArr, ***seqArr, *rootArr;
-int **columnMaskArr;
 double minVariance = 99999999999999;
 int minVarNode = -1;
 int returnNode=-1;
@@ -184,7 +183,7 @@ void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, 
 		int *leaf_ptr = hashmap_get(&name_map, lineAccession);
 		/* If exact match fails, try with colons replaced by underscores.
 		   Newick format uses ':' for branch lengths, so tree-building tools
-		   (RAxML/FastTree) replace ':' with '_' in leaf names. */
+		   (RAxML/VeryFastTree) replace ':' with '_' in leaf names. */
 		char normalized[BUFFER_SIZE];
 		if (leaf_ptr == NULL && strchr(lineAccession, ':') != NULL) {
 			strncpy(normalized, lineAccession, BUFFER_SIZE - 1);
@@ -534,7 +533,7 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 	fclose(p3);
 	fclose(p3_tax);
 }
-double calculateSPArr(struct masterArr *m, int legacy_sp){
+double calculateSPArr(struct masterArr *m){
 	int i,j,k;
 	/* Build leaf index: leaves sit at [numspec-1 .. 2*numspec-2] in tronko tree layout */
 	int *partition = (int*)malloc(sizeof(int)*m->numspec);
@@ -579,8 +578,7 @@ double calculateSPArr(struct masterArr *m, int legacy_sp){
 	   SPscore = 3/numspec — causing any partition with numspec > 3/sp_score to
 	   always fail the threshold regardless of sequence similarity. */
 	double SPscore = (double)raw_score / (double)numpairs;
-	if (legacy_sp) SPscore = SPscore / (double)m->numspec;
-	printf("SPscore: %lf%s\n",SPscore, legacy_sp ? " (legacy)" : "");
+	printf("SPscore: %lf\n",SPscore);
 	return SPscore;
 }
 void writeNewick(FILE* file, masterArr* m, int nodeIndex) {
@@ -811,7 +809,7 @@ static int get_num_cores(void){
 }
 
 /* Run the external tool pipeline for one partition:
-   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/FastTree -> [nw_reroot]
+   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/VeryFastTree -> [nw_reroot]
    Returns 0 on success. */
 static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 	int status;
@@ -879,30 +877,33 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 		}
 		status = system(buf);
 	}else{
-		/* FastTree path — fork/exec with stdout redirect */
-		char ft_input[BUFFER_SIZE], ft_output[BUFFER_SIZE];
+		/* VeryFastTree path — fork/exec with stdout redirect instead of system() */
+		char vft_input[BUFFER_SIZE], vft_output[BUFFER_SIZE], vft_threads[32];
+		snprintf(vft_threads, sizeof(vft_threads), "%d",
+			pipeline_threads > 0 ? pipeline_threads : get_num_cores());
 		if (opt.prefix[0] == '\0'){
-			snprintf(ft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
+			snprintf(vft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
 		}else{
-			snprintf(ft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
+			snprintf(vft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+			snprintf(vft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
 		}
-		pid_t ft_pid = fork();
-		if (ft_pid == -1){
-			fprintf(stderr, "can't fork for FastTree\n");
+		pid_t vft_pid = fork();
+		if (vft_pid == -1){
+			fprintf(stderr, "can't fork for VeryFastTree\n");
 			return -1;
-		}else if (ft_pid == 0){
-			int fd = open(ft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+		}else if (vft_pid == 0){
+			int fd = open(vft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
 			int devnull = open("/dev/null", O_WRONLY);
 			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
+			/* Use FastTree */
+			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", vft_input, NULL};
 			execvp("FastTree", ft_args);
 			fprintf(stderr, "FastTree not found\n");
 			_exit(127);
 		}
-		waitpid(ft_pid, &status, 0);
+		waitpid(vft_pid, &status, 0);
 	}
 
 	/* Step 5: Reroot tree (RAxML only) */
@@ -1238,7 +1239,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
 		if ( opt->use_spscore==1 && opt->use_min_leaves==0){
-				initialSPscore = calculateSPArr(t, opt->legacy_sp);
+				initialSPscore = calculateSPArr(t);
 				if (initialSPscore < opt->sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
@@ -1263,7 +1264,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 			}
 		}
 		if ( opt->use_spscore==1 && opt->use_min_leaves==1 ){
-			initialSPscore = calculateSPArr(t, opt->legacy_sp);
+			initialSPscore = calculateSPArr(t);
 			if (initialSPscore < opt->sp_score && t->numspec > opt->min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
@@ -1664,8 +1665,6 @@ int main(int argc, char **argv){
 	opt.remove_unused = 0;
 	opt.export_subtrees = 0;
 	opt.parallel_jobs = 1;
-	opt.column_gap_threshold = 1.0; /* 1.0 = no masking (impossible to exceed 100% gaps) */
-	opt.legacy_sp = 0;
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
 		opt.partitions_directory[i] = '\0';
@@ -1919,7 +1918,7 @@ int main(int argc, char **argv){
 				assignTaxonomyToLeavesArr(buffer,m,max_nodename,max_lineTaxonomy);
 				{ int _tax_out[2]; getTaxonomyArr(m->root,m,_tax_out); }
 				hashmap_put(&mastermap, m->index, m);
-				if ( opt.use_partitions==1 && m->numspec > opt.min_leaves ){
+				if ( opt.use_partitions==1 && (opt.use_spscore==1 || opt.use_min_leaves==1) && m->numspec > opt.min_leaves ){
 					SPscoreArr[i]=0;
 					createNewRoots(i,&opt,max_nodename,max_lineTaxonomy,m);
 				}
@@ -2214,33 +2213,6 @@ int main(int argc, char **argv){
 			export_idx++;
 		}
 		printf("Exported %d subtrees to %s\n", export_idx, export_dir);
-	}
-
-	/* Column masking: compute per-tree, per-column gap fraction.
-	   Columns exceeding opt.column_gap_threshold are masked (set to 0).
-	   Default threshold is 1.0 (no masking). */
-	columnMaskArr = (int**)malloc(numberOfTrees * sizeof(int*));
-	{
-		int totalMasked = 0, totalCols = 0;
-		for (i = 0; i < numberOfTrees; i++) {
-			int nb = numbaseArr[i];
-			int ns = numspecArr[i];
-			columnMaskArr[i] = (int*)malloc(nb * sizeof(int));
-			totalCols += nb;
-			for (j = 0; j < nb; j++) {
-				int gaps = 0;
-				for (k = 0; k < ns; k++) {
-					if (seqArr[i][k][j] == 4) gaps++;
-				}
-				double gapFrac = (double)gaps / ns;
-				columnMaskArr[i][j] = (gapFrac <= opt.column_gap_threshold) ? 1 : 0;
-				if (!columnMaskArr[i][j]) totalMasked++;
-			}
-		}
-		if (opt.column_gap_threshold < 1.0) {
-			printf("Column masking: %d/%d columns masked (threshold=%.2f)\n",
-				totalMasked, totalCols, opt.column_gap_threshold);
-		}
 	}
 
 	/* Batched posterior computation — process trees in chunks to limit memory usage.

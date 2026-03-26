@@ -195,13 +195,10 @@ else
     NUM_LINES=$(wc -l < "$CLUSTER_INPUT_FASTA")
 
     echo "AncestralClust: $NUM_SEQS seqs -> $NUM_BINS bins, $NUM_SEEDS seeds, -p $AC_DESCENDANTS, -l $NUM_LINES"
-    echo "Running: ancestralclust -f -i $CLUSTER_INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p $AC_DESCENDANTS -l $NUM_LINES -c $THREADS -d $AC_DIR"
-
     # Cap ancestralclust threads (segfaults with high thread counts)
-    AC_THREADS="$THREADS"
-    if [[ "$AC_THREADS" -gt 4 ]]; then
-        AC_THREADS=4
-    fi
+    AC_THREADS=1
+
+    echo "Running: ancestralclust -f -i $CLUSTER_INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p $AC_DESCENDANTS -l $NUM_LINES -c $AC_THREADS -d $AC_DIR"
 
     ancestralclust -f \
         -i "$CLUSTER_INPUT_FASTA" \
@@ -498,7 +495,8 @@ if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
         -d "$OUTPUT_DIR" \
         -s -u "$SP_THRESHOLD" \
         $TRONKO_FLAGS \
-        -c "$THREADS"
+        -c "$THREADS" \
+        -J "$PARALLEL_JOBS"
 fi
 
 # Check for output
