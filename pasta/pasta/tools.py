@@ -1005,7 +1005,7 @@ class FastTree(TreeEstimator):
     # Toggle between 'fasttree' and 'veryfasttree' backends.
     # Set via the PASTA_TREE_BACKEND environment variable.
     # Valid values: 'fasttree' (default), 'veryfasttree'
-    _backend = os.environ.get('PASTA_TREE_BACKEND', 'fasttree').lower()
+    _backend = os.environ.get('PASTA_TREE_BACKEND', 'veryfasttree').lower()
 
     def __init__(self, **kwargs):
         TreeEstimator.__init__(self, 'fasttree', **kwargs)

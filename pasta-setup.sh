@@ -33,4 +33,4 @@ sudo make install
 
 # 7. Run
 cd ~/tronko
-TREE_BACKEND=veryfasttree bash pasta-3builds.sh
+TREE_BACKEND=veryfasttree bash pasta-3builds.sh 2>&1 | tee pasta-build.log
