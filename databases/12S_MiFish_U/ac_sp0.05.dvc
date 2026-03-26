@@ -1,0 +1,6 @@
+outs:
+- md5: 6e6d58849bc7fb8689537989765c32cb.dir
+  size: 1725076943
+  nfiles: 24003
+  hash: md5
+  path: ac_sp0.05
