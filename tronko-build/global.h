@@ -28,6 +28,7 @@
 extern FILE *infile, *outfile, *treefile;
 extern int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 extern int *rootArr, *numspecArr, *numbaseArr, ***seqArr;
+extern int **columnMaskArr;
 extern __thread int root,tip,comma; /*globals used to read in the tree*/
 extern double Logfactorial[MAXNUMBEROFINDINSPECIES];
 extern double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
@@ -132,6 +133,8 @@ typedef struct Options{
 	int fasttree;
 	int export_subtrees;
 	int parallel_jobs;
+	double column_gap_threshold;
+	int legacy_sp;
 }Options;
 
 typedef struct masterArr{
