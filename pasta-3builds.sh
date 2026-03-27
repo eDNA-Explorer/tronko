@@ -106,7 +106,8 @@ def replace_name(m):
     return orig
 
 data = re.sub(r'([A-Za-z0-9_]+)(?=:)', replace_name, data)
-data = data.rstrip().rstrip(';') + ';'
+# Ensure exactly one tree: strip trailing whitespace/semicolons, add one semicolon
+data = re.sub(r'[;\s]+$', '', data) + ';'
 
 with open('$pasta_tree', 'w') as f:
     f.write(data + '\n')
