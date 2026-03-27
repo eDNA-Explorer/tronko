@@ -205,14 +205,33 @@ else
         AC_THREADS=4
     fi
 
-    ancestralclust -f \
-        -i "$CLUSTER_INPUT_FASTA" \
-        -b "$NUM_BINS" \
-        -r "$NUM_SEEDS" \
-        -p "$AC_DESCENDANTS" \
-        -l "$NUM_LINES" \
-        -c "$AC_THREADS" \
-        -d "$AC_DIR"
+    AC_MAX_RETRIES=3
+    AC_ATTEMPT=0
+    while true; do
+        AC_ATTEMPT=$((AC_ATTEMPT + 1))
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust attempt $AC_ATTEMPT of $AC_MAX_RETRIES..."
+        if ancestralclust -f \
+            -i "$CLUSTER_INPUT_FASTA" \
+            -b "$NUM_BINS" \
+            -r "$NUM_SEEDS" \
+            -p "$AC_DESCENDANTS" \
+            -l "$NUM_LINES" \
+            -c "$AC_THREADS" \
+            -d "$AC_DIR"; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust succeeded on attempt $AC_ATTEMPT"
+            break
+        else
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust failed (attempt $AC_ATTEMPT)" >&2
+            if [[ "$AC_ATTEMPT" -ge "$AC_MAX_RETRIES" ]]; then
+                echo "ERROR: ancestralclust failed after $AC_MAX_RETRIES attempts" >&2
+                exit 1
+            fi
+            echo "Retrying in 5s..."
+            sleep 5
+            rm -rf "$AC_DIR"
+            mkdir -p "$AC_DIR"
+        fi
+    done
 
     # AncestralClust outputs {0..N-1}.fasta in the output directory.
     # We need to create matching taxonomy files for each cluster.
@@ -496,7 +515,7 @@ if [[ "$LEGACY_SP" -eq 1 ]]; then
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
-    echo "Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -c $THREADS"
     time tronko-build -y \
         -e "$MERGED_DIR" \
         -n "$NUM_FINAL_CLUSTERS" \
