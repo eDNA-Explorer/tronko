@@ -2,11 +2,14 @@
 set -euo pipefail
 
 # ============================================================
-# Build AncestralClust-based tronko databases for ITS2_Plants
-# at three SP thresholds (0.05, 0.10, 0.20)
+# Build AncestralClust-based tronko databases for a given marker
+# Usage: bash ac-3builds.sh <MARKER>
+#   e.g. bash ac-3builds.sh ITS2_Plants
 #
 # Run from ~/tronko
 # ============================================================
+
+MARKER="${1:?Usage: bash ac-3builds.sh <MARKER>}"
 
 THREADS=64
 FAMSA_THREADS=8
@@ -18,13 +21,20 @@ TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 
 # ── Input files ──────────────────────────────────────────────
-INPUT_FASTA="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species.fasta"
-INPUT_TAX="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species_taxonomy.txt"
+INPUT_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
+INPUT_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
 
-DB_BASE="databases/ITS2_Plants"
+if [[ ! -f "$INPUT_FASTA" ]]; then
+    echo "ERROR: $INPUT_FASTA not found" >&2; exit 1
+fi
+if [[ ! -f "$INPUT_TAX" ]]; then
+    echo "ERROR: $INPUT_TAX not found" >&2; exit 1
+fi
+
+DB_BASE="databases/${MARKER}"
 
 echo "============================================================"
-echo "AncestralClust builds for ITS2_Plants"
+echo "AncestralClust builds for $MARKER"
 echo "  Input FASTA:    $INPUT_FASTA"
 echo "  Input taxonomy: $INPUT_TAX"
 echo "  Threads: $THREADS, FAMSA threads: $FAMSA_THREADS"
@@ -51,7 +61,7 @@ for SP in 0.05 0.10 0.20; do
         -f "$INPUT_FASTA" \
         -t "$INPUT_TAX" \
         -o "$OUTDIR" \
-        -p "ITS2_Plants" \
+        -p "$MARKER" \
         -T "$THREADS" \
         -s "$SP" \
         -F \
@@ -73,7 +83,7 @@ done
 echo ""
 echo "=== All AncestralClust builds complete ==="
 echo ""
-echo "ITS2_Plants AC databases:"
+echo "$MARKER AC databases:"
 echo "  1) ${DB_BASE}/ac_sp0.05/reference_tree.txt"
 echo "  2) ${DB_BASE}/ac_sp0.10/reference_tree.txt"
 echo "  3) ${DB_BASE}/ac_sp0.20/reference_tree.txt"

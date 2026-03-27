@@ -2,12 +2,15 @@
 set -euo pipefail
 
 # ============================================================
-# Build PASTA-based tronko databases for multiple markers
-# Run from ~/tronko-fork
+# Build PASTA-based tronko databases for a given marker
+# Usage: bash pasta-3builds.sh <MARKER>
+#   e.g. bash pasta-3builds.sh ITS2_Plants
 #
 # Tree backend: set TREE_BACKEND=veryfasttree to use VeryFastTree
-#               (default: fasttree)
+#               (default: veryfasttree)
 # ============================================================
+
+MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER>}"
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
 THREADS=128
@@ -170,29 +173,36 @@ run_build() {
 }
 
 # ============================================================
-# Marker: ITS2_Plants
+# Marker: $MARKER
 # ============================================================
 echo "############################################################"
-echo "# ITS2_Plants"
+echo "# $MARKER"
 echo "############################################################"
 
-INPUT_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species.fasta"
-TAX_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species_taxonomy.txt"
+INPUT_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
+INPUT_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
 
-DB_BASE="databases/ITS2_Plants"
+if [[ ! -f "$INPUT_FASTA" ]]; then
+    echo "ERROR: $INPUT_FASTA not found" >&2; exit 1
+fi
+if [[ ! -f "$INPUT_TAX" ]]; then
+    echo "ERROR: $INPUT_TAX not found" >&2; exit 1
+fi
+
+DB_BASE="databases/${MARKER}"
 PASTA_OUT="${DB_BASE}/pasta_output"
 
-run_pasta "$INPUT_ITS2" "ITS2_Plants_pasta" "$PASTA_OUT"
-ROOTED_ITS2="$_ROOTED_TREE"
+run_pasta "$INPUT_FASTA" "${MARKER}_pasta" "$PASTA_OUT"
+ROOTED_TREE="$_ROOTED_TREE"
 
-run_build "ITS2_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-diam 25
-run_build "ITS2_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 1000
-run_build "ITS2_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 500
+run_build "${MARKER}_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-diam 25
+run_build "${MARKER}_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-size 1000
+run_build "${MARKER}_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-size 500
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
-echo "ITS2_Plants PASTA databases:"
+echo "$MARKER PASTA databases:"
 echo "  1) ${DB_BASE}/maxdiam25/reference_tree.txt"
 echo "  2) ${DB_BASE}/maxsize1000/reference_tree.txt"
 echo "  3) ${DB_BASE}/maxsize500/reference_tree.txt"
