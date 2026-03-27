@@ -1,0 +1,6 @@
+outs:
+- md5: 3cf23615c7eb694bd8f5e887e88c03e4.dir
+  size: 4365503681
+  nfiles: 20
+  hash: md5
+  path: pasta_output
