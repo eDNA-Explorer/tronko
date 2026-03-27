@@ -26,10 +26,10 @@ TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko-fork}"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 
 # ── Input files ──────────────────────────────────────────────
-SPECIES_FASTA="$HOME/rcrux-py/databases/${MARKER}/unfiltered/12SV5_species.fasta"
-SPECIES_TAX="$HOME/rcrux-py/databases/${MARKER}/unfiltered/12SV5_species_taxonomy.txt"
-LCA_FASTA="$HOME/rcrux-py/databases/${MARKER}/unfiltered/12SV5_lca.fasta"
-LCA_TAX="$HOME/rcrux-py/databases/${MARKER}/unfiltered/12SV5_lca_taxonomy.txt"
+SPECIES_FASTA="$HOME/rcrux-py/databases/${MARKER}/unfiltered/${MARKER}_species.fasta"
+SPECIES_TAX="$HOME/rcrux-py/databases/${MARKER}/unfiltered/${MARKER}_species_taxonomy.txt"
+LCA_FASTA="$HOME/rcrux-py/databases/${MARKER}/unfiltered/${MARKER}_lca.fasta"
+LCA_TAX="$HOME/rcrux-py/databases/${MARKER}/unfiltered/${MARKER}_lca_taxonomy.txt"
 
 for f in "$SPECIES_FASTA" "$SPECIES_TAX" "$LCA_FASTA" "$LCA_TAX"; do
     if [[ ! -f "$f" ]]; then
