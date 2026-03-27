@@ -18,8 +18,8 @@ set -euo pipefail
 MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER>}"
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
-THREADS=56
-FAMSA_THREADS=16
+THREADS=64
+FAMSA_THREADS=8
 
 # Paths to tronko-fork tools (uses bundled PASTA copy)
 TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
@@ -110,11 +110,10 @@ with open('$pasta_tree') as f:
 data = data.replace(\"'\", '')
 data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data)
 
-# Replace safe names with originals, always quoting for nw_reroot safety
+# Replace safe names with originals (no quoting needed — nw_reroot handles pipes)
 def replace_name(m):
     safe = m.group(1)
-    orig = trans.get(safe, safe)
-    return \"'\" + orig + \"'\"
+    return trans.get(safe, safe)
 
 data = re.sub(r'([A-Za-z0-9_.-]+)(?=:)', replace_name, data)
 # Ensure exactly one tree: strip trailing whitespace/semicolons, add one semicolon
@@ -129,9 +128,6 @@ print(f'Restored {len(trans)} names, {sum(1 for v in trans.values() if \":\" in 
     # Midpoint root
     local rooted_tree="${output_dir}/${job_name}.rooted.tre"
     nw_reroot "$pasta_tree" > "$rooted_tree"
-
-    # Strip quotes after rerooting — names now safe in Newick context
-    sed -i '' "s/'//g" "$rooted_tree"
     echo "Rooted tree: $rooted_tree"
 
     # Return path via global
