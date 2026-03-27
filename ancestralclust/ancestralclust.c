@@ -3965,6 +3965,9 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 		if ( s != NULL ){
 			size = strlen(s);
 			if (k <= kseqs && iter != assignedReads[k] && assignedSeqs[iter] == -1 && buffer[0] == '>' ){
+				if (refresh >= numberOfLinesToRead){
+					break;
+				}
 				for(i=1; i<size; i++){
 					seqname[i-1]=buffer[i];
 				}
