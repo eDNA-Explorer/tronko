@@ -18,8 +18,8 @@ set -euo pipefail
 MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER>}"
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
-THREADS=8
-FAMSA_THREADS=4
+THREADS=56
+FAMSA_THREADS=16
 
 # Paths to tronko-fork tools (uses bundled PASTA copy)
 TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
@@ -228,6 +228,11 @@ for VARIANT in lca species; do
         INPUT_FASTA="$LCA_FASTA"
         INPUT_TAX="$LCA_TAX"
     fi
+
+    SEQ_COUNT=$(grep -c '^>' "$INPUT_FASTA")
+    echo "  FASTA:    $INPUT_FASTA ($SEQ_COUNT sequences)"
+    echo "  Taxonomy: $INPUT_TAX"
+    echo ""
 
     VARIANT_DIR="${DB_BASE}/${VARIANT}"
     PASTA_OUT="${VARIANT_DIR}/pasta_output"
