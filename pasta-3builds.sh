@@ -3,8 +3,8 @@ set -euo pipefail
 
 # ============================================================
 # Build PASTA-based tronko databases for a given marker
-# Usage: bash pasta-3builds.sh <MARKER>
-#   e.g. bash pasta-3builds.sh ITS2_Plants
+# Usage: bash pasta-3builds.sh <MARKER> [THREADS]
+#   e.g. bash pasta-3builds.sh ITS2_Plants 64
 #
 # Builds both species and LCA taxonomy variants.
 # Output layout:
@@ -15,11 +15,11 @@ set -euo pipefail
 #               (default: veryfasttree)
 # ============================================================
 
-MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER>}"
+MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER> [THREADS]}"
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
-THREADS=64
-FAMSA_THREADS=8
+THREADS="${2:-64}"
+FAMSA_THREADS=$(( THREADS / 4 ))
 
 # Paths to tronko-fork tools (uses bundled PASTA copy)
 TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"

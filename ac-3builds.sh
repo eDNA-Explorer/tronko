@@ -3,8 +3,8 @@ set -euo pipefail
 
 # ============================================================
 # Build AncestralClust-based tronko databases for a given marker
-# Usage: bash ac-3builds.sh <MARKER>
-#   e.g. bash ac-3builds.sh ITS2_Plants
+# Usage: bash ac-3builds.sh <MARKER> [THREADS]
+#   e.g. bash ac-3builds.sh ITS2_Plants 64
 #
 # Builds both species and LCA taxonomy variants.
 # Output layout:
@@ -14,15 +14,15 @@ set -euo pipefail
 # Run from ~/tronko-fork
 # ============================================================
 
-MARKER="${1:?Usage: bash ac-3builds.sh <MARKER>}"
+MARKER="${1:?Usage: bash ac-3builds.sh <MARKER> [THREADS]}"
 
-THREADS=64
-FAMSA_THREADS=8
-PARALLEL_JOBS=8
+THREADS="${2:-64}"
+FAMSA_THREADS=$(( THREADS / 8 ))
+PARALLEL_JOBS=$(( THREADS / 8 ))
 AC_BIN_SIZE=10000
 AC_DESCENDANTS=75
 
-TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko-fork}"
+TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 
 # ── Input files ──────────────────────────────────────────────
