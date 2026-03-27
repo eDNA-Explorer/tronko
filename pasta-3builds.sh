@@ -6,6 +6,11 @@ set -euo pipefail
 # Usage: bash pasta-3builds.sh <MARKER>
 #   e.g. bash pasta-3builds.sh ITS2_Plants
 #
+# Builds both species and LCA taxonomy variants.
+# Output layout:
+#   databases/MARKER/species/{pasta_output,maxdiam25,maxsize1000,maxsize500}
+#   databases/MARKER/lca/{pasta_output,maxdiam25,maxsize1000,maxsize500}
+#
 # Tree backend: set TREE_BACKEND=veryfasttree to use VeryFastTree
 #               (default: veryfasttree)
 # ============================================================
@@ -179,30 +184,87 @@ echo "############################################################"
 echo "# $MARKER"
 echo "############################################################"
 
-INPUT_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
-INPUT_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
+# ── Input files ──────────────────────────────────────────────
+SPECIES_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
+SPECIES_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
+LCA_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_lca.fasta"
+LCA_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_lca_taxonomy.txt"
 
-if [[ ! -f "$INPUT_FASTA" ]]; then
-    echo "ERROR: $INPUT_FASTA not found" >&2; exit 1
-fi
-if [[ ! -f "$INPUT_TAX" ]]; then
-    echo "ERROR: $INPUT_TAX not found" >&2; exit 1
-fi
+for f in "$SPECIES_FASTA" "$SPECIES_TAX" "$LCA_FASTA" "$LCA_TAX"; do
+    if [[ ! -f "$f" ]]; then
+        echo "ERROR: $f not found" >&2; exit 1
+    fi
+done
 
 DB_BASE="databases/${MARKER}"
-PASTA_OUT="${DB_BASE}/pasta_output"
 
-run_pasta "$INPUT_FASTA" "${MARKER}_pasta" "$PASTA_OUT"
-ROOTED_TREE="$_ROOTED_TREE"
+# ── Migrate old flat layout to species/ subdirectory ─────────
+SPECIES_DIR="${DB_BASE}/species"
+LCA_DIR="${DB_BASE}/lca"
+mkdir -p "$SPECIES_DIR" "$LCA_DIR"
 
-run_build "${MARKER}_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-diam 25
-run_build "${MARKER}_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-size 1000
-run_build "${MARKER}_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" --max-size 500
+for item in pasta_output maxdiam25 maxsize1000 maxsize500; do
+    if [[ -d "${DB_BASE}/${item}" ]] && [[ ! -d "${SPECIES_DIR}/${item}" ]]; then
+        echo "Migrating ${DB_BASE}/${item} -> ${SPECIES_DIR}/${item}"
+        mv "${DB_BASE}/${item}" "${SPECIES_DIR}/${item}"
+    fi
+    if [[ -f "${DB_BASE}/${item}.dvc" ]] && [[ ! -f "${SPECIES_DIR}/${item}.dvc" ]]; then
+        echo "Migrating ${DB_BASE}/${item}.dvc -> ${SPECIES_DIR}/${item}.dvc"
+        mv "${DB_BASE}/${item}.dvc" "${SPECIES_DIR}/${item}.dvc"
+    fi
+done
+
+# ── Build both variants ─────────────────────────────────────
+for VARIANT in species lca; do
+    echo ""
+    echo "============================================================"
+    echo "  Variant: $VARIANT"
+    echo "============================================================"
+
+    if [[ "$VARIANT" == "species" ]]; then
+        INPUT_FASTA="$SPECIES_FASTA"
+        INPUT_TAX="$SPECIES_TAX"
+    else
+        INPUT_FASTA="$LCA_FASTA"
+        INPUT_TAX="$LCA_TAX"
+    fi
+
+    VARIANT_DIR="${DB_BASE}/${VARIANT}"
+    PASTA_OUT="${VARIANT_DIR}/pasta_output"
+    JOB_NAME="${MARKER}_${VARIANT}_pasta"
+
+    # Skip PASTA if rooted tree already exists
+    PASTA_TREE_GLOB="${PASTA_OUT}/${JOB_NAME}.rooted.tre"
+    if [[ -f "$PASTA_TREE_GLOB" ]]; then
+        echo "PASTA tree already exists for $VARIANT — skipping PASTA"
+        _ROOTED_TREE="$PASTA_TREE_GLOB"
+    else
+        run_pasta "$INPUT_FASTA" "$JOB_NAME" "$PASTA_OUT"
+    fi
+    ROOTED_TREE="$_ROOTED_TREE"
+
+    # Build each partition strategy, skipping if already done
+    for build_args in "maxdiam25 --max-diam 25" "maxsize1000 --max-size 1000" "maxsize500 --max-size 500"; do
+        BUILD_NAME="${build_args%% *}"
+        BUILD_FLAGS="${build_args#* }"
+        BUILD_DIR="${VARIANT_DIR}/${BUILD_NAME}"
+
+        if [[ -f "${BUILD_DIR}/reference_tree.txt" ]]; then
+            echo "  Already exists: ${BUILD_DIR}/reference_tree.txt — skipping"
+            continue
+        fi
+
+        run_build "${MARKER}_${VARIANT}_${BUILD_NAME}" "$BUILD_DIR" "$INPUT_FASTA" "$INPUT_TAX" "$ROOTED_TREE" $BUILD_FLAGS
+    done
+done
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
 echo "$MARKER PASTA databases:"
-echo "  1) ${DB_BASE}/maxdiam25/reference_tree.txt"
-echo "  2) ${DB_BASE}/maxsize1000/reference_tree.txt"
-echo "  3) ${DB_BASE}/maxsize500/reference_tree.txt"
+for VARIANT in species lca; do
+    echo "  ${VARIANT}:"
+    echo "    1) ${DB_BASE}/${VARIANT}/maxdiam25/reference_tree.txt"
+    echo "    2) ${DB_BASE}/${VARIANT}/maxsize1000/reference_tree.txt"
+    echo "    3) ${DB_BASE}/${VARIANT}/maxsize500/reference_tree.txt"
+done

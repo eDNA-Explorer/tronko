@@ -6,6 +6,11 @@ set -euo pipefail
 # Usage: bash ac-3builds.sh <MARKER>
 #   e.g. bash ac-3builds.sh ITS2_Plants
 #
+# Builds both species and LCA taxonomy variants.
+# Output layout:
+#   databases/MARKER/species/{ac_sp0.05,ac_sp0.10,ac_sp0.20}
+#   databases/MARKER/lca/{ac_sp0.05,ac_sp0.10,ac_sp0.20}
+#
 # Run from ~/tronko-fork
 # ============================================================
 
@@ -21,69 +26,107 @@ TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko-fork}"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 
 # ── Input files ──────────────────────────────────────────────
-INPUT_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
-INPUT_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
+SPECIES_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species.fasta"
+SPECIES_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_species_taxonomy.txt"
+LCA_FASTA="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_lca.fasta"
+LCA_TAX="$HOME/rcrux-py/databases/${MARKER}/filtered/${MARKER}_lca_taxonomy.txt"
 
-if [[ ! -f "$INPUT_FASTA" ]]; then
-    echo "ERROR: $INPUT_FASTA not found" >&2; exit 1
-fi
-if [[ ! -f "$INPUT_TAX" ]]; then
-    echo "ERROR: $INPUT_TAX not found" >&2; exit 1
-fi
+for f in "$SPECIES_FASTA" "$SPECIES_TAX" "$LCA_FASTA" "$LCA_TAX"; do
+    if [[ ! -f "$f" ]]; then
+        echo "ERROR: $f not found" >&2; exit 1
+    fi
+done
 
 DB_BASE="databases/${MARKER}"
 
+# ── Migrate old flat layout to species/ subdirectory ─────────
+SPECIES_DIR="${DB_BASE}/species"
+LCA_DIR="${DB_BASE}/lca"
+mkdir -p "$SPECIES_DIR" "$LCA_DIR"
+
+for item in ac_sp0.05 ac_sp0.10 ac_sp0.20; do
+    if [[ -d "${DB_BASE}/${item}" ]] && [[ ! -d "${SPECIES_DIR}/${item}" ]]; then
+        echo "Migrating ${DB_BASE}/${item} -> ${SPECIES_DIR}/${item}"
+        mv "${DB_BASE}/${item}" "${SPECIES_DIR}/${item}"
+    fi
+    if [[ -f "${DB_BASE}/${item}.dvc" ]] && [[ ! -f "${SPECIES_DIR}/${item}.dvc" ]]; then
+        echo "Migrating ${DB_BASE}/${item}.dvc -> ${SPECIES_DIR}/${item}.dvc"
+        mv "${DB_BASE}/${item}.dvc" "${SPECIES_DIR}/${item}.dvc"
+    fi
+done
+
 echo "============================================================"
 echo "AncestralClust builds for $MARKER"
-echo "  Input FASTA:    $INPUT_FASTA"
-echo "  Input taxonomy: $INPUT_TAX"
+echo "  Species FASTA:    $SPECIES_FASTA"
+echo "  Species taxonomy: $SPECIES_TAX"
+echo "  LCA FASTA:        $LCA_FASTA"
+echo "  LCA taxonomy:     $LCA_TAX"
 echo "  Threads: $THREADS, FAMSA threads: $FAMSA_THREADS"
 echo "  Parallel jobs: $PARALLEL_JOBS"
 echo "  AC bin size: $AC_BIN_SIZE, descendants: $AC_DESCENDANTS"
 echo "============================================================"
 echo ""
 
-for SP in 0.05 0.10 0.20; do
-    LABEL="ac_sp${SP}"
-    OUTDIR="${DB_BASE}/${LABEL}"
+# ── Build both variants ─────────────────────────────────────
+for VARIANT in species lca; do
+    echo ""
+    echo "============================================================"
+    echo "  Variant: $VARIANT"
+    echo "============================================================"
 
-    echo "############################################################"
-    echo "# Building: $LABEL (SP threshold = $SP)"
-    echo "############################################################"
-
-    if [[ -f "$OUTDIR/reference_tree.txt" ]]; then
-        echo "  Already exists: $OUTDIR/reference_tree.txt — skipping"
-        echo ""
-        continue
+    if [[ "$VARIANT" == "species" ]]; then
+        INPUT_FASTA="$SPECIES_FASTA"
+        INPUT_TAX="$SPECIES_TAX"
+    else
+        INPUT_FASTA="$LCA_FASTA"
+        INPUT_TAX="$LCA_TAX"
     fi
 
-    bash build-tronko-db.sh \
-        -f "$INPUT_FASTA" \
-        -t "$INPUT_TAX" \
-        -o "$OUTDIR" \
-        -p "$MARKER" \
-        -T "$THREADS" \
-        -s "$SP" \
-        -F \
-        -E \
-        -L \
-        -B "$AC_BIN_SIZE" \
-        -P "$AC_DESCENDANTS" \
-        -J "$PARALLEL_JOBS"
+    for SP in 0.05 0.10 0.20; do
+        LABEL="ac_sp${SP}"
+        OUTDIR="${DB_BASE}/${VARIANT}/${LABEL}"
 
-    # Copy input files into the database directory
-    cp "$INPUT_FASTA" "$OUTDIR/input.fasta"
-    cp "$INPUT_TAX" "$OUTDIR/input_taxonomy.txt"
+        echo "############################################################"
+        echo "# Building: ${VARIANT}/${LABEL} (SP threshold = $SP)"
+        echo "############################################################"
 
-    echo ""
-    echo "  Done: $OUTDIR/reference_tree.txt"
-    echo ""
+        if [[ -f "$OUTDIR/reference_tree.txt" ]] || [[ -f "$OUTDIR/reference_tree.txt.gz" ]] || [[ -f "$OUTDIR/reference_tree.trkb" ]]; then
+            echo "  Already exists: $OUTDIR — skipping"
+            echo ""
+            continue
+        fi
+
+        bash build-tronko-db.sh \
+            -f "$INPUT_FASTA" \
+            -t "$INPUT_TAX" \
+            -o "$OUTDIR" \
+            -p "$MARKER" \
+            -T "$THREADS" \
+            -s "$SP" \
+            -F \
+            -E \
+            -L \
+            -B "$AC_BIN_SIZE" \
+            -P "$AC_DESCENDANTS" \
+            -J "$PARALLEL_JOBS"
+
+        # Copy input files into the database directory
+        cp "$INPUT_FASTA" "$OUTDIR/input.fasta"
+        cp "$INPUT_TAX" "$OUTDIR/input_taxonomy.txt"
+
+        echo ""
+        echo "  Done: $OUTDIR"
+        echo ""
+    done
 done
 
 echo ""
 echo "=== All AncestralClust builds complete ==="
 echo ""
 echo "$MARKER AC databases:"
-echo "  1) ${DB_BASE}/ac_sp0.05/reference_tree.txt"
-echo "  2) ${DB_BASE}/ac_sp0.10/reference_tree.txt"
-echo "  3) ${DB_BASE}/ac_sp0.20/reference_tree.txt"
+for VARIANT in species lca; do
+    echo "  ${VARIANT}:"
+    echo "    1) ${DB_BASE}/${VARIANT}/ac_sp0.05"
+    echo "    2) ${DB_BASE}/${VARIANT}/ac_sp0.10"
+    echo "    3) ${DB_BASE}/${VARIANT}/ac_sp0.20"
+done
