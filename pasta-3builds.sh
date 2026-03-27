@@ -66,9 +66,9 @@ run_pasta() {
         -o "$output_dir" \
         -j "$job_name"
 
-    # Find the output tree
+    # Find the output tree (non-empty, non-temp .tre file)
     local pasta_tree
-    pasta_tree=$(ls ${output_dir}/${job_name}*.tre | head -1)
+    pasta_tree=$(find "$output_dir" -name "${job_name}*.tre" ! -name "*_temp_*" -size +1k -printf '%s %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
     echo "PASTA tree: $pasta_tree"
 
     # Post-process PASTA tree:

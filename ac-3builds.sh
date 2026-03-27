@@ -6,7 +6,7 @@ set -euo pipefail
 # Usage: bash ac-3builds.sh <MARKER>
 #   e.g. bash ac-3builds.sh ITS2_Plants
 #
-# Run from ~/tronko
+# Run from ~/tronko-fork
 # ============================================================
 
 MARKER="${1:?Usage: bash ac-3builds.sh <MARKER>}"
@@ -17,7 +17,7 @@ PARALLEL_JOBS=4
 AC_BIN_SIZE=10000
 AC_DESCENDANTS=75
 
-TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
+TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko-fork}"
 export PATH="$TRONKO_DIR/bin:$TRONKO_DIR/tronko-build:$PATH"
 
 # ── Input files ──────────────────────────────────────────────
