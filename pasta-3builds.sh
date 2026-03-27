@@ -161,35 +161,38 @@ run_build() {
         cp "$input_fasta" "$REF_FASTA"
     fi
 
+    # Copy input files into the database directory
+    cp "$input_fasta" "$outdir/input.fasta"
+    cp "$taxonomy" "$outdir/input_taxonomy.txt"
+
     echo "  Database: $outdir/reference_tree.txt"
     echo "  Reference FASTA: $REF_FASTA"
 }
 
 # ============================================================
-# Marker: 16Smamm (~99K seqs)
+# Marker: ITS2_Plants
 # ============================================================
-echo ""
 echo "############################################################"
-echo "# 16Smamm"
+echo "# ITS2_Plants"
 echo "############################################################"
 
-INPUT_16S="$HOME/rcrux-py/databases/16Smamm/filtered/16Smamm_species.fasta"
-TAX_16S="$HOME/rcrux-py/databases/16Smamm/filtered/16Smamm_species_taxonomy.txt"
+INPUT_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species.fasta"
+TAX_ITS2="$HOME/rcrux-py/databases/ITS2_Plants/filtered/ITS2_Plants_species_taxonomy.txt"
 
-DB_BASE="databases/16Smamm"
+DB_BASE="databases/ITS2_Plants"
 PASTA_OUT="${DB_BASE}/pasta_output"
 
-run_pasta "$INPUT_16S" "16Smamm_pasta" "$PASTA_OUT"
-ROOTED_16S="$_ROOTED_TREE"
+run_pasta "$INPUT_ITS2" "ITS2_Plants_pasta" "$PASTA_OUT"
+ROOTED_ITS2="$_ROOTED_TREE"
 
-run_build "16S_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-diam 25
-run_build "16S_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-size 1000
-run_build "16S_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_16S" "$TAX_16S" "$ROOTED_16S" --max-size 500
+run_build "ITS2_maxdiam25"   "${DB_BASE}/maxdiam25"   "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-diam 25
+run_build "ITS2_maxsize1000" "${DB_BASE}/maxsize1000" "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 1000
+run_build "ITS2_maxsize500"  "${DB_BASE}/maxsize500"  "$INPUT_ITS2" "$TAX_ITS2" "$ROOTED_ITS2" --max-size 500
 
 echo ""
 echo "=== All builds complete ==="
 echo ""
-echo "16Smamm PASTA databases:"
+echo "ITS2_Plants PASTA databases:"
 echo "  1) ${DB_BASE}/maxdiam25/reference_tree.txt"
 echo "  2) ${DB_BASE}/maxsize1000/reference_tree.txt"
 echo "  3) ${DB_BASE}/maxsize500/reference_tree.txt"
