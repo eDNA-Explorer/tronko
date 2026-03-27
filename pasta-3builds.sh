@@ -18,8 +18,8 @@ set -euo pipefail
 MARKER="${1:?Usage: bash pasta-3builds.sh <MARKER>}"
 
 TREE_BACKEND="${TREE_BACKEND:-veryfasttree}"
-THREADS=128
-FAMSA_THREADS=16
+THREADS=8
+FAMSA_THREADS=4
 
 # Paths to tronko-fork tools (uses bundled PASTA copy)
 TRONKO_DIR="${TRONKO_DIR:-$HOME/tronko}"
@@ -42,7 +42,9 @@ for cmd in "${required_cmds[@]}"; do
 done
 
 # Java for OPAL merger
-if [[ -d /usr/lib/jvm/java-17-openjdk-amd64 ]]; then
+if [[ -d /opt/homebrew/opt/openjdk ]]; then
+    export JAVA_HOME="/opt/homebrew/opt/openjdk"
+elif [[ -d /usr/lib/jvm/java-17-openjdk-amd64 ]]; then
     export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
 elif [[ -d /usr/lib/jvm/java-21-openjdk-amd64 ]]; then
     export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
@@ -105,13 +107,11 @@ with open('$pasta_tree') as f:
 data = data.replace(\"'\", '')
 data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data)
 
-# Replace safe names with originals, quoting names that contain colons
+# Replace safe names with originals, always quoting for nw_reroot safety
 def replace_name(m):
     safe = m.group(1)
     orig = trans.get(safe, safe)
-    if ':' in orig or '|' in orig:
-        return \"'\" + orig + \"'\"
-    return orig
+    return \"'\" + orig + \"'\"
 
 data = re.sub(r'([A-Za-z0-9_]+)(?=:)', replace_name, data)
 # Ensure exactly one tree: strip trailing whitespace/semicolons, add one semicolon
@@ -215,7 +215,7 @@ for item in pasta_output maxdiam25 maxsize1000 maxsize500; do
 done
 
 # ── Build both variants ─────────────────────────────────────
-for VARIANT in species lca; do
+for VARIANT in lca species; do
     echo ""
     echo "============================================================"
     echo "  Variant: $VARIANT"
@@ -262,7 +262,7 @@ echo ""
 echo "=== All builds complete ==="
 echo ""
 echo "$MARKER PASTA databases:"
-for VARIANT in species lca; do
+for VARIANT in lca species; do
     echo "  ${VARIANT}:"
     echo "    1) ${DB_BASE}/${VARIANT}/maxdiam25/reference_tree.txt"
     echo "    2) ${DB_BASE}/${VARIANT}/maxsize1000/reference_tree.txt"
