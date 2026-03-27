@@ -1,6 +1,0 @@
-outs:
-- md5: af6c0c305660ebc30c10af1d0401aa82.dir
-  size: 1156496
-  nfiles: 5
-  hash: md5
-  path: sweep_metadata

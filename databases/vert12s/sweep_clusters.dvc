@@ -1,6 +1,0 @@
-outs:
-- md5: 40d883c5e5c45a58917c78a484a37251.dir
-  size: 1130405800
-  nfiles: 132
-  hash: md5
-  path: sweep_clusters
