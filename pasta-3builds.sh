@@ -62,6 +62,9 @@ run_pasta() {
     local output_dir="$3"
 
     echo "=== Running PASTA: $job_name ==="
+    # Kill any stale PASTA workers from previous killed runs
+    pkill -9 -f "run_pasta.*${job_name}" 2>/dev/null || true
+    sleep 1
     rm -rf "$HOME/.pasta/${job_name}"
     mkdir -p "$output_dir"
 
