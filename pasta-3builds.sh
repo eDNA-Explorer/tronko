@@ -62,7 +62,7 @@ run_pasta() {
     local output_dir="$3"
 
     echo "=== Running PASTA: $job_name ==="
-    rm -rf "$HOME/.pasta/${job_name}" "$output_dir"
+    rm -rf "$HOME/.pasta/${job_name}"
     mkdir -p "$output_dir"
 
     python3 "$PASTA_DIR/run_pasta.py" \
@@ -71,11 +71,14 @@ run_pasta() {
         --num-cpus="$THREADS" \
         --iter-limit=3 \
         -o "$output_dir" \
-        -j "$job_name"
+        -j "$job_name" || true  # PASTA exits non-zero on harmless "Refused to clean" warning
 
     # Find the output tree (non-empty, non-temp .tre file)
     local pasta_tree
-    pasta_tree=$(find "$output_dir" -name "${job_name}*.tre" ! -name "*_temp_*" -size +1k -printf '%s %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2)
+    pasta_tree=$(find "$output_dir" -name "${job_name}*.tre" ! -name "*_temp_*" -size +1k 2>/dev/null | head -1)
+    if [[ -z "$pasta_tree" ]]; then
+        echo "ERROR: PASTA did not produce a tree file" >&2; exit 1
+    fi
     echo "PASTA tree: $pasta_tree"
 
     # Post-process PASTA tree:
@@ -113,7 +116,7 @@ def replace_name(m):
     orig = trans.get(safe, safe)
     return \"'\" + orig + \"'\"
 
-data = re.sub(r'([A-Za-z0-9_]+)(?=:)', replace_name, data)
+data = re.sub(r'([A-Za-z0-9_.-]+)(?=:)', replace_name, data)
 # Ensure exactly one tree: strip trailing whitespace/semicolons, add one semicolon
 data = re.sub(r'[;\s]+$', '', data) + ';'
 
@@ -128,7 +131,7 @@ print(f'Restored {len(trans)} names, {sum(1 for v in trans.values() if \":\" in 
     nw_reroot "$pasta_tree" > "$rooted_tree"
 
     # Strip quotes after rerooting — names now safe in Newick context
-    sed -i "s/'//g" "$rooted_tree"
+    sed -i '' "s/'//g" "$rooted_tree"
     echo "Rooted tree: $rooted_tree"
 
     # Return path via global
@@ -238,9 +241,9 @@ for VARIANT in lca species; do
     PASTA_OUT="${VARIANT_DIR}/pasta_output"
     JOB_NAME="${MARKER}_${VARIANT}_pasta"
 
-    # Skip PASTA if rooted tree already exists
+    # Skip PASTA if rooted tree already exists (and is non-empty)
     PASTA_TREE_GLOB="${PASTA_OUT}/${JOB_NAME}.rooted.tre"
-    if [[ -f "$PASTA_TREE_GLOB" ]]; then
+    if [[ -s "$PASTA_TREE_GLOB" ]]; then
         echo "PASTA tree already exists for $VARIANT — skipping PASTA"
         _ROOTED_TREE="$PASTA_TREE_GLOB"
     else

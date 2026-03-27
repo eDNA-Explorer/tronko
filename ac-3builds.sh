@@ -16,9 +16,9 @@ set -euo pipefail
 
 MARKER="${1:?Usage: bash ac-3builds.sh <MARKER>}"
 
-THREADS=64
-FAMSA_THREADS=8
-PARALLEL_JOBS=4
+THREADS=8
+FAMSA_THREADS=4
+PARALLEL_JOBS=1
 AC_BIN_SIZE=10000
 AC_DESCENDANTS=75
 
@@ -68,7 +68,7 @@ echo "============================================================"
 echo ""
 
 # ── Build both variants ─────────────────────────────────────
-for VARIANT in species lca; do
+for VARIANT in lca species; do
     echo ""
     echo "============================================================"
     echo "  Variant: $VARIANT"
@@ -124,7 +124,7 @@ echo ""
 echo "=== All AncestralClust builds complete ==="
 echo ""
 echo "$MARKER AC databases:"
-for VARIANT in species lca; do
+for VARIANT in lca species; do
     echo "  ${VARIANT}:"
     echo "    1) ${DB_BASE}/${VARIANT}/ac_sp0.05"
     echo "    2) ${DB_BASE}/${VARIANT}/ac_sp0.10"

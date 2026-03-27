@@ -140,11 +140,12 @@ def process_partition(outdir, partition_idx, expected_count, famsa_threads):
     if result.returncode != 0:
         return (partition_idx, False, 0, f"FastTree failed: {result.stderr[:500]}")
 
-    # Step 4: Strip quotes and support values from FastTree output
+    # Step 4: Strip support values and quote leaf names for nw_reroot
     with open(tree_raw) as f:
         tree_data = f.read()
-    tree_data = tree_data.replace("'", "")
     tree_data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', tree_data)
+    # Quote leaf names containing | so nw_reroot can parse them
+    tree_data = re.sub(r'([A-Za-z0-9_|.]+\|[A-Za-z0-9_|.]*)(?=:)', r"'\1'", tree_data)
     with open(tree_raw, 'w') as f:
         f.write(tree_data)
 
@@ -156,6 +157,13 @@ def process_partition(outdir, partition_idx, expected_count, famsa_threads):
         )
     if result.returncode != 0:
         return (partition_idx, False, 0, f"nw_reroot failed: {result.stderr[:500]}")
+
+    # Step 5b: Strip quotes after rerooting
+    with open(tree_final) as f:
+        tree_data = f.read()
+    tree_data = tree_data.replace("'", "")
+    with open(tree_final, 'w') as f:
+        f.write(tree_data)
 
     # Validate rerooted tree has correct leaf count
     leaf_count = count_newick_leaves(tree_final)
@@ -300,6 +308,7 @@ def main():
 
         # Unaligned FASTA (temporary, input to FAMSA)
         fasta_path = os.path.join(args.outdir, f"{name}_unaligned.fasta")
+        written_count = 0
         with open(fasta_path, 'w') as f:
             for leaf in leaves:
                 seq = fasta_dict.get(leaf)
@@ -307,6 +316,7 @@ def main():
                     missing_fasta += 1
                     continue
                 f.write(f">{leaf}\n{seq}\n")
+                written_count += 1
 
         # Taxonomy
         tax_path = os.path.join(args.outdir, f"{name}_taxonomy.txt")
@@ -318,7 +328,7 @@ def main():
                     continue
                 f.write(f"{leaf}\t{tax}\n")
 
-        partition_info.append((i, len(leaves)))
+        partition_info.append((i, written_count))
 
     if missing_fasta:
         logging.warning(f"{missing_fasta} leaves missing from FASTA")
@@ -385,7 +395,8 @@ def main():
         "-d", args.tronko_outdir
     ]
     if args.sp_threshold > 0:
-        cmd.extend(["-s", "-u", str(args.sp_threshold), "-a"])
+        cmd.extend(["-s", "-u", str(args.sp_threshold)])
+    cmd.append("-a")  # always use FastTree (not RAxML)
     cmd.append("-E")
     logging.info(f"Running tronko-build: {' '.join(cmd)}")
     t0 = time.time()
