@@ -13,6 +13,10 @@ import logging
 import re
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+# Large trees (100k+ leaves) exceed Python's default recursion limit
+# when parsed by dendropy's recursive descent Newick parser
+sys.setrecursionlimit(10000)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
