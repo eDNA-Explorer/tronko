@@ -113,7 +113,7 @@ static mm_idx_t *get_or_build_index(const char *db_path, int kmer, int window)
 static int add_match(bwaMatches *result, int root, int node_id,
                      const char *cigar_str, int start_pos,
                      int is_concordant, int is_forward,
-                     int max_bwa_matches)
+                     int max_leaf_matches)
 {
 	int *roots, *nodes;
 	int k, l;
@@ -127,7 +127,7 @@ static int add_match(bwaMatches *result, int root, int node_id,
 	}
 
 	/* Find current count */
-	for (k = 0; k < max_bwa_matches; k++) {
+	for (k = 0; k < max_leaf_matches; k++) {
 		if (roots[k] == -1) break;
 	}
 
@@ -139,7 +139,7 @@ static int add_match(bwaMatches *result, int root, int node_id,
 	}
 
 	/* Check capacity */
-	if (k >= max_bwa_matches) return k;
+	if (k >= max_leaf_matches) return k;
 
 	/* Add the match */
 	roots[k] = root;
@@ -164,7 +164,7 @@ static int add_match(bwaMatches *result, int root, int node_id,
 void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
                   int numberOfTrees, char *databaseFile, int paired,
                   int max_query_length, int max_readname_length,
-                  int max_acc_name, int max_bwa_matches,
+                  int max_acc_name, int max_leaf_matches,
                   int mm2_kmer, int mm2_window)
 {
 	int i, j;
@@ -188,7 +188,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 	mm_set_opt(0, &iopt, &mopt);   /* Initialize defaults */
 	mm_set_opt("sr", &iopt, &mopt); /* Apply short-read preset */
 	mopt.flag |= MM_F_CIGAR;       /* Generate CIGAR for use_portion */
-	mopt.best_n = max_bwa_matches;  /* Report up to max_bwa_matches hits */
+	mopt.best_n = max_leaf_matches;  /* Report up to max_leaf_matches hits */
 	mm_mapopt_update(&mopt, mi);
 
 	/* Build leaf name → (tree_id, node_id) hashmap (same as fastmap.c:112-123) */
@@ -292,7 +292,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 					int is_conc = found_concordant;
 					add_match(&bwa_results[i], lm1->root, lm1->node,
 					          cigar_buf, start_pos1,
-					          is_conc, 1, max_bwa_matches);
+					          is_conc, 1, max_leaf_matches);
 
 					/* Add reverse CIGAR if concordant and we have an R2 match */
 					if (is_conc && r2_idx >= 0 && bwa_results[i].use_portion == 1) {
@@ -304,7 +304,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 						}
 						/* Find the slot we just added to and store reverse CIGAR */
 						int slot;
-						for (slot = 0; slot < max_bwa_matches; slot++) {
+						for (slot = 0; slot < max_leaf_matches; slot++) {
 							if (bwa_results[i].concordant_matches_roots[slot] == lm1->root &&
 							    bwa_results[i].concordant_matches_nodes[slot] == lm1->node) {
 								strncpy(bwa_results[i].cigars_reverse[slot], cigar_buf2, MAX_CIGAR - 1);
@@ -319,7 +319,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 				if (!found_concordant) {
 					add_match(&bwa_results[i], lm1->root, lm1->node,
 					          cigar_buf, start_pos1,
-					          0, 1, max_bwa_matches);
+					          0, 1, max_leaf_matches);
 				}
 			}
 
@@ -341,7 +341,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 				/* Check if already added as concordant */
 				int already = 0;
 				int k;
-				for (k = 0; k < max_bwa_matches; k++) {
+				for (k = 0; k < max_leaf_matches; k++) {
 					if (bwa_results[i].concordant_matches_roots[k] == -1) break;
 					if (bwa_results[i].concordant_matches_roots[k] == lm2->root &&
 					    bwa_results[i].concordant_matches_nodes[k] == lm2->node) {
@@ -352,7 +352,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 				if (!already) {
 					add_match(&bwa_results[i], lm2->root, lm2->node,
 					          cigar_buf, start_pos2,
-					          0, 0, max_bwa_matches);
+					          0, 0, max_leaf_matches);
 				}
 			}
 		} else {
@@ -378,7 +378,7 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 
 				add_match(&bwa_results[i], lm->root, lm->node,
 				          cigar_buf, start_pos,
-				          0, 1, max_bwa_matches);
+				          0, 1, max_leaf_matches);
 			}
 		}
 

@@ -104,9 +104,14 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 				/* Posterior probability rows */
 				double **post = treeArr[i][j].posteriornc;
 				for (k=0; k<nb; k++){
-					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
-						"%.17g\t%.17g\t%.17g\t%.17g\n",
-						post[k][0], post[k][1], post[k][2], post[k][3]);
+					if (columnMaskArr && columnMaskArr[i] && !columnMaskArr[i][k]) {
+						lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+							"0.25\t0.25\t0.25\t0.25\n");
+					} else {
+						lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+							"%.17g\t%.17g\t%.17g\t%.17g\n",
+							post[k][0], post[k][1], post[k][2], post[k][3]);
+					}
 					if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
 				}
 			}
@@ -183,9 +188,14 @@ void printTreeFilePosteriors(FILE *outputTree, int start, int end, Options opt){
 			if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
 			double **post = treeArr[i][j].posteriornc;
 			for (k=0; k<nb; k++){
-				lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
-					"%.17g\t%.17g\t%.17g\t%.17g\n",
-					post[k][0], post[k][1], post[k][2], post[k][3]);
+				if (columnMaskArr && columnMaskArr[i] && !columnMaskArr[i][k]) {
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"0.25\t0.25\t0.25\t0.25\n");
+				} else {
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"%.17g\t%.17g\t%.17g\t%.17g\n",
+						post[k][0], post[k][1], post[k][2], post[k][3]);
+				}
 				if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
 			}
 		}

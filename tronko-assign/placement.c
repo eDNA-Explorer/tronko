@@ -58,7 +58,7 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes){
+void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes, int adaptive_cinterval, double adaptive_gap_scale){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -905,22 +905,42 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	/* Adaptive cinterval: shrink voting window when the best leaf is
+	   clearly dominant (large score gap to second-best leaf).
+	   Disabled by default; activate with --adaptive-cinterval. */
+	type_of_PP effective_cinterval = Cinterval;
+	if (adaptive_cinterval && number_of_matches > 0) {
+		type_of_PP top1 = -9999999999999999, top2 = -9999999999999999;
+		for (i = 0; i < number_of_matches; i++) {
+			int t = leaf_coordinates[i][0];
+			if (t == -1) continue;
+			int nn = 2*numspecArr[t]-1;
+			for (k = 0; k < nn; k++) {
+				if (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1) {
+					type_of_PP s = nodeScores[i][t][k];
+					if (s > top1) { top2 = top1; top1 = s; }
+					else if (s > top2) { top2 = s; }
+				}
+			}
+		}
+		if (top2 > -9999999999999999) {
+			type_of_PP score_gap = top1 - top2;
+			double sigmoid_gap = 1.0 / (1.0 + exp(-score_gap));
+			effective_cinterval = Cinterval * (1.0 - adaptive_gap_scale * sigmoid_gap);
+			if (effective_cinterval < 0.1)
+				effective_cinterval = 0.1;
+		}
+	}
+
 	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
 	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
+				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-effective_cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+effective_cinterval) ){
 					voteRoot[leaf_coordinates[i][0]][k] = 1.0;
 					index++;
 				}
 			}
-		//}
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 
 	/* Best-leaf override: if the best-scoring leaf exceeds threshold and
 	   total votes are low, override LCA by keeping only the best leaf's vote */
@@ -1024,7 +1044,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, double **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes, int adaptive_cinterval, double adaptive_gap_scale){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -1847,22 +1867,40 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	/* Adaptive cinterval (NW path) */
+	type_of_PP effective_cinterval_nw = Cinterval;
+	if (adaptive_cinterval && number_of_matches > 0) {
+		type_of_PP top1 = -9999999999999999, top2 = -9999999999999999;
+		for (i = 0; i < number_of_matches; i++) {
+			int t = leaf_coordinates[i][0];
+			if (t == -1) continue;
+			int nn = 2*numspecArr[t]-1;
+			for (k = 0; k < nn; k++) {
+				if (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1) {
+					type_of_PP s = nodeScores[i][t][k];
+					if (s > top1) { top2 = top1; top1 = s; }
+					else if (s > top2) { top2 = s; }
+				}
+			}
+		}
+		if (top2 > -9999999999999999) {
+			type_of_PP score_gap = top1 - top2;
+			double sigmoid_gap = 1.0 / (1.0 + exp(-score_gap));
+			effective_cinterval_nw = Cinterval * (1.0 - adaptive_gap_scale * sigmoid_gap);
+			if (effective_cinterval_nw < 0.1)
+				effective_cinterval_nw = 0.1;
+		}
+	}
+
 	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
 	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
+				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-effective_cinterval_nw) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+effective_cinterval_nw) ){
 					voteRoot[leaf_coordinates[i][0]][k] = 1.0;
 					index++;
 				}
 			}
-		//}
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 
 	/* Best-leaf override (NW path) */
 	if (best_leaf_max_votes > 0 && number_of_matches > 0) {

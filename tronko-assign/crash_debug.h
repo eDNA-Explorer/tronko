@@ -79,7 +79,7 @@ typedef struct {
 
     // BWA bounds tracking (added for 16S_Bacteria segfault analysis)
     int bwa_leaf_iter;                // Current leaf_iter value
-    int bwa_max_matches;              // MAX_NUM_BWA_MATCHES constant
+    int bwa_max_matches;              // MAX_NUM_LEAF_MATCHES constant
     int bwa_concordant_count;         // Concordant matches for current read
     int bwa_discordant_count;         // Discordant matches for current read
     int bwa_unique_trees;             // Unique trees matched

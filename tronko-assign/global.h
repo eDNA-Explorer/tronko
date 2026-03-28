@@ -40,7 +40,7 @@
 #define MAX_NUMBEROFROOTS 20000
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
-#define MAX_NUM_BWA_MATCHES 10
+#define MAX_NUM_LEAF_MATCHES 10
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 40000
 #define MAXTAXLENGTHNAME 256
@@ -180,10 +180,13 @@ typedef struct mystruct{
 	int enable_pruning;
 	type_of_PP pruning_factor;
 	// Accuracy tuning settings
-	int max_bwa_matches;
+	int max_leaf_matches;
 	// Best-leaf override settings
 	type_of_PP best_leaf_threshold;
 	int best_leaf_max_votes;
+	// Adaptive cinterval settings
+	int adaptive_cinterval;
+	double adaptive_gap_scale;
 	char trace_read[200];
 	// Aligner selection
 	char aligner[16];
@@ -267,11 +270,14 @@ typedef struct Options{
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
 	// Accuracy tuning parameters
-	int max_bwa_matches;        // Max BWA matches per read (default: MAX_NUM_BWA_MATCHES)
+	int max_leaf_matches;       // Max leaf matches per read (default: MAX_NUM_LEAF_MATCHES)
 	// Best-leaf override: when enabled, if the best-scoring leaf exceeds threshold
 	// and total votes are below max, override LCA with best leaf's taxonomy
 	double best_leaf_threshold; // Score threshold (default: 0 = disabled)
 	int best_leaf_max_votes;    // Max total votes for override (default: 0 = disabled)
+	// Adaptive cinterval: shrink voting window when best leaf is clearly dominant
+	int adaptive_cinterval;     // Enable adaptive cinterval (default: 0 = disabled)
+	double adaptive_gap_scale;  // Scaling factor for gap-based shrinkage (default: 0.5)
 	char trace_read[BUFFER_SIZE];       // Read name to trace for diagnostics (default: empty = off)
 	// Aligner selection
 	char aligner[16];           // "bwa" (default) or "minimap2"

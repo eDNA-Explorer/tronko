@@ -635,6 +635,9 @@ double stand, L, loclike, **locloglike, max, pi[4], gampar[2], d, like = 0.0;
     }
   }
   for (i=0; i<numbaseArr[whichRoot]; i++){
+    /* Column masking: skip masked columns in likelihood sum */
+    if (columnMaskArr && columnMaskArr[whichRoot] && !columnMaskArr[whichRoot][i])
+      continue;
     loclike=0.0;
     max = -100000000000.0;
     for (j=0; j<NUMCAT; j++){
@@ -655,7 +658,14 @@ double stand, L, loclike, **locloglike, max, pi[4], gampar[2], d, like = 0.0;
   //printf("LIKE: %lf\n",like - (double)numbase*log((double)NUMCAT));
   //printf("\n");
   free(UFCnc);
-  return -like + (double)numbaseArr[whichRoot]*log((double)NUMCAT);
+  /* Count unmasked columns for normalization */
+  int effectiveCols = numbaseArr[whichRoot];
+  if (columnMaskArr && columnMaskArr[whichRoot]) {
+    effectiveCols = 0;
+    for (i = 0; i < numbaseArr[whichRoot]; i++)
+      if (columnMaskArr[whichRoot][i]) effectiveCols++;
+  }
+  return -like + (double)effectiveCols*log((double)NUMCAT);
 }
 /*
 double maximizelikelihoodnc_globals(double parameters[10], int precision)

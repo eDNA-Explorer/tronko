@@ -47,9 +47,12 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
-	{"max-bwa-matches",required_argument,0,0},
+	{"max-leaf-matches",required_argument,0,0},
+	{"max-bwa-matches",required_argument,0,0},  /* backward-compat alias */
 	{"best-leaf-threshold",required_argument,0,0},
 	{"best-leaf-max-votes",required_argument,0,0},
+	{"adaptive-cinterval",no_argument,0,0},
+	{"adaptive-gap-scale",required_argument,0,0},
 	{"trace-read",required_argument,0,0},
 	{"aligner",required_argument,0,0},
 	{"minimap2-kmer",required_argument,0,0},
@@ -102,9 +105,11 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
 	\n\
 	Accuracy Tuning Options:\n\
-	--max-bwa-matches [INT], Maximum BWA matches per read [default: 10]\n\
+	--max-leaf-matches [INT], Maximum leaf matches per read [default: 10] (alias: --max-bwa-matches)\n\
 	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: 0 = disabled]\n\
 	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 0 = disabled]\n\
+	--adaptive-cinterval, Enable adaptive cinterval (shrinks voting window for clear matches)\n\
+	--adaptive-gap-scale [FLOAT], Scaling factor for adaptive cinterval [0.0-1.0, default: 0.5]\n\
 	--trace-read [STR], Print diagnostic trace for a specific read name\n\
 	\n\
 	Aligner Selection:\n\
@@ -179,10 +184,11 @@ void parse_options(int argc, char **argv, Options *opt){
 						opt->pruning_factor = 2.0;
 					}
 				}
-				else if (strcmp(long_options[option_index].name, "max-bwa-matches") == 0) {
-					if (sscanf(optarg, "%d", &(opt->max_bwa_matches)) != 1 || opt->max_bwa_matches < 1) {
-						fprintf(stderr, "Invalid max-bwa-matches value (must be >= 1)\n");
-						opt->max_bwa_matches = MAX_NUM_BWA_MATCHES;
+				else if (strcmp(long_options[option_index].name, "max-leaf-matches") == 0 ||
+				         strcmp(long_options[option_index].name, "max-bwa-matches") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_leaf_matches)) != 1 || opt->max_leaf_matches < 1) {
+						fprintf(stderr, "Invalid max-leaf-matches value (must be >= 1)\n");
+						opt->max_leaf_matches = MAX_NUM_LEAF_MATCHES;
 					}
 				}
 				else if (strcmp(long_options[option_index].name, "best-leaf-threshold") == 0) {
@@ -195,6 +201,16 @@ void parse_options(int argc, char **argv, Options *opt){
 				if (sscanf(optarg, "%d", &(opt->best_leaf_max_votes)) != 1 || opt->best_leaf_max_votes < 0) {
 					fprintf(stderr, "Invalid best-leaf-max-votes value (must be >= 0)\n");
 					opt->best_leaf_max_votes = 0;
+				}
+			}
+			else if (strcmp(long_options[option_index].name, "adaptive-cinterval") == 0) {
+				opt->adaptive_cinterval = 1;
+			}
+			else if (strcmp(long_options[option_index].name, "adaptive-gap-scale") == 0) {
+				if (sscanf(optarg, "%lf", &(opt->adaptive_gap_scale)) != 1 ||
+					opt->adaptive_gap_scale < 0.0 || opt->adaptive_gap_scale > 1.0) {
+					fprintf(stderr, "Invalid adaptive-gap-scale value (must be 0.0-1.0)\n");
+					opt->adaptive_gap_scale = 0.5;
 				}
 			}
 			else if (strcmp(long_options[option_index].name, "trace-read") == 0) {
