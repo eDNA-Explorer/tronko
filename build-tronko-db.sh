@@ -588,3 +588,33 @@ echo "  Clusters:       $NUM_FINAL_CLUSTERS"
 echo "  Output files:"
 ls -lh "$OUTPUT_DIR"/ | grep -v '^total' | sed 's/^/    /'
 echo "================================================================"
+
+# Write build metadata
+REF_SIZE_MB=$(du -m "$OUTPUT_DIR/reference_tree.txt.gz" 2>/dev/null | cut -f1)
+N_TREES=$(grep -c "^>" "$OUTPUT_DIR/reference_tree.txt" 2>/dev/null || echo "$NUM_FINAL_CLUSTERS")
+cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
+{
+  "marker": "$PRIMER",
+  "pipeline": "build-tronko-db.sh (AncestralClust + ${TREE_TOOL:-FastTree} + SP partitioning)",
+  "input_sequences": $(grep -c '^>' "$INPUT_FASTA"),
+  "input_fasta": "$INPUT_FASTA",
+  "input_taxonomy": "$INPUT_TAXONOMY",
+  "clustering": "ancestralclust",
+  "ac_bin_size": $AC_BIN_SIZE,
+  "ac_descendants": $AC_DESCENDANTS,
+  "ac_clusters": $NUM_FINAL_CLUSTERS,
+  "sp_threshold": $SP_THRESHOLD,
+  "sp_normalization": "$([ "$LEGACY_SP" -eq 1 ] && echo legacy || echo corrected)",
+  "tree_tool": "${TREE_TOOL:-FastTree}",
+  "n_trees": $NUM_FINAL_CLUSTERS,
+  "total_build_time_seconds": $TOTAL_TIME,
+  "tronko_build_time_seconds": $((STEP4_END - STEP4_START)),
+  "reference_tree_gz_mb": ${REF_SIZE_MB:-0},
+  "ablation_ready": $([ "$EXPORT_SUBTREES" -eq 1 ] && echo true || echo false),
+  "threads": $THREADS,
+  "parallel_jobs": $PARALLEL_JOBS,
+  "tronko_build_flags": "$TRONKO_FLAGS -c $THREADS",
+  "build_date": "$(date '+%Y-%m-%d')"
+}
+METAEOF
+echo "  Metadata: $OUTPUT_DIR/build_metadata.json"

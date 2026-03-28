@@ -177,6 +177,35 @@ run_build() {
 
     echo "  Database: $outdir/reference_tree.txt"
     echo "  Reference FASTA: $REF_FASTA"
+
+    # Write build metadata
+    local n_parts
+    n_parts=$(ls "$partition_dir"/*_MSA.fasta 2>/dev/null | wc -l | tr -d ' ')
+    local ref_size_mb
+    ref_size_mb=$(du -m "$outdir/reference_tree.txt" 2>/dev/null | cut -f1)
+    local n_seqs
+    n_seqs=$(grep -c '^>' "$input_fasta")
+    cat > "$outdir/build_metadata.json" << METAEOF
+{
+  "marker": "$MARKER",
+  "pipeline": "PASTA + VeryFastTree + partition_and_build.py",
+  "input_sequences": $n_seqs,
+  "input_fasta": "$input_fasta",
+  "input_taxonomy": "$taxonomy",
+  "tree_method": "PASTA (3 iterations, $TREE_BACKEND backend)",
+  "partition_strategy": "centroid",
+  "partition_flags": "$*",
+  "tree_tool": "$TREE_BACKEND",
+  "alignment_tool": "FAMSA",
+  "n_partitions": $n_parts,
+  "reference_tree_size_mb": ${ref_size_mb:-0},
+  "ablation_ready": true,
+  "threads": $THREADS,
+  "famsa_threads": $FAMSA_THREADS,
+  "build_date": "$(date '+%Y-%m-%d')"
+}
+METAEOF
+    echo "  Metadata: $outdir/build_metadata.json"
 }
 
 # ============================================================
