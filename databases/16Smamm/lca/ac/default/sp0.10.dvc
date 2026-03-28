@@ -1,0 +1,6 @@
+outs:
+- md5: 7e17ac21db6136bcf548f0b5a2feedce.dir
+  size: 1189811714
+  nfiles: 60697
+  hash: md5
+  path: sp0.10
