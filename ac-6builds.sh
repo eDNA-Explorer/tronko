@@ -105,6 +105,7 @@ for VARIANT in lca species; do
                 -T "$THREADS" \
                 -s "$SP" \
                 -E \
+                -L \
                 -B "$AC_BIN_SIZE" \
                 -P "$AC_DESCENDANTS" \
                 -J "$PARALLEL_JOBS" \
