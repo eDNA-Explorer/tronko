@@ -253,8 +253,8 @@ for VARIANT in lca species; do
     echo "  Taxonomy: $INPUT_TAX"
     echo ""
 
-    PASTA_DIR="${DB_BASE}/${VARIANT}/pasta"
-    PASTA_OUT="${PASTA_DIR}/tree"
+    VARIANT_PASTA_DIR="${DB_BASE}/${VARIANT}/pasta"
+    PASTA_OUT="${VARIANT_PASTA_DIR}/tree"
     JOB_NAME="${MARKER}_${VARIANT}_pasta"
 
     # Skip PASTA if rooted tree already exists (and is non-empty)
@@ -271,7 +271,7 @@ for VARIANT in lca species; do
     for build_args in "maxdiam25 --max-diam 25" "maxsize1000 --max-size 1000" "maxsize500 --max-size 500"; do
         BUILD_NAME="${build_args%% *}"
         BUILD_FLAGS="${build_args#* }"
-        BUILD_DIR="${PASTA_DIR}/${BUILD_NAME}"
+        BUILD_DIR="${VARIANT_PASTA_DIR}/${BUILD_NAME}"
 
         if [[ -f "${BUILD_DIR}/reference_tree.txt" ]]; then
             echo "  Already exists: ${BUILD_DIR}/reference_tree.txt — skipping"
