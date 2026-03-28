@@ -108,6 +108,7 @@ for VARIANT in lca species; do
                 -B "$AC_BIN_SIZE" \
                 -P "$AC_DESCENDANTS" \
                 -J "$PARALLEL_JOBS" \
+                -L \
                 --cache-dir "$CONFIG_DIR/.cache"
 
             cp "$INPUT_FASTA" "$OUTDIR/input.fasta"
