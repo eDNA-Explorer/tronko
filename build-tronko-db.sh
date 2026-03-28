@@ -20,7 +20,7 @@
 #   -T  Threads for RAxML/FAMSA (default: 8)
 #   -s  SP-score threshold for tronko-build partitioning (default: 0.1)
 #   -F  Use FastTree instead of RAxML (backward compat; default is now VeryFastTree)
-#       Set TREE_TOOL env var to raxml/fasttree/veryfasttree to override
+#   --tree-tool <tool>  Set tree tool: raxml, fasttree, veryfasttree (default: veryfasttree)
 #   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
@@ -39,6 +39,17 @@ LEGACY_SP=0
 AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 AC_DESCENDANTS=75
+
+# Handle long options by shifting them out before getopts
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tree-tool) TREE_TOOL="$2"; shift 2 ;;
+        --tree-tool=*) TREE_TOOL="${1#*=}"; shift ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+set -- "${ARGS[@]}"
 
 while getopts "f:t:o:p:T:s:FELC:B:P:J:" opt; do
     case $opt in
