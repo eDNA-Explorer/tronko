@@ -369,7 +369,8 @@ run_ac_pipeline() {
                     -L \
                     -B "$ac_bin_size" \
                     -P "$ac_descendants" \
-                    -J "$PARALLEL_JOBS"
+                    -J "$PARALLEL_JOBS" \
+                    --cache-dir "${config_dir}/cache"
 
                 cp "$INPUT_FASTA" "$build_dir/input.fasta"
                 cp "$INPUT_TAX" "$build_dir/input_taxonomy.txt"
