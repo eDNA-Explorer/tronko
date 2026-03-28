@@ -365,7 +365,6 @@ run_ac_pipeline() {
                     -p "$MARKER" \
                     -T "$THREADS" \
                     -s "$sp" \
-                    -F \
                     -E \
                     -L \
                     -B "$ac_bin_size" \
