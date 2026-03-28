@@ -392,8 +392,15 @@ log "  AC configs: ${#AC_CONFIGS[@]} x ${#AC_SP_THRESHOLDS[@]} SP thresholds"
 log "  Skip PASTA: $SKIP_PASTA, Skip AC: $SKIP_AC"
 log "============================================================"
 
-run_pasta_pipeline
-run_ac_pipeline
+# Run per variant: all PASTA + all AC for each variant before moving to the next
+ALL_VARIANTS="$VARIANTS"
+for CURRENT_VARIANT in $ALL_VARIANTS; do
+    log ">>>>>>>>>> Variant: $CURRENT_VARIANT <<<<<<<<<<<"
+    VARIANTS="$CURRENT_VARIANT"
+    run_pasta_pipeline
+    run_ac_pipeline
+done
+VARIANTS="$ALL_VARIANTS"
 
 log "============================================================"
 log "All builds complete for $MARKER"
