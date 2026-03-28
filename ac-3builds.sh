@@ -39,21 +39,8 @@ done
 
 DB_BASE="databases/${MARKER}"
 
-# ── Migrate old flat layout to species/ subdirectory ─────────
-SPECIES_DIR="${DB_BASE}/species"
-LCA_DIR="${DB_BASE}/lca"
-mkdir -p "$SPECIES_DIR" "$LCA_DIR"
-
-for item in ac_sp0.05 ac_sp0.10 ac_sp0.20; do
-    if [[ -d "${DB_BASE}/${item}" ]] && [[ ! -d "${SPECIES_DIR}/${item}" ]]; then
-        echo "Migrating ${DB_BASE}/${item} -> ${SPECIES_DIR}/${item}"
-        mv "${DB_BASE}/${item}" "${SPECIES_DIR}/${item}"
-    fi
-    if [[ -f "${DB_BASE}/${item}.dvc" ]] && [[ ! -f "${SPECIES_DIR}/${item}.dvc" ]]; then
-        echo "Migrating ${DB_BASE}/${item}.dvc -> ${SPECIES_DIR}/${item}.dvc"
-        mv "${DB_BASE}/${item}.dvc" "${SPECIES_DIR}/${item}.dvc"
-    fi
-done
+# ── Ensure directory structure ─────────────────────────────────
+mkdir -p "${DB_BASE}/species/ac/default" "${DB_BASE}/lca/ac/default"
 
 echo "============================================================"
 echo "AncestralClust builds for $MARKER"
@@ -82,12 +69,13 @@ for VARIANT in lca species; do
         INPUT_TAX="$LCA_TAX"
     fi
 
+    AC_DIR="${DB_BASE}/${VARIANT}/ac/default"
+
     for SP in 0.05 0.10 0.20; do
-        LABEL="ac_sp${SP}"
-        OUTDIR="${DB_BASE}/${VARIANT}/${LABEL}"
+        OUTDIR="${AC_DIR}/sp${SP}"
 
         echo "############################################################"
-        echo "# Building: ${VARIANT}/${LABEL} (SP threshold = $SP)"
+        echo "# Building: ${VARIANT}/ac/default/sp${SP}"
         echo "############################################################"
 
         if [[ -f "$OUTDIR/reference_tree.txt" ]] || [[ -f "$OUTDIR/reference_tree.txt.gz" ]] || [[ -f "$OUTDIR/reference_tree.trkb" ]]; then
@@ -126,7 +114,7 @@ echo ""
 echo "$MARKER AC databases:"
 for VARIANT in lca species; do
     echo "  ${VARIANT}:"
-    echo "    1) ${DB_BASE}/${VARIANT}/ac_sp0.05"
-    echo "    2) ${DB_BASE}/${VARIANT}/ac_sp0.10"
-    echo "    3) ${DB_BASE}/${VARIANT}/ac_sp0.20"
+    echo "    1) ${DB_BASE}/${VARIANT}/ac/default/sp0.05"
+    echo "    2) ${DB_BASE}/${VARIANT}/ac/default/sp0.10"
+    echo "    3) ${DB_BASE}/${VARIANT}/ac/default/sp0.20"
 done

@@ -200,21 +200,8 @@ done
 
 DB_BASE="databases/${MARKER}"
 
-# ── Migrate old flat layout to species/ subdirectory ─────────
-SPECIES_DIR="${DB_BASE}/species"
-LCA_DIR="${DB_BASE}/lca"
-mkdir -p "$SPECIES_DIR" "$LCA_DIR"
-
-for item in pasta_output maxdiam25 maxsize1000 maxsize500; do
-    if [[ -d "${DB_BASE}/${item}" ]] && [[ ! -d "${SPECIES_DIR}/${item}" ]]; then
-        echo "Migrating ${DB_BASE}/${item} -> ${SPECIES_DIR}/${item}"
-        mv "${DB_BASE}/${item}" "${SPECIES_DIR}/${item}"
-    fi
-    if [[ -f "${DB_BASE}/${item}.dvc" ]] && [[ ! -f "${SPECIES_DIR}/${item}.dvc" ]]; then
-        echo "Migrating ${DB_BASE}/${item}.dvc -> ${SPECIES_DIR}/${item}.dvc"
-        mv "${DB_BASE}/${item}.dvc" "${SPECIES_DIR}/${item}.dvc"
-    fi
-done
+# ── Ensure directory structure ─────────────────────────────────
+mkdir -p "${DB_BASE}/species/pasta" "${DB_BASE}/lca/pasta"
 
 # ── Build both variants ─────────────────────────────────────
 for VARIANT in lca species; do
@@ -236,8 +223,8 @@ for VARIANT in lca species; do
     echo "  Taxonomy: $INPUT_TAX"
     echo ""
 
-    VARIANT_DIR="${DB_BASE}/${VARIANT}"
-    PASTA_OUT="${VARIANT_DIR}/pasta_output"
+    PASTA_DIR="${DB_BASE}/${VARIANT}/pasta"
+    PASTA_OUT="${PASTA_DIR}/tree"
     JOB_NAME="${MARKER}_${VARIANT}_pasta"
 
     # Skip PASTA if rooted tree already exists (and is non-empty)
@@ -254,7 +241,7 @@ for VARIANT in lca species; do
     for build_args in "maxdiam25 --max-diam 25" "maxsize1000 --max-size 1000" "maxsize500 --max-size 500"; do
         BUILD_NAME="${build_args%% *}"
         BUILD_FLAGS="${build_args#* }"
-        BUILD_DIR="${VARIANT_DIR}/${BUILD_NAME}"
+        BUILD_DIR="${PASTA_DIR}/${BUILD_NAME}"
 
         if [[ -f "${BUILD_DIR}/reference_tree.txt" ]]; then
             echo "  Already exists: ${BUILD_DIR}/reference_tree.txt — skipping"
@@ -271,7 +258,7 @@ echo ""
 echo "$MARKER PASTA databases:"
 for VARIANT in lca species; do
     echo "  ${VARIANT}:"
-    echo "    1) ${DB_BASE}/${VARIANT}/maxdiam25/reference_tree.txt"
-    echo "    2) ${DB_BASE}/${VARIANT}/maxsize1000/reference_tree.txt"
-    echo "    3) ${DB_BASE}/${VARIANT}/maxsize500/reference_tree.txt"
+    echo "    1) ${DB_BASE}/${VARIANT}/pasta/maxdiam25/reference_tree.txt"
+    echo "    2) ${DB_BASE}/${VARIANT}/pasta/maxsize1000/reference_tree.txt"
+    echo "    3) ${DB_BASE}/${VARIANT}/pasta/maxsize500/reference_tree.txt"
 done
