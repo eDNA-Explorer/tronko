@@ -94,7 +94,8 @@ for VARIANT in lca species; do
             -E \
             -B "$AC_BIN_SIZE" \
             -P "$AC_DESCENDANTS" \
-            -J "$PARALLEL_JOBS"
+            -J "$PARALLEL_JOBS" \
+            --cache-dir "$AC_DIR/.cache"
 
         # Copy input files into the database directory
         cp "$INPUT_FASTA" "$OUTDIR/input.fasta"

@@ -46,6 +46,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --tree-tool) TREE_TOOL="$2"; shift 2 ;;
         --tree-tool=*) TREE_TOOL="${1#*=}"; shift ;;
+        --cache-dir) SHARED_CACHE_DIR="$2"; shift 2 ;;
+        --cache-dir=*) SHARED_CACHE_DIR="${1#*=}"; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -135,8 +137,8 @@ case "$TREE_TOOL" in
         ;;
 esac
 
-# Setup directories — use $OUTPUT_DIR/.cache for checkpoint persistence
-CACHE_DIR="$OUTPUT_DIR/.cache"
+# Setup directories — use shared cache if provided, otherwise per-output cache
+CACHE_DIR="${SHARED_CACHE_DIR:-$OUTPUT_DIR/.cache}"
 AC_DIR="$CACHE_DIR/ancestralclust"
 NEWICK_DIR="$CACHE_DIR/newick"
 MERGED_DIR="$CACHE_DIR/merged"
