@@ -105,10 +105,10 @@ for VARIANT in lca species; do
                 -T "$THREADS" \
                 -s "$SP" \
                 -E \
-                -L \
                 -B "$AC_BIN_SIZE" \
                 -P "$AC_DESCENDANTS" \
-                -J "$PARALLEL_JOBS"
+                -J "$PARALLEL_JOBS" \
+                --cache-dir "$CONFIG_DIR/.cache"
 
             cp "$INPUT_FASTA" "$OUTDIR/input.fasta"
             cp "$INPUT_TAX" "$OUTDIR/input_taxonomy.txt"
