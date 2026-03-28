@@ -104,7 +104,6 @@ for VARIANT in lca species; do
                 -p "$MARKER" \
                 -T "$THREADS" \
                 -s "$SP" \
-                --tree-tool veryfasttree \
                 -E \
                 -L \
                 -B "$AC_BIN_SIZE" \
