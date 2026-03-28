@@ -162,14 +162,14 @@ fi
 # Step 2: Run tronko-build (posteriors only — no repartitioning)
 echo ""
 echo "=== Step 2: tronko-build (posteriors only) ==="
-echo "Running: tronko-build -y -e $CACHE_DIR -n $valid_cluster_count -d $OUTPUT_DIR -v -f 999999 -a -c $THREADS"
+echo "Running: tronko-build -y -e $CACHE_DIR -n $valid_cluster_count -d $OUTPUT_DIR -v -f 999999 --tree-tool ${TREE_TOOL:-veryfasttree} -c $THREADS"
 
 time tronko-build -y \
     -e "$CACHE_DIR" \
     -n "$valid_cluster_count" \
     -d "$OUTPUT_DIR" \
     -v -f 999999 \
-    -a \
+    --tree-tool "${TREE_TOOL:-veryfasttree}" \
     -c "$THREADS"
 
 if [[ ! -f "$OUTPUT_DIR/reference_tree.txt" ]]; then

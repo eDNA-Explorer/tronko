@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Partition a PASTA tree into tronko-build-compatible partitions,
-then run FAMSA + FastTree per partition and invoke tronko-build.
+then run FAMSA + tree inference per partition and invoke tronko-build.
 """
 
 import argparse
@@ -107,8 +107,9 @@ def count_newick_leaves(path):
 # Per-partition pipeline (runs in subprocess pool)
 # ---------------------------------------------------------------------------
 
-def process_partition(outdir, partition_idx, expected_count, famsa_threads):
-    """Run FAMSA, unwrap, FastTree, nw_reroot for one partition.
+def process_partition(outdir, partition_idx, expected_count, famsa_threads,
+                      tree_tool="veryfasttree"):
+    """Run FAMSA, unwrap, tree inference, nw_reroot for one partition.
 
     Returns (partition_idx, success, elapsed_time, error_msg).
     """
@@ -131,14 +132,20 @@ def process_partition(outdir, partition_idx, expected_count, famsa_threads):
     # Step 2: Unwrap FASTA to single-line-per-sequence
     unwrap_fasta(msa_path)
 
-    # Step 3: FastTree (flags match sweep: -nt -gtr only)
+    # Step 3: Tree inference
+    if tree_tool == "veryfasttree":
+        tree_cmd = ["VeryFastTree", "-threads", str(famsa_threads),
+                    "-nt", "-gtr", msa_path]
+    else:
+        tree_cmd = ["FastTree", "-nt", "-gtr", msa_path]
     with open(tree_raw, 'w') as tree_out:
         result = subprocess.run(
-            ["FastTree", "-nt", "-gtr", msa_path],
+            tree_cmd,
             stdout=tree_out, stderr=subprocess.PIPE, text=True
         )
     if result.returncode != 0:
-        return (partition_idx, False, 0, f"FastTree failed: {result.stderr[:500]}")
+        tool_name = tree_cmd[0]
+        return (partition_idx, False, 0, f"{tool_name} failed: {result.stderr[:500]}")
 
     # Step 4: Strip support values and quote leaf names for nw_reroot
     with open(tree_raw) as f:
@@ -211,6 +218,9 @@ def main():
                         help="Path to tronko-build binary")
     parser.add_argument("--tronko-outdir", default=None,
                         help="Output dir for tronko-build -d")
+    parser.add_argument("--tree-tool", default="veryfasttree",
+                        choices=["fasttree", "veryfasttree"],
+                        help="Tree inference tool (default: veryfasttree)")
     parser.add_argument("--skip-tronko", action="store_true",
                         help="Only partition, don't run tronko-build")
     args = parser.parse_args()
@@ -348,7 +358,7 @@ def main():
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(process_partition, args.outdir, idx, count,
-                            args.famsa_threads): idx
+                            args.famsa_threads, args.tree_tool): idx
             for idx, count in partition_info
         }
         for future in as_completed(futures):
@@ -396,7 +406,7 @@ def main():
     ]
     if args.sp_threshold > 0:
         cmd.extend(["-s", "-u", str(args.sp_threshold)])
-    cmd.append("-a")  # always use FastTree (not RAxML)
+    cmd.extend(["--tree-tool", args.tree_tool])
     cmd.append("-E")
     logging.info(f"Running tronko-build: {' '.join(cmd)}")
     t0 = time.time()

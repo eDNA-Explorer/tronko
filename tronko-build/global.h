@@ -102,6 +102,8 @@ typedef struct partition_files{
 	char **tax_files;
 }partition_files;
 
+typedef enum { TREE_RAXML, TREE_FASTTREE, TREE_VERYFASTTREE } TreeTool;
+
 typedef struct Options{
 	char msa_file[2000];
 	char tree_file[2000];
@@ -130,7 +132,7 @@ typedef struct Options{
 	char prefix[2000];
 	int missing_data;
 	int famsa_threads;
-	int fasttree;
+	TreeTool tree_tool;
 	int export_subtrees;
 	int parallel_jobs;
 	double column_gap_threshold;

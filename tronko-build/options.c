@@ -1,4 +1,5 @@
 #include "options.h"
+#include <string.h>
 
 static struct option long_options[]=
 {
@@ -22,6 +23,7 @@ static struct option long_options[]=
 	{"remove-unused-trees", no_argument, 0, 'r'},
 	{"prefix", required_argument, 0, 'i'},
 	{"fasttree", no_argument, 0, 'a'},
+	{"tree-tool", required_argument, 0, 256},
 	{"export-subtrees", no_argument, 0, 'E'},
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
@@ -50,7 +52,8 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
-	-a, use FastTree instead of RAxML\n\
+	-a, use FastTree instead of RAxML (shorthand for --tree-tool fasttree)\n\
+	--tree-tool [raxml|fasttree|veryfasttree], tree inference tool [default: raxml]\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
 	-W [FLOAT], mask alignment columns with gap fraction above threshold [default: 1.0 = no masking]\n\
@@ -77,7 +80,7 @@ void parse_options(int argc, char **argv, Options *opt){
 				print_help_statement();
 				exit(0);
 				break;
-			case 'r': 
+			case 'r':
 				opt->remove_unused = 1;
 				break;
 			case 'l': //--single-tree
@@ -160,7 +163,19 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Invalid read 2 file.\n");
 				break;
 			case 'a':
-				opt->fasttree = 1;
+				opt->tree_tool = TREE_FASTTREE;
+				break;
+			case 256: /* --tree-tool */
+				if (strcmp(optarg, "raxml") == 0)
+					opt->tree_tool = TREE_RAXML;
+				else if (strcmp(optarg, "fasttree") == 0)
+					opt->tree_tool = TREE_FASTTREE;
+				else if (strcmp(optarg, "veryfasttree") == 0)
+					opt->tree_tool = TREE_VERYFASTTREE;
+				else {
+					fprintf(stderr, "Unknown --tree-tool: %s (options: raxml, fasttree, veryfasttree)\n", optarg);
+					exit(-1);
+				}
 				break;
 			case 'E':
 				opt->export_subtrees = 1;

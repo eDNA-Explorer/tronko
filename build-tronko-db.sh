@@ -19,7 +19,8 @@
 #   -p  Primer/marker name (default: marker)
 #   -T  Threads for RAxML/FAMSA (default: 8)
 #   -s  SP-score threshold for tronko-build partitioning (default: 0.1)
-#   -F  Use FastTree instead of RAxML (faster, slightly less accurate)
+#   -F  Use FastTree instead of RAxML (backward compat; default is now VeryFastTree)
+#       Set TREE_TOOL env var to raxml/fasttree/veryfasttree to override
 #   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
@@ -32,7 +33,7 @@ PRIMER="marker"
 THREADS=8
 PARALLEL_JOBS=1
 SP_THRESHOLD=0.1
-USE_FASTTREE=0
+TREE_TOOL="${TREE_TOOL:-veryfasttree}"
 EXPORT_SUBTREES=0
 LEGACY_SP=0
 AC_CUTOFF=25000
@@ -47,7 +48,7 @@ while getopts "f:t:o:p:T:s:FELC:B:P:J:" opt; do
         p) PRIMER="$OPTARG" ;;
         T) THREADS="$OPTARG" ;;
         s) SP_THRESHOLD="$OPTARG" ;;
-        F) USE_FASTTREE=1 ;;
+        F) TREE_TOOL="fasttree" ;;
         E) EXPORT_SUBTREES=1 ;;
         L) LEGACY_SP=1 ;;
         C) AC_CUTOFF="$OPTARG" ;;
@@ -91,21 +92,37 @@ for name in raxmlHPC-PTHREADS-SSE3 raxmlHPC-PTHREADS-AVX2 raxmlHPC-PTHREADS raxm
     fi
 done
 
-if [[ "$USE_FASTTREE" -eq 0 ]]; then
-    if [[ -z "$RAXML_BIN" ]]; then
-        echo "ERROR: No raxmlHPC variant found on PATH (use -F for FastTree)" >&2
+case "$TREE_TOOL" in
+    raxml)
+        if [[ -z "$RAXML_BIN" ]]; then
+            echo "ERROR: No raxmlHPC variant found on PATH (use -F for FastTree)" >&2
+            exit 1
+        fi
+        echo "Using RAxML: $RAXML_BIN"
+        ;;
+    veryfasttree)
+        if command -v VeryFastTree &>/dev/null; then
+            TREE_BIN="VeryFastTree"
+            echo "Using VeryFastTree: $(command -v VeryFastTree)"
+        else
+            echo "ERROR: VeryFastTree not found on PATH" >&2
+            exit 1
+        fi
+        ;;
+    fasttree)
+        if command -v FastTree &>/dev/null; then
+            TREE_BIN="FastTree"
+            echo "Using FastTree: $(command -v FastTree)"
+        else
+            echo "ERROR: FastTree not found on PATH" >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "ERROR: Unknown TREE_TOOL: $TREE_TOOL (options: raxml, fasttree, veryfasttree)" >&2
         exit 1
-    fi
-    echo "Using RAxML: $RAXML_BIN"
-else
-    if command -v FastTree &>/dev/null; then
-        TREE_BIN="FastTree"
-        echo "Using FastTree: $(command -v FastTree)"
-    else
-        echo "ERROR: FastTree not found on PATH" >&2
-        exit 1
-    fi
-fi
+        ;;
+esac
 
 # Setup directories — use $OUTPUT_DIR/.cache for checkpoint persistence
 CACHE_DIR="$OUTPUT_DIR/.cache"
@@ -126,7 +143,7 @@ echo "  Taxonomy:   $INPUT_TAXONOMY"
 echo "  Output:     $OUTPUT_DIR"
 echo "  Threads:    $THREADS"
 echo "  SP thresh:  $SP_THRESHOLD"
-echo "  Tree tool:  $([ "$USE_FASTTREE" -eq 1 ] && echo "${TREE_BIN:-FastTree}" || echo "RAxML")"
+echo "  Tree tool:  $TREE_TOOL (${TREE_BIN:-$RAXML_BIN})"
 echo "  AC cutoff:  $AC_CUTOFF (cluster if > this many seqs)"
 echo "  AC binsize: $AC_BIN_SIZE (target seqs per cluster)"
 echo "  AC descend: $AC_DESCENDANTS (ancestralclust -p parameter)"
@@ -236,17 +253,20 @@ else
     # AncestralClust outputs {0..N-1}.fasta in the output directory.
     # We need to create matching taxonomy files for each cluster.
     echo "Splitting taxonomy by cluster..."
+    # Pre-sort taxonomy once (avoids repeated sort + SIGPIPE with pipefail)
+    sort "$INPUT_TAXONOMY" > "$CACHE_DIR/taxonomy_sorted.txt"
     for cluster_fasta in "$AC_DIR"/*.fasta; do
         cluster_id=$(basename "$cluster_fasta" .fasta)
         # Extract accessions from this cluster's FASTA
         grep '^>' "$cluster_fasta" | sed 's/^>//' | cut -d' ' -f1 | sort > "$CACHE_DIR/accs_${cluster_id}.txt"
         # Filter taxonomy to matching accessions
-        sort "$INPUT_TAXONOMY" | join -t$'\t' "$CACHE_DIR/accs_${cluster_id}.txt" - > "$AC_DIR/${cluster_id}_taxonomy.txt"
+        join -t$'\t' "$CACHE_DIR/accs_${cluster_id}.txt" "$CACHE_DIR/taxonomy_sorted.txt" > "$AC_DIR/${cluster_id}_taxonomy.txt"
         rm "$CACHE_DIR/accs_${cluster_id}.txt"
         n_seqs=$(grep -c '^>' "$cluster_fasta")
         n_tax=$(wc -l < "$AC_DIR/${cluster_id}_taxonomy.txt")
         echo "  Cluster $cluster_id: $n_seqs seqs, $n_tax taxonomy entries"
     done
+    rm -f "$CACHE_DIR/taxonomy_sorted.txt"
 
     NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l | tr -d ' ')
     touch "$AC_DIR/.step1_done"
@@ -300,8 +320,19 @@ build_cluster_tree() {
 
     echo "  Cluster $cluster_id: building tree..."
 
-    if [[ "$USE_FASTTREE" -eq 1 ]]; then
-        # FastTree (outputs Newick to stdout)
+    if [[ "$TREE_TOOL" == "veryfasttree" ]]; then
+        # VeryFastTree with native -threads flag
+        set +e
+        $TREE_BIN -threads "$cluster_threads" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+            > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
+        local tree_rc=$?
+        set -e
+        if [[ "$tree_rc" -ne 0 ]] || [[ ! -s "$outdir/RAxML_bestTree.${cluster_id}.unrooted" ]]; then
+            echo "  WARNING: $TREE_BIN failed for cluster $cluster_id (exit $tree_rc). Log:"
+            tail -20 "$outdir/${cluster_id}_tree.log"
+            return 1
+        fi
+    elif [[ "$TREE_TOOL" == "fasttree" ]]; then
         # FastTree uses OMP_NUM_THREADS env var for threading
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
@@ -503,10 +534,7 @@ echo ""
 echo "=== Step 4/5: tronko-build ==="
 STEP4_START=$(date +%s)
 
-TRONKO_FLAGS=""
-if [[ "$USE_FASTTREE" -eq 1 ]]; then
-    TRONKO_FLAGS="-a"
-fi
+TRONKO_FLAGS="--tree-tool $TREE_TOOL"
 if [[ "$EXPORT_SUBTREES" -eq 1 ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS -E"
 fi

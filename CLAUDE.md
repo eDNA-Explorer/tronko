@@ -92,7 +92,8 @@ Partition mode (-y):
   -v                Use minimum leaf node count for partitioning
   -f [INT]          Minimum leaf nodes threshold (use with -v)
 General:
-  -a                Use FastTree instead of RAxML
+  -a                Use FastTree instead of RAxML (shorthand for --tree-tool fasttree)
+  --tree-tool [STR] Tree inference tool: raxml, fasttree, veryfasttree (default: raxml)
   -c [INT]          FAMSA threads (0 = auto-detect, default: 0)
   -g                Don't flag missing data
   -i [STRING]       Prefix for output partition filenames
@@ -160,7 +161,7 @@ These flags control how tronko-assign makes taxonomic assignments. All are optio
 Accuracy Tuning:
   -c [FLOAT]                  LCA cutoff / Cinterval (default: 5)
   -u [FLOAT]                  Score constant for Jukes-Cantor correction (default: 0.01)
-  --max-bwa-matches [INT]     Cap on candidate leaf alignments (default: 10)
+  --max-leaf-matches [INT]    Cap on candidate leaf alignments (default: 10)
   --best-leaf-threshold [FLOAT]   Best-leaf override score threshold (default: 0 = disabled)
   --best-leaf-max-votes [INT]     Max votes for best-leaf override (default: 0 = disabled)
   --adaptive-cinterval        Enable adaptive cinterval (default: disabled)

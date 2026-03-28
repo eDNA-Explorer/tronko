@@ -162,6 +162,7 @@ run_build() {
         --threads "$THREADS" \
         --famsa-threads "$FAMSA_THREADS" \
         --tronko-build "$(which tronko-build)" \
+        --tree-tool "$TREE_BACKEND" \
         "$@"
 
     # Collect reference FASTA

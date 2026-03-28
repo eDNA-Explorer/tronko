@@ -863,12 +863,12 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 	unwrap_fasta_inplace(buf);
 
 	/* Step 3: FASTA to PHYLIP conversion (RAxML only) */
-	if (opt.fasttree == 0){
+	if (opt.tree_tool == TREE_RAXML){
 		fasta_to_phylip(buf);
 	}
 
 	/* Step 4: Tree inference */
-	if (opt.fasttree == 0){
+	if (opt.tree_tool == TREE_RAXML){
 		/* RAxML path */
 		if (opt.prefix[0] == '\0'){
 			snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n partition%d -p 1234 -T %d -s %s/partition%d_MSA.phymlAln",
@@ -879,7 +879,7 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 		}
 		status = system(buf);
 	}else{
-		/* FastTree path — fork/exec with stdout redirect */
+		/* FastTree / VeryFastTree path — fork/exec with stdout redirect */
 		char ft_input[BUFFER_SIZE], ft_output[BUFFER_SIZE];
 		if (opt.prefix[0] == '\0'){
 			snprintf(ft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
@@ -890,23 +890,34 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 		}
 		pid_t ft_pid = fork();
 		if (ft_pid == -1){
-			fprintf(stderr, "can't fork for FastTree\n");
+			fprintf(stderr, "can't fork for tree inference\n");
 			return -1;
 		}else if (ft_pid == 0){
 			int fd = open(ft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
 			int devnull = open("/dev/null", O_WRONLY);
 			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
-			execvp("FastTree", ft_args);
-			fprintf(stderr, "FastTree not found\n");
+			if (opt.tree_tool == TREE_VERYFASTTREE){
+				int t = (opt.famsa_threads > 0) ? opt.famsa_threads : pipeline_threads;
+				if (t <= 0) t = 1;
+				char threads_str[16];
+				snprintf(threads_str, sizeof(threads_str), "%d", t);
+				char *vft_args[] = {"VeryFastTree", "-threads", threads_str,
+					"-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
+				execvp("VeryFastTree", vft_args);
+				fprintf(stderr, "VeryFastTree not found\n");
+			}else{
+				char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
+				execvp("FastTree", ft_args);
+				fprintf(stderr, "FastTree not found\n");
+			}
 			_exit(127);
 		}
 		waitpid(ft_pid, &status, 0);
 	}
 
 	/* Step 5: Reroot tree (RAxML only) */
-	if (opt.fasttree == 0){
+	if (opt.tree_tool == TREE_RAXML){
 		char buf4[BUFFER_SIZE];
 		char buf5[BUFFER_SIZE];
 		if (opt.prefix[0] == '\0'){
@@ -1156,14 +1167,14 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 				continue;
 			}
 		}
-		if ( opt->fasttree == 0 ){
+		if ( opt->tree_tool == TREE_RAXML ){
 			allocateTreeArrMemory(t,max_nodename);
 			comma=0;
 			tip=0;
 			t->root=getcladeArr_fast(buf,t,max_nodename)-1;
 			t->tree[t->root].down = -1;
 		}
-		if ( opt->fasttree == 1 ){
+		if ( opt->tree_tool != TREE_RAXML ){
 			FILE *fasttreefile = fopen(buf,"r");
 			if (fasttreefile == NULL ){
 				fprintf(stderr, "Error: Could not open Newick file %s.\n", buf);
@@ -1654,7 +1665,7 @@ int main(int argc, char **argv){
 	opt.use_spscore=0;
 	opt.use_min_leaves=0;
 	opt.sp_score = 0.05;
-	opt.fasttree=0;
+	opt.tree_tool=TREE_RAXML;
 	opt.missing_data=1;
 	opt.restart = 0;
 	opt.two_step = 0;
@@ -1873,7 +1884,7 @@ int main(int argc, char **argv){
 				allocateTreeArrMemory(m,max_nodename);
 				snprintf(buffer,BUFFER_SIZE,"%s/%s",opt.readdir,pf->tree_files[i]);
 				strcpy(m->filename,buffer);
-				if ( opt.fasttree == 1 ){
+				if ( opt.tree_tool != TREE_RAXML ){
 					FILE *tmpTree = fopen(buffer, "r");
 					if (!tmpTree){ fprintf(stderr, "*** tree file could not be opened: %s\n", buffer); exit(-1); }
 					char* newick = readNewickFile(tmpTree);
