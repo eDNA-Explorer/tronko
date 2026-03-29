@@ -556,14 +556,17 @@ if [[ "$LEGACY_SP" -eq 1 ]]; then
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -c $THREADS"
+    # tronko-build forks 3 partition pipelines; give each 1/3 of threads
+    TRONKO_THREADS=$(( THREADS / 3 ))
+    if [[ "$TRONKO_THREADS" -lt 1 ]]; then TRONKO_THREADS=1; fi
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -c $TRONKO_THREADS"
     time tronko-build -y \
         -e "$MERGED_DIR" \
         -n "$NUM_FINAL_CLUSTERS" \
         -d "$OUTPUT_DIR" \
         -s -u "$SP_THRESHOLD" \
         $TRONKO_FLAGS \
-        -c "$THREADS"
+        -c "$TRONKO_THREADS"
 fi
 
 # Check for output
@@ -654,7 +657,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "ablation_ready": $([ "$EXPORT_SUBTREES" -eq 1 ] && echo true || echo false),
   "threads": $THREADS,
   "parallel_jobs": $PARALLEL_JOBS,
-  "tronko_build_flags": "$TRONKO_FLAGS -c $THREADS",
+  "tronko_build_flags": "$TRONKO_FLAGS -c $TRONKO_THREADS",
   "build_date": "$(date '+%Y-%m-%d')"
 }
 METAEOF

@@ -241,7 +241,7 @@ Rigorous verification that optimizations produce identical output to upstream.
 | **minimap2 tuning** | Configurable k-mer and window size for amplicon optimization | `--minimap2-kmer`, `--minimap2-window` |
 | **Best-leaf override** | Skip LCA voting when a single leaf clearly dominates | `--best-leaf-threshold`, `--best-leaf-max-votes` |
 | **Trace diagnostics** | Per-read scoring visibility for debugging assignments | `--trace-read READNAME` |
-| **Max BWA matches** | Runtime-configurable BWA match cap (was compile-time) | `--max-bwa-matches` |
+| **Max leaf matches** | Runtime-configurable leaf match cap (was compile-time) | `--max-leaf-matches` (alias: `--max-bwa-matches`) |
 | **NUMCAT override** | Compile-time gamma rate category control | `make NUMCAT=4` |
 
 ### Removed (dead parameters)

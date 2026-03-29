@@ -81,7 +81,7 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		--aligner [STR], Aligner for leaf matching: "bwa" (default) or "minimap2"
 		--minimap2-kmer [INT], minimap2 k-mer size [default: 15]
 		--minimap2-window [INT], minimap2 minimizer window size [default: 5]
-		--max-bwa-matches [INT], Maximum leaf matches per read [default: 10]
+		--max-leaf-matches [INT], Maximum leaf matches per read [default: 10]
 		--best-leaf-threshold [FLOAT], Score threshold for best-leaf override [default: 0, disabled]
 		--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 0, disabled]
 		--early-termination, Enable early termination of scoring
@@ -107,7 +107,7 @@ Parameters fall into **4 independent groups** that do not interact with each oth
 
 ```
 GROUP 1: Aligner Selection          GROUP 2: Candidate Cap
-  --aligner                           --max-bwa-matches
+  --aligner                           --max-leaf-matches
   --minimap2-kmer
   --minimap2-window
 
@@ -124,7 +124,7 @@ BUILD-TIME (tronko-build):
 
 **Cross-group interactions are minimal.** Group 1 determines *which* leaf candidates are found; Group 2 caps *how many* are kept; Group 3 controls *how votes are tallied and the best-leaf override*; Group 4 trades *scoring speed for completeness*. Each group can be benchmarked independently against a baseline, then promising values combined.
 
-The one exception: `--max-bwa-matches` (Group 2) interacts weakly with Group 1 — if the aligner finds more candidates, a higher cap matters more. But the interaction is monotonic (more matches + higher cap = more information), so they don't need a full cross-product grid.
+The one exception: `--max-leaf-matches` (Group 2) interacts weakly with Group 1 — if the aligner finds more candidates, a higher cap matters more. But the interaction is monotonic (more matches + higher cap = more information), so they don't need a full cross-product grid.
 
 ---
 
@@ -183,7 +183,7 @@ For amplicon databases (references ~250bp, queries ~150bp), k=15 w=5 is a good s
 
 ### Group 2: Candidate Cap (Independent)
 
-#### `--max-bwa-matches`
+#### `--max-leaf-matches`
 
 Controls the maximum number of leaf matches (from either aligner) considered per read. After the aligner returns hits, only up to this many unique tree-leaf pairs are kept for downstream scoring.
 
@@ -194,17 +194,17 @@ Controls the maximum number of leaf matches (from either aligner) considered per
 | 100+ | Diminishing returns; most reads match <20 unique leaves. |
 
 ```bash
-tronko-assign --max-bwa-matches 30 [other options...]
+tronko-assign --max-leaf-matches 30 [other options...]
 ```
 
 **This parameter is independent** of all others. It only controls how many candidates pass through to scoring. Increasing it never hurts accuracy (just costs time), so it can be benchmarked as a simple sweep:
 
 ```bash
 # Suggested sweep:
---max-bwa-matches 10   # Default
---max-bwa-matches 20
---max-bwa-matches 50
---max-bwa-matches 100
+--max-leaf-matches 10   # Default
+--max-leaf-matches 20
+--max-leaf-matches 50
+--max-leaf-matches 100
 ```
 
 ---
@@ -368,7 +368,7 @@ tronko-assign --trace-read "*" [other options...] 2>trace.log
 Example trace output:
 ```
 TRACE read=GU572157.1_0
-  BWA hits: 10 unique trees (raw: 0 concordant + 10 discordant, max_bwa_matches=10)
+  BWA hits: 10 unique trees (raw: 0 concordant + 10 discordant, max_leaf_matches=10)
     hit[0]: tree=0 node=2371 leaf=GU571681.1 numspec=1466
     hit[1]: tree=0 node=1903 leaf=DQ434794.1 numspec=1466
     ...
@@ -401,10 +401,10 @@ tronko-assign -r -f ref.txt -a ref.fasta -s -g reads.fasta -o out.txt -w
 
 **Group 2 (Candidate cap) — 4 runs:**
 ```bash
---max-bwa-matches 10   # default
---max-bwa-matches 20
---max-bwa-matches 50
---max-bwa-matches 100
+--max-leaf-matches 10   # default
+--max-leaf-matches 20
+--max-leaf-matches 50
+--max-leaf-matches 100
 ```
 
 **Group 3 (Voting/LCA) — sequential sweeps, ~8-16 runs total:**
