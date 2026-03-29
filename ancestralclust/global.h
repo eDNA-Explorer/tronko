@@ -7,15 +7,15 @@
 #define _GLOBAL_
 
 #define FASTA_MAXLINE 6000
-#define MAXNAME 30
+#define MAXNAME 256
 #define MIN_SEQ 100
 #define MAX_FILENAME 100
 #define DISTMAX 30.0
 #define MINBL 0.00001
 #define MAXBL 2.0
-#define MAXNUMBEROFCLUSTERS 500
+#define MAXNUMBEROFCLUSTERS 512
 #define MAXNUMBEROFKSEQS 10000
-#define MAXNUMINCLUSTER 10000
+#define MAXNUMINCLUSTER 50000
 #define PADDING 500
 #define MIN_REQ_SSIZE 81920
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/

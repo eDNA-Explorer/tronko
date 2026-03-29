@@ -16,9 +16,10 @@ set -euo pipefail
 # Run from ~/tronko
 # ============================================================
 
-MARKER="${1:?Usage: bash ac-6builds.sh <MARKER> [THREADS]}"
+MARKER="${1:?Usage: bash ac-6builds.sh <MARKER> [THREADS] [CONFIG]}"
 
 THREADS="${2:-64}"
+ONLY_CONFIG="${3:-}"   # optional: "default" or "more_bins" to run just one
 FAMSA_THREADS=$(( THREADS / 8 ))
 PARALLEL_JOBS=$(( THREADS / 8 ))
 AC_DESCENDANTS=75
@@ -78,6 +79,11 @@ for VARIANT in lca species; do
     for AC_ENTRY in "${AC_CONFIGS[@]}"; do
         CONFIG_NAME="${AC_ENTRY%% *}"
         AC_BIN_SIZE="${AC_ENTRY#* }"
+
+        # Skip if a specific config was requested and this isn't it
+        if [[ -n "$ONLY_CONFIG" && "$CONFIG_NAME" != "$ONLY_CONFIG" ]]; then
+            continue
+        fi
         CONFIG_DIR="${DB_BASE}/${VARIANT}/ac/${CONFIG_NAME}"
         mkdir -p "$CONFIG_DIR"
 
@@ -109,7 +115,6 @@ for VARIANT in lca species; do
                 -B "$AC_BIN_SIZE" \
                 -P "$AC_DESCENDANTS" \
                 -J "$PARALLEL_JOBS" \
-                -L \
                 --cache-dir "$CONFIG_DIR/.cache"
 
             cp "$INPUT_FASTA" "$OUTDIR/input.fasta"

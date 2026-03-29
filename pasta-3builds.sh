@@ -113,10 +113,14 @@ with open('$pasta_tree') as f:
 data = data.replace(\"'\", '')
 data = re.sub(r'\)([0-9][0-9.eE+-]*):', '):', data)
 
-# Replace safe names with originals (no quoting needed — nw_reroot handles pipes)
+# Replace safe names with originals
 def replace_name(m):
     safe = m.group(1)
-    return trans.get(safe, safe)
+    orig = trans.get(safe, safe)
+    # Quote names with special chars for Newick compatibility
+    if '|' in orig or ':' in orig:
+        return \"'\" + orig + \"'\"
+    return orig
 
 data = re.sub(r'([A-Za-z0-9_.-]+)(?=:)', replace_name, data)
 # Ensure exactly one tree: strip trailing whitespace/semicolons, add one semicolon
@@ -125,12 +129,13 @@ data = re.sub(r'[;\s]+$', '', data) + ';'
 with open('$pasta_tree', 'w') as f:
     f.write(data + '\n')
 
-print(f'Restored {len(trans)} names, {sum(1 for v in trans.values() if \":\" in v)} quoted')
+quoted = sum(1 for v in trans.values() if '|' in v or ':' in v)
+print(f'Restored {len(trans)} names, {quoted} quoted for Newick compatibility')
 "
 
-    # Midpoint root
+    # Midpoint root, then strip quotes from leaf names
     local rooted_tree="${output_dir}/${job_name}.rooted.tre"
-    nw_reroot "$pasta_tree" > "$rooted_tree"
+    nw_reroot "$pasta_tree" | sed "s/'//g" > "$rooted_tree"
     echo "Rooted tree: $rooted_tree"
 
     # Return path via global
