@@ -240,6 +240,8 @@ else
     while true; do
         AC_ATTEMPT=$((AC_ATTEMPT + 1))
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust attempt $AC_ATTEMPT of $AC_MAX_RETRIES..."
+        # Disable pipefail for ancestralclust (it interacts badly with signal handling)
+        set +o pipefail
         if ancestralclust -f \
             -i "$CLUSTER_INPUT_FASTA" \
             -b "$NUM_BINS" \
@@ -248,9 +250,11 @@ else
             -l "$NUM_LINES" \
             -c "$AC_THREADS" \
             -d "$AC_DIR"; then
+            set -o pipefail
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust succeeded on attempt $AC_ATTEMPT"
             break
         else
+            set -o pipefail
             echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust failed (attempt $AC_ATTEMPT)" >&2
             if [[ "$AC_ATTEMPT" -ge "$AC_MAX_RETRIES" ]]; then
                 echo "ERROR: ancestralclust failed after $AC_MAX_RETRIES attempts" >&2
