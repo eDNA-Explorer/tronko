@@ -15,7 +15,7 @@
 #define MAXBL 2.0
 #define MAXNUMBEROFCLUSTERS 512
 #define MAXNUMBEROFKSEQS 10000
-#define MAXNUMINCLUSTER 50000
+#define MAXNUMINCLUSTER 200000
 #define PADDING 500
 #define MIN_REQ_SSIZE 81920
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/

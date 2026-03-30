@@ -12,7 +12,7 @@ CFLAGS = -w -fpermissive -std=gnu99
 DBGCFLAGS = -g -w -fpermissive -std=gnu99 -fopenmp
 LIBS = -lm -pthread -lz
 OPENMP = -fopenmp
-OPTIMIZATION = -O2
+OPTIMIZATION = -O1
 
 # Architecture-specific optimization (use: make NATIVE_ARCH=1)
 ifdef NATIVE_ARCH

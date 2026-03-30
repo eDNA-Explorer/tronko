@@ -235,7 +235,7 @@ else
         AC_THREADS=4
     fi
 
-    AC_MAX_RETRIES=3
+    AC_MAX_RETRIES=10
     AC_ATTEMPT=0
     while true; do
         AC_ATTEMPT=$((AC_ATTEMPT + 1))

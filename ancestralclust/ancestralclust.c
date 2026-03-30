@@ -1262,10 +1262,13 @@ void printClusters(int start, int number_of_clusters, Options opt, char** taxono
 	char fileName[FASTA_MAXLINE];
 	char *directory = strdup(opt.output_directory);
 	int i, j, k;
+	/* Allocate enough for worst case: all sequences in one cluster.
+	   numToPrint is the actual count; numberToAssign may be smaller. */
+	int allocPerCluster = numToPrint > numberToAssign ? numToPrint : numberToAssign;
 	char*** assignedSeqs = (char ***)malloc(number_of_clusters*sizeof(char **));
 	for (i=0; i<number_of_clusters; i++){
-		assignedSeqs[i] = (char **)malloc(numberToAssign*sizeof(char *));
-		for(j=0; j<numberToAssign; j++){
+		assignedSeqs[i] = (char **)malloc(allocPerCluster*sizeof(char *));
+		for(j=0; j<allocPerCluster; j++){
 			assignedSeqs[i][j] = (char *)malloc((fasta_specs[2]+1)*sizeof(char));
 		}
 	}
@@ -1345,10 +1348,11 @@ void saveCLSTR(int start, int number_of_total_seqs, mystruct mstr, int numToPrin
 	for(i=0; i<number_of_clusters; i++){
 		clusterSizes[i]=0;
 	}
+	int allocPerCluster2 = numToPrint > numberToAssign ? numToPrint : numberToAssign;
 	char*** assignedSeqs = (char ***)malloc(number_of_clusters*sizeof(char **));
 	for (i=0; i<number_of_clusters; i++){
-		assignedSeqs[i] = (char **)malloc(numberToAssign*sizeof(char *));
-		for(j=0; j<numberToAssign; j++){
+		assignedSeqs[i] = (char **)malloc(allocPerCluster2*sizeof(char *));
+		for(j=0; j<allocPerCluster2; j++){
 			assignedSeqs[i][j] = (char *)malloc((fasta_specs[2]+1)*sizeof(char));
 		}
 	}
