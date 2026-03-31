@@ -393,8 +393,8 @@ void updateChooseK(int* chooseK, int index, int clusterSize){
 //upper triangular matrix by deleting row k and column k
 void updatematrix(double **matrix, int k, int n){
 	int i,j;
-	for (i=0; i<n; i++){
-		for (j=i+1; j<n; j++){
+	for (i=0; i<n-1; i++){
+		for (j=i+1; j<n-1; j++){
 			if (i>=k && j>=k){
 				matrix[i][j]=matrix[i+1][j+1];
 			}else if (i>=k) {
@@ -1262,9 +1262,8 @@ void printClusters(int start, int number_of_clusters, Options opt, char** taxono
 	char fileName[FASTA_MAXLINE];
 	char *directory = strdup(opt.output_directory);
 	int i, j, k;
-	/* Allocate enough for worst case: all sequences in one cluster.
-	   numToPrint is the actual count; numberToAssign may be smaller. */
-	int allocPerCluster = numToPrint > numberToAssign ? numToPrint : numberToAssign;
+	/* Allocate enough for worst case: all sequences in one cluster. */
+	int allocPerCluster = numToPrint;
 	char*** assignedSeqs = (char ***)malloc(number_of_clusters*sizeof(char **));
 	for (i=0; i<number_of_clusters; i++){
 		assignedSeqs[i] = (char **)malloc(allocPerCluster*sizeof(char *));
@@ -1277,8 +1276,14 @@ void printClusters(int start, int number_of_clusters, Options opt, char** taxono
 		clusterSizes[i]=0;
 	}
 	for(i=0; i<numToPrint; i++){
-		strcpy(assignedSeqs[mstr.str->clusterNumber[i]-1][clusterSizes[mstr.str->clusterNumber[i]-1]],readsStruct->name[mstr.str->index[i]]);
-		clusterSizes[mstr.str->clusterNumber[i]-1]++;
+		int cn = mstr.str->clusterNumber[i];
+		if (cn < 1 || cn > number_of_clusters) {
+			fprintf(stderr, "BUG: clusterNumber[%d]=%d out of range [1,%d], index=%d, numToPrint=%d\n",
+				i, cn, number_of_clusters, mstr.str->index[i], numToPrint);
+			continue;
+		}
+		strcpy(assignedSeqs[cn-1][clusterSizes[cn-1]],readsStruct->name[mstr.str->index[i]]);
+		clusterSizes[cn-1]++;
 	}
 	for(i=1; i<number_of_clusters; i++){
 		if (opt.slash==0 && opt.default_directory==0){
@@ -1318,6 +1323,10 @@ void printClusters(int start, int number_of_clusters, Options opt, char** taxono
 					break;
 				}
 			}
+			if (k == numToPrint){
+				fprintf(stderr, "Warning: sequence '%s' not found in index, skipping\n", assignedSeqs[i-1][j]);
+				continue;
+			}
 			fprintf(clusterFile,"%s\n",readsStruct->sequence[mstr.str->index[k]]);
 			if (hasTaxFile==1){
 				//fprintf(clusterTaxFile,"%s\t%s\n",assignedSeqs[i-1][j],(char *)hashmap_get(&taxMap,assignedSeqs[i-1][j]));
@@ -1331,9 +1340,13 @@ void printClusters(int start, int number_of_clusters, Options opt, char** taxono
 	}
 	free(clusterSizes);
 	for(i=0; i<number_of_clusters; i++){
+		for(j=0; j<allocPerCluster; j++){
+			free(assignedSeqs[i][j]);
+		}
 		free(assignedSeqs[i]);
 	}
 	free(assignedSeqs);
+	free(directory);
 }
 void saveCLSTR(int start, int number_of_total_seqs, mystruct mstr, int numToPrint, char*** clstr, int** clstr_lengths, int max_length, int numberToAssign, int* fasta_specs){
 	int i,j,k,l;
@@ -1348,7 +1361,7 @@ void saveCLSTR(int start, int number_of_total_seqs, mystruct mstr, int numToPrin
 	for(i=0; i<number_of_clusters; i++){
 		clusterSizes[i]=0;
 	}
-	int allocPerCluster2 = numToPrint > numberToAssign ? numToPrint : numberToAssign;
+	int allocPerCluster2 = numToPrint;
 	char*** assignedSeqs = (char ***)malloc(number_of_clusters*sizeof(char **));
 	for (i=0; i<number_of_clusters; i++){
 		assignedSeqs[i] = (char **)malloc(allocPerCluster2*sizeof(char *));
@@ -1366,6 +1379,10 @@ void saveCLSTR(int start, int number_of_total_seqs, mystruct mstr, int numToPrin
 				if ( strcmp(readsStruct->name[mstr.str->index[k]],assignedSeqs[i][j])==0 ){
 					break;
 				}
+			}
+			if (k == numToPrint){
+				fprintf(stderr, "Warning: sequence '%s' not found in index, skipping\n", assignedSeqs[i][j]);
+				continue;
 			}
 			int length = strlen(readsStruct->sequence[mstr.str->index[k]]);
 			//for(l=0; l<max_length; l++){
@@ -1386,6 +1403,9 @@ void saveCLSTR(int start, int number_of_total_seqs, mystruct mstr, int numToPrin
 	}
 	free(clusterSizes);
 	for(i=0; i<number_of_clusters; i++){
+		for(j=0; j<allocPerCluster2; j++){
+			free(assignedSeqs[i][j]);
+		}
 		free(assignedSeqs[i]);
 	}
 	free(assignedSeqs);
@@ -3157,6 +3177,7 @@ int findNumberOfClusters(int number_of_possible_clusters){
 			return i;
 		}
 	}
+	return number_of_possible_clusters;
 }
 void shiftColumns(int kseqs){
 	int i,j,k;
@@ -3849,13 +3870,10 @@ void saveChooseKSeq( FILE* fasta, int* chooseK, char*** clusters, char*** cluste
 		s = strtok(buffer,"\n");
 		if (s != NULL){
 		size=strlen(s);
-		if ( buffer[0] == '>' && i==chooseK[k] ){
+		if ( buffer[0] == '>' && k < kseqs && i==chooseK[k] ){
 			if (k != 0){
 				last_size=strlen(cluster_seqs[0][k-1]);
 				cluster_seqs[0][k-1][last_size]='\0';
-			}
-			if (k==kseqs){
-				break;
 			}
 			for(j=1;j<size;j++){
 				clusters[0][k][j-1]=buffer[j];
@@ -3944,7 +3962,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 		accession = strtok(buffer,"\t");
 		lineTaxonomy = strtok(NULL,"\n");
 		assert(strlen(accession) <= max_read_name);
-		if ( n <= kseqs && assignedReads[n] != lineNumber && assignedSeqs[lineNumber] == -1){
+		if ( n < kseqs && assignedReads[n] != lineNumber && assignedSeqs[lineNumber] == -1){
 			strcpy(readsStruct->taxonomy[j],lineTaxonomy);
 			j++;
 			if (j==numberOfLinesToRead){
@@ -3956,7 +3974,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 			if (j==numberOfLinesToRead){
 				break;
 			}*/
-		}else if ( n <= kseqs && assignedReads[n] == lineNumber  ){
+		}else if ( n < kseqs && assignedReads[n] == lineNumber  ){
 			n++;
 		}
 		lineNumber++;
@@ -3968,7 +3986,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 		countLines++;
 		if ( s != NULL ){
 			size = strlen(s);
-			if (k <= kseqs && iter != assignedReads[k] && assignedSeqs[iter] == -1 && buffer[0] == '>' ){
+			if (k < kseqs && iter != assignedReads[k] && assignedSeqs[iter] == -1 && buffer[0] == '>' ){
 				if (refresh >= numberOfLinesToRead){
 					break;
 				}
@@ -4004,7 +4022,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 				}else if ( last_size == 0 && size >= MIN_SEQ && refresh==numberOfLinesToRead ){
 					break;
 				}
-			}else if ( k <= kseqs && iter == assignedReads[k] && buffer[0] == '>'){
+			}else if ( k < kseqs && iter == assignedReads[k] && buffer[0] == '>'){
 				save_seq=0;
 				k++;
 				iter++;
