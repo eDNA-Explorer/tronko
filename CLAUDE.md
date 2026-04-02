@@ -94,6 +94,8 @@ Partition mode (-y):
 General:
   -a                Use FastTree instead of RAxML (shorthand for --tree-tool fasttree)
   --tree-tool [STR] Tree inference tool: raxml, fasttree, veryfasttree (default: raxml)
+  --tree-seed [INT] Seed for VeryFastTree/FastTree RNG (-seed N); 0 = no seed (default: 0)
+  --no-gamma        Omit -gamma from VeryFastTree/FastTree (default: gamma is always used)
   -c [INT]          FAMSA threads (0 = auto-detect, default: 0)
   -g                Don't flag missing data
   -i [STRING]       Prefix for output partition filenames
@@ -127,6 +129,7 @@ Options:
   -B    AncestralClust bin size — target seqs per cluster (default: 20000)
   -P    AncestralClust descendants parameter (default: 75)
   -J    Parallel jobs for Step 2 cluster processing (default: 1)
+  --tree-seed [INT]  Seed for VeryFastTree/FastTree RNG; 0 = no seed (default: 0)
 ```
 
 The `-J` flag runs up to J cluster alignments/trees concurrently in Step 2.

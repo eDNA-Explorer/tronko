@@ -900,15 +900,40 @@ static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
 			if (opt.tree_tool == TREE_VERYFASTTREE){
 				int t = (opt.famsa_threads > 0) ? opt.famsa_threads : pipeline_threads;
 				if (t <= 0) t = 1;
-				char threads_str[16];
+				char threads_str[16], seed_str[16];
 				snprintf(threads_str, sizeof(threads_str), "%d", t);
-				char *vft_args[] = {"VeryFastTree", "-threads", threads_str,
-					"-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
-				execvp("VeryFastTree", vft_args);
+				const char *vft_args[16];
+				int ai = 0;
+				vft_args[ai++] = "VeryFastTree";
+				vft_args[ai++] = "-threads"; vft_args[ai++] = threads_str;
+				if (opt.tree_seed != 0) {
+					snprintf(seed_str, sizeof(seed_str), "%d", opt.tree_seed);
+					vft_args[ai++] = "-seed"; vft_args[ai++] = seed_str;
+				}
+				vft_args[ai++] = "-gtr";
+				if (!opt.no_gamma) vft_args[ai++] = "-gamma";
+				vft_args[ai++] = "-nt";
+				vft_args[ai++] = "-nosupport";
+				vft_args[ai++] = ft_input;
+				vft_args[ai] = NULL;
+				execvp("VeryFastTree", (char *const *)vft_args);
 				fprintf(stderr, "VeryFastTree not found\n");
 			}else{
-				char *ft_args[] = {"FastTree", "-gtr", "-gamma", "-nt", "-nosupport", ft_input, NULL};
-				execvp("FastTree", ft_args);
+				char seed_str[16];
+				const char *ft_args[12];
+				int ai = 0;
+				ft_args[ai++] = "FastTree";
+				if (opt.tree_seed != 0) {
+					snprintf(seed_str, sizeof(seed_str), "%d", opt.tree_seed);
+					ft_args[ai++] = "-seed"; ft_args[ai++] = seed_str;
+				}
+				ft_args[ai++] = "-gtr";
+				if (!opt.no_gamma) ft_args[ai++] = "-gamma";
+				ft_args[ai++] = "-nt";
+				ft_args[ai++] = "-nosupport";
+				ft_args[ai++] = ft_input;
+				ft_args[ai] = NULL;
+				execvp("FastTree", (char *const *)ft_args);
 				fprintf(stderr, "FastTree not found\n");
 			}
 			_exit(127);
@@ -1677,6 +1702,8 @@ int main(int argc, char **argv){
 	opt.parallel_jobs = 1;
 	opt.column_gap_threshold = 1.0; /* 1.0 = no masking (impossible to exceed 100% gaps) */
 	opt.legacy_sp = 0;
+	opt.tree_seed = 0;
+	opt.no_gamma  = 0;
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
 		opt.partitions_directory[i] = '\0';

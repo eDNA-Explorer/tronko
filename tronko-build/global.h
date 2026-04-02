@@ -137,6 +137,8 @@ typedef struct Options{
 	int parallel_jobs;
 	double column_gap_threshold;
 	int legacy_sp;
+	int tree_seed;   /* seed for VeryFastTree/FastTree (-seed N); 0 = no seed (random) */
+	int no_gamma;    /* if 1, omit -gamma from VeryFastTree/FastTree invocation */
 }Options;
 
 typedef struct masterArr{

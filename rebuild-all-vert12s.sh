@@ -62,6 +62,9 @@ PASTA_SP_THRESHOLDS=(2.00 2.25 2.50 2.75)
 # Whether to build gamma and/or nogamma variants
 PASTA_GAMMA=(true false)  # true=gamma, false=nogamma
 
+# Fixed seed for VeryFastTree/FastTree reproducibility (0 = random/no seed)
+TREE_SEED="${TREE_SEED:-42}"
+
 # ── AC configs ───────────────────────────────────────────────
 # Each entry: "label BIN_SIZE DESCENDANTS"
 AC_CONFIGS=(
@@ -260,16 +263,19 @@ run_pasta_pipeline() {
             # gamma/nogamma variants (norepartition: -f 999999)
             for gamma in "${PASTA_GAMMA[@]}"; do
                 local suffix; [[ "$gamma" == "true" ]] && suffix="gamma" || suffix="nogamma"
+                local gamma_flag; [[ "$gamma" == "true" ]] && gamma_flag="" || gamma_flag="--no-gamma"
                 local build_dir="${config_dir}/${suffix}"
                 log "    $variant/pasta/${part_label}/${suffix} ($n_parts partitions)"
-                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" -f 999999
+                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" \
+                    -f 999999 --tree-seed "$TREE_SEED" ${gamma_flag:+$gamma_flag}
             done
 
             # SP repartitioning variants
             for sp in "${PASTA_SP_THRESHOLDS[@]}"; do
                 local build_dir="${config_dir}/sp${sp}"
                 log "    $variant/pasta/${part_label}/sp${sp} ($n_parts partitions)"
-                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" -s -u "$sp"
+                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" \
+                    -s -u "$sp" --tree-seed "$TREE_SEED"
             done
         done
 
@@ -302,15 +308,18 @@ run_pasta_pipeline() {
 
             for gamma in "${PASTA_GAMMA[@]}"; do
                 local suffix; [[ "$gamma" == "true" ]] && suffix="gamma" || suffix="nogamma"
+                local gamma_flag; [[ "$gamma" == "true" ]] && gamma_flag="" || gamma_flag="--no-gamma"
                 local build_dir="${config_dir}/${suffix}"
                 log "    $variant/pasta/${part_label}/${suffix} ($n_parts partitions)"
-                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" -f 999999
+                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" \
+                    -f 999999 --tree-seed "$TREE_SEED" ${gamma_flag:+$gamma_flag}
             done
 
             for sp in "${PASTA_SP_THRESHOLDS[@]}"; do
                 local build_dir="${config_dir}/sp${sp}"
                 log "    $variant/pasta/${part_label}/sp${sp} ($n_parts partitions)"
-                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" -s -u "$sp"
+                run_tronko_on_partitions "$part_dir" "$build_dir" "$n_parts" \
+                    -s -u "$sp" --tree-seed "$TREE_SEED"
             done
         done
     done
@@ -370,7 +379,8 @@ run_ac_pipeline() {
                     -B "$ac_bin_size" \
                     -P "$ac_descendants" \
                     -J "$PARALLEL_JOBS" \
-                    --cache-dir "${config_dir}/cache"
+                    --cache-dir "${config_dir}/cache" \
+                    --tree-seed "$TREE_SEED"
 
                 cp "$INPUT_FASTA" "$build_dir/input.fasta"
                 cp "$INPUT_TAX" "$build_dir/input_taxonomy.txt"

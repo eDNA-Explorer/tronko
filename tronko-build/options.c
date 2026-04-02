@@ -24,6 +24,8 @@ static struct option long_options[]=
 	{"prefix", required_argument, 0, 'i'},
 	{"fasttree", no_argument, 0, 'a'},
 	{"tree-tool", required_argument, 0, 256},
+	{"tree-seed", required_argument, 0, 257},
+	{"no-gamma",  no_argument,       0, 258},
 	{"export-subtrees", no_argument, 0, 'E'},
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
@@ -176,6 +178,14 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Unknown --tree-tool: %s (options: raxml, fasttree, veryfasttree)\n", optarg);
 					exit(-1);
 				}
+				break;
+			case 257: /* --tree-seed */
+				success = sscanf(optarg, "%d", &(opt->tree_seed));
+				if (!success)
+					fprintf(stderr, "Invalid --tree-seed value\n");
+				break;
+			case 258: /* --no-gamma */
+				opt->no_gamma = 1;
 				break;
 			case 'E':
 				opt->export_subtrees = 1;
