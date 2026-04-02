@@ -34,6 +34,7 @@ THREADS=8
 PARALLEL_JOBS=1
 SP_THRESHOLD=0.1
 TREE_TOOL="${TREE_TOOL:-veryfasttree}"
+TREE_SEED="${TREE_SEED:-0}"
 EXPORT_SUBTREES=0
 LEGACY_SP=0
 AC_CUTOFF=25000
@@ -46,6 +47,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --tree-tool) TREE_TOOL="$2"; shift 2 ;;
         --tree-tool=*) TREE_TOOL="${1#*=}"; shift ;;
+        --tree-seed) TREE_SEED="$2"; shift 2 ;;
+        --tree-seed=*) TREE_SEED="${1#*=}"; shift ;;
         --cache-dir) SHARED_CACHE_DIR="$2"; shift 2 ;;
         --cache-dir=*) SHARED_CACHE_DIR="${1#*=}"; shift ;;
         *) ARGS+=("$1"); shift ;;
@@ -339,8 +342,10 @@ build_cluster_tree() {
 
     if [[ "$TREE_TOOL" == "veryfasttree" ]]; then
         # VeryFastTree with native -threads flag
+        local seed_args=()
+        [[ "${TREE_SEED:-0}" != "0" ]] && seed_args=("-seed" "$TREE_SEED")
         set +e
-        $TREE_BIN -threads "$cluster_threads" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN -threads "$cluster_threads" "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -351,9 +356,11 @@ build_cluster_tree() {
         fi
     elif [[ "$TREE_TOOL" == "fasttree" ]]; then
         # FastTree uses OMP_NUM_THREADS env var for threading
+        local seed_args=()
+        [[ "${TREE_SEED:-0}" != "0" ]] && seed_args=("-seed" "$TREE_SEED")
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
-        $TREE_BIN -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -557,6 +564,9 @@ if [[ "$EXPORT_SUBTREES" -eq 1 ]]; then
 fi
 if [[ "$LEGACY_SP" -eq 1 ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS --legacy-sp"
+fi
+if [[ "${TREE_SEED:-0}" != "0" ]]; then
+    TRONKO_FLAGS="$TRONKO_FLAGS --tree-seed $TREE_SEED"
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
