@@ -7,7 +7,9 @@
 #define STATESPACE 20 /*number of categories in approximation of gamma distribution for Ne. Must be at least 4 because some of the memory is used for the nucleotide model*/
 #define MAXNUMBEROFINDINSPECIES 500 /*maximum number of individuals belonging to a species*/
 #define MAXQUERYLENGTH 1000 /*the maximum length of the query seqeunce*/
+#ifndef NUMCAT
 #define NUMCAT 1/*number of categories in the discretization of the gamma for the nucleotide substituion model*/
+#endif
 #define MINBL 0.000001
 #define MAXBL 2.0
 #define MAXTIEBREAK 64
@@ -19,18 +21,22 @@
 #define MAX_NUM_BWA_MATCHES 5000
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 50000
-#define NUM_THREADS 1
+// Thread count controlled by OMP_NUM_THREADS environment variable
 #define MAXTAXLENGTHNAME 256
 #define MAXFILENAME 1000
 #define BUFFER_SIZE 1000
 extern FILE *infile, *outfile, *treefile;
 extern int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 extern int *rootArr, *numspecArr, *numbaseArr, ***seqArr;
-extern int root,tip,comma; /*globals used to read in the tree*/
+extern int **columnMaskArr;
+extern __thread int root,tip,comma; /*globals used to read in the tree*/
 extern double Logfactorial[MAXNUMBEROFINDINSPECIES];
 extern double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
+#pragma omp threadprivate(LRVEC, RRVEC, RRVAL, PMAT1, PMAT2)
 extern double LRVECnc[4][4], RRVECnc[4][4], RRVALnc[4], PMATnc[2][4][5];
+#pragma omp threadprivate(LRVECnc, RRVECnc, RRVALnc, PMATnc)
 extern double *statevector, UFC, *UFCnc, **templike_nc;
+#pragma omp threadprivate(statevector, UFC, UFCnc, templike_nc)
 //extern int ***PP; // WE SHOULD TEST WHAT IS THE FASTEST. MAYBE MOVE TO UNSIGNED SHORT?
 extern type_of_PP ***PP;
 extern type_of_PP ***PPcopy;
@@ -38,8 +44,9 @@ extern type_of_PP ****PP_Arr;
 extern char ***taxonomy;
 extern char ****taxonomyArr;
 
+#define MAX_NODE_CHILDREN 1000
 typedef struct node{
-	int up[1000];
+	int up[MAX_NODE_CHILDREN];
 	int down;
 	int nd;
 	int depth;
@@ -95,26 +102,28 @@ typedef struct partition_files{
 	char **tax_files;
 }partition_files;
 
+typedef enum { TREE_RAXML, TREE_FASTTREE, TREE_VERYFASTTREE } TreeTool;
+
 typedef struct Options{
-	char msa_file[200];
-	char tree_file[200];
-	char taxonomy_file[200];
+	char msa_file[2000];
+	char tree_file[2000];
+	char taxonomy_file[2000];
 	int number_of_trees;
 	int two_step;
 	int remove_unused;
 	int reference_mode;
 	int use_partitions;
-	char reference_file[200];
+	char reference_file[2000];
 	char paired_or_single[7];
 	char read1_file[2000];
 	char read2_file[2000];
-	char partitions_directory[200];
-	char results_file[200];
+	char partitions_directory[2000];
+	char results_file[2000];
 	int use_spscore;
 	int use_min_leaves;
 	int min_leaves;
 	double sp_score;
-	char fasta_file[200];
+	char fasta_file[2000];
 	double cinterval;
 	char readdir[2000];
 	int number_of_partitions;
@@ -123,7 +132,13 @@ typedef struct Options{
 	char prefix[2000];
 	int missing_data;
 	int famsa_threads;
-	int fasttree;
+	TreeTool tree_tool;
+	int export_subtrees;
+	int parallel_jobs;
+	double column_gap_threshold;
+	int legacy_sp;
+	int tree_seed;   /* seed for VeryFastTree/FastTree (-seed N); 0 = no seed (random) */
+	int no_gamma;    /* if 1, omit -gamma from VeryFastTree/FastTree invocation */
 }Options;
 
 typedef struct masterArr{
@@ -133,6 +148,7 @@ typedef struct masterArr{
 	char ***taxonomy;
 	int numspec;
 	int numNodes;
+	int treeCapacity; /* allocated slots in tree array (for createNode growth) */
 	int root;
 	int numbase;
 	char **names;
@@ -142,8 +158,10 @@ typedef struct masterArr{
 extern node **treeArr;
 extern int COUNT2;
 extern int COUNT;
+#pragma omp threadprivate(COUNT, COUNT2)
 extern double *localpi;
 extern int localnode;
+#pragma omp threadprivate(localpi, localnode)
 extern double currentestimate[10];
 
 //extern char *locQuery;
@@ -152,6 +170,7 @@ extern char *seqInRoot;
 extern char **nodeIDs;
 extern char ***nodeIDsArr;
 extern double parameters[10];
+#pragma omp threadprivate(parameters)
 extern double maxpar[4];
 extern double ml;
 //extern int open;

@@ -1,0 +1,6 @@
+outs:
+- md5: 378f786210140bc22d00fbe7a701bcc3.dir
+  size: 3893573886
+  nfiles: 71145
+  hash: md5
+  path: sp2.25

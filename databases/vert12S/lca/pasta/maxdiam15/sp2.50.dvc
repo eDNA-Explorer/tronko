@@ -1,0 +1,6 @@
+outs:
+- md5: 97997dc6b9b5bda703dbd31bfa777f61.dir
+  size: 4085507925
+  nfiles: 86904
+  hash: md5
+  path: sp2.50

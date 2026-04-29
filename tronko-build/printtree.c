@@ -38,6 +38,9 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 	snprintf(buf,BUFFER_SIZE,"%s/reference_tree.txt",opt.partitions_directory);
 	FILE *outputTree = fopen(buf,"w");
 	if  ( outputTree == NULL ){ printf("Error opening reference tree file!\n"); exit(-1); }
+	/* Opt 5: 256KB write buffer for bulk I/O */
+	char *io_buf = malloc(256 * 1024);
+	if (io_buf) setvbuf(outputTree, io_buf, _IOFBF, 256 * 1024);
 	fprintf(outputTree,"%d\n",numberOfTrees);
 	fprintf(outputTree,"%d\n",max_nodename);
 	fprintf(outputTree,"%d\n",max_tax_name);
@@ -56,31 +59,160 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 			}
 		}
 	}
-	for(i=0; i<numberOfTrees;i++){
-		for(j=0;j<2*numspecArr[i]-1;j++){
-			fprintf(outputTree,"%d\t",i);
-			fprintf(outputTree,"%d\t",j);
-			fprintf(outputTree,"%d\t",treeArr[i][j].up[0]);
-			fprintf(outputTree,"%d\t",treeArr[i][j].up[1]);
-			fprintf(outputTree,"%d\t",treeArr[i][j].down);
-			fprintf(outputTree,"%d\t",treeArr[i][j].depth);
-			fprintf(outputTree,"%d\t",treeArr[i][j].taxIndex[0]);
-			fprintf(outputTree,"%d\t",treeArr[i][j].taxIndex[1]);
-			if ( treeArr[i][j].up[0] != -1 && treeArr[i][j].up[1] != -1 ){
-				fprintf(outputTree,"\n");
-			}else{
-				fprintf(outputTree,"%s\n",treeArr[i][j].name);
-			}
-			for (k=0; k<numbaseArr[i]-1; k++){
-				for (l=0; l<3; l++){
-					fprintf(outputTree,"%.17g\t",treeArr[i][j].posteriornc[k][l]);
+	/* Open progress file for write-phase tracking */
+	char progress_path[BUFFER_SIZE];
+	snprintf(progress_path, BUFFER_SIZE, "%s/_progress.txt", opt.partitions_directory);
+	FILE *progress_fp = fopen(progress_path, "w");
+
+	/* Batch formatting: build lines in a local buffer to reduce fprintf call overhead.
+	   Each posterior row is 4 doubles at ~24 chars each + tabs/newline ≈ 120 bytes max.
+	   Use a 64KB buffer and flush when near-full. */
+	{
+		const int LBUF_SIZE = 65536;
+		char *lbuf = malloc(LBUF_SIZE);
+		if (!lbuf){ fprintf(stderr, "Out of memory for print buffer\n"); exit(1); }
+		int lpos = 0;
+		for(i=0; i<numberOfTrees;i++){
+			if (i % 100 == 0 || i == numberOfTrees - 1){
+				printf("  Writing tree %d/%d\n", i+1, numberOfTrees);
+				fflush(stdout);
+				if (progress_fp) {
+					fseek(progress_fp, 0, SEEK_SET);
+					ftruncate(fileno(progress_fp), 0);
+					fprintf(progress_fp, "stage=writing\ntrees_total=%d\ntrees_written=%d\n", numberOfTrees, i+1);
+					fflush(progress_fp);
 				}
-				fprintf(outputTree,"%.17g\n",treeArr[i][j].posteriornc[k][3]);
 			}
-			fprintf(outputTree,"%.17g\t%.17g\t%.17g\t%.17g\n",treeArr[i][j].posteriornc[numbaseArr[i]-1][0],treeArr[i][j].posteriornc[numbaseArr[i]-1][1],treeArr[i][j].posteriornc[numbaseArr[i]-1][2],treeArr[i][j].posteriornc[numbaseArr[i]-1][3]);
+			int nb = numbaseArr[i];
+			for(j=0;j<2*numspecArr[i]-1;j++){
+				/* Node header line */
+				if ( treeArr[i][j].up[0] != -1 && treeArr[i][j].up[1] != -1 ){
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\n",
+						i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
+						treeArr[i][j].down, treeArr[i][j].depth,
+						treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1]);
+				}else{
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+						i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
+						treeArr[i][j].down, treeArr[i][j].depth,
+						treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1],
+						treeArr[i][j].name);
+				}
+				if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
+				/* Posterior probability rows */
+				double **post = treeArr[i][j].posteriornc;
+				for (k=0; k<nb; k++){
+					if (columnMaskArr && columnMaskArr[i] && !columnMaskArr[i][k]) {
+						lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+							"0.25\t0.25\t0.25\t0.25\n");
+					} else {
+						lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+							"%.17g\t%.17g\t%.17g\t%.17g\n",
+							post[k][0], post[k][1], post[k][2], post[k][3]);
+					}
+					if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
+				}
+			}
 		}
+		if (lpos > 0) fwrite(lbuf, 1, lpos, outputTree);
+		free(lbuf);
 	}
 	fclose(outputTree);
+	free(io_buf);
+	if (progress_fp) {
+		fseek(progress_fp, 0, SEEK_SET);
+		ftruncate(fileno(progress_fp), 0);
+		fprintf(progress_fp, "stage=complete\ntrees_total=%d\ntrees_written=%d\n", numberOfTrees, numberOfTrees);
+		fflush(progress_fp);
+		fclose(progress_fp);
+	}
+}
+FILE* printTreeFileHeader(int numberOfTrees, int max_nodename, int max_tax_name, int max_lineTaxonomy, Options opt){
+	int i, j, k;
+	char buf[BUFFER_SIZE];
+	struct stat st = {0};
+	if ( stat(opt.partitions_directory, &st) == -1){
+		mkdir(opt.partitions_directory, 0700);
+	}
+	snprintf(buf,BUFFER_SIZE,"%s/reference_tree.txt",opt.partitions_directory);
+	FILE *outputTree = fopen(buf,"w");
+	if  ( outputTree == NULL ){ printf("Error opening reference tree file!\n"); exit(-1); }
+	char *io_buf = malloc(256 * 1024);
+	if (io_buf) setvbuf(outputTree, io_buf, _IOFBF, 256 * 1024);
+	/* Note: io_buf is intentionally not freed here — it must remain valid while file is open */
+	fprintf(outputTree,"%d\n",numberOfTrees);
+	fprintf(outputTree,"%d\n",max_nodename);
+	fprintf(outputTree,"%d\n",max_tax_name);
+	fprintf(outputTree,"%d\n",max_lineTaxonomy);
+	for (i=0; i<numberOfTrees;i++){
+		fprintf(outputTree,"%d\t%d\t%d\n",numbaseArr[i],rootArr[i],numspecArr[i]);
+	}
+	for(i=0; i<numberOfTrees; i++){
+		for(j=0; j<numspecArr[i]; j++){
+			for(k=0; k<7; k++){
+				if (k==6){
+					fprintf(outputTree,"%s\n",taxonomyArr[i][j][k]);
+				}else{
+					fprintf(outputTree,"%s;",taxonomyArr[i][j][k]);
+				}
+			}
+		}
+	}
+	return outputTree;
+}
+void printTreeFilePosteriors(FILE *outputTree, int start, int end, Options opt){
+	int i, j, k;
+	const int LBUF_SIZE = 65536;
+	char *lbuf = malloc(LBUF_SIZE);
+	if (!lbuf){ fprintf(stderr, "Out of memory for print buffer\n"); exit(1); }
+	int lpos = 0;
+	for(i=start; i<end; i++){
+		int nb = numbaseArr[i];
+		for(j=0;j<2*numspecArr[i]-1;j++){
+			if ( treeArr[i][j].up[0] != -1 && treeArr[i][j].up[1] != -1 ){
+				lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+					"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t\n",
+					i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
+					treeArr[i][j].down, treeArr[i][j].depth,
+					treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1]);
+			}else{
+				lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+					"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+					i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
+					treeArr[i][j].down, treeArr[i][j].depth,
+					treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1],
+					treeArr[i][j].name);
+			}
+			if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
+			double **post = treeArr[i][j].posteriornc;
+			for (k=0; k<nb; k++){
+				if (columnMaskArr && columnMaskArr[i] && !columnMaskArr[i][k]) {
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"0.25\t0.25\t0.25\t0.25\n");
+				} else {
+					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+						"%.17g\t%.17g\t%.17g\t%.17g\n",
+						post[k][0], post[k][1], post[k][2], post[k][3]);
+				}
+				if (lpos > LBUF_SIZE - 512){ fwrite(lbuf, 1, lpos, outputTree); lpos = 0; }
+			}
+		}
+	}
+	if (lpos > 0) fwrite(lbuf, 1, lpos, outputTree);
+	free(lbuf);
+}
+void printTreeFileFinalize(FILE *outputTree, int numberOfTrees, Options opt){
+	fclose(outputTree);
+	char progress_path[BUFFER_SIZE];
+	snprintf(progress_path, BUFFER_SIZE, "%s/_progress.txt", opt.partitions_directory);
+	FILE *progress_fp = fopen(progress_path, "w");
+	if (progress_fp) {
+		fprintf(progress_fp, "stage=complete\ntrees_total=%d\ntrees_written=%d\n", numberOfTrees, numberOfTrees);
+		fflush(progress_fp);
+		fclose(progress_fp);
+	}
 }
 void printTaxonomyArrToFile(int numberOfTrees){
 	int i,j,k;

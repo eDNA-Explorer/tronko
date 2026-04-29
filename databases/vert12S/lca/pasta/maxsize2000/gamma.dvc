@@ -1,0 +1,6 @@
+outs:
+- md5: 06eaf45d74c78bd7b1d26027f0289299.dir
+  size: 5237568782
+  nfiles: 402
+  hash: md5
+  path: gamma

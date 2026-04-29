@@ -1,6 +1,7 @@
 #include "options.h"
+#include <string.h>
 
-static struct Options long_options[]=
+static struct option long_options[]=
 {
 	{"help", no_argument, 0, 'h'},
 	{"partition-directory", no_argument, 0, 'y'},
@@ -21,7 +22,15 @@ static struct Options long_options[]=
 	{"two-step-build", no_argument, 0, 'p'},
 	{"remove-unused-trees", no_argument, 0, 'r'},
 	{"prefix", required_argument, 0, 'i'},
-	{"fasttree", no_argument, 0, 'a'}
+	{"fasttree", no_argument, 0, 'a'},
+	{"tree-tool", required_argument, 0, 256},
+	{"tree-seed", required_argument, 0, 257},
+	{"no-gamma",  no_argument,       0, 258},
+	{"export-subtrees", no_argument, 0, 'E'},
+	{"parallel-jobs", required_argument, 0, 'J'},
+	{"column-gap-mask", required_argument, 0, 'W'},
+	{"legacy-sp", no_argument, 0, 'L'},
+	{0, 0, 0, 0}
 };
 
 char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
@@ -41,11 +50,16 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-v, compatible only with -y, partition using minimum number of leaf nodes [can't use with -s, use with -f]\n\
 	-f [INT], don't partition less than the minimum number of leaf nodes [can't use with -s, use with -v, use only with -y]\n\
 	-g, don't flag missing data\n\
-	-c, [INT] Number of FAMSA threads to use (0 means use all threads) [default: 1]\n\
+	-c, [INT] Number of FAMSA threads to use (0 means auto-detect) [default: 0 (auto)]\n\
 	-p, break the db build into two steps\n\
 	-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
-	-a, use fasttree instead of RAxML\n\
+	-a, use FastTree instead of RAxML (shorthand for --tree-tool fasttree)\n\
+	--tree-tool [raxml|fasttree|veryfasttree], tree inference tool [default: raxml]\n\
+	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
+	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
+	-W [FLOAT], mask alignment columns with gap fraction above threshold [default: 1.0 = no masking]\n\
+	-L, --legacy-sp, use legacy SP normalization (divides by numspec, pre-fix behavior) for comparison\n\
 	\n";
 
 void print_help_statement(){
@@ -55,20 +69,20 @@ void print_help_statement(){
 
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
-	char c;
+	int c;  /* must be int, not char — getopt_long returns -1 which is not representable as unsigned char (aarch64) */
 	if (argc==1){
 		print_help_statement();
 		exit(0);
 	}
 	while(1){
-		c=getopt_long(argc,argv,"hspvlgaryu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:",long_options, &option_index);
+		c=getopt_long(argc,argv,"hspvlgaryELu:t:m:d:o:x:1:2:i:c:e:n:b:D:f:J:W:",long_options, &option_index);
 		if (c==-1) break;
 		switch(c){
 			case 'h':
 				print_help_statement();
 				exit(0);
 				break;
-			case 'r': 
+			case 'r':
 				opt->remove_unused = 1;
 				break;
 			case 'l': //--single-tree
@@ -151,7 +165,30 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Invalid read 2 file.\n");
 				break;
 			case 'a':
-				opt->fasttree = 1;
+				opt->tree_tool = TREE_FASTTREE;
+				break;
+			case 256: /* --tree-tool */
+				if (strcmp(optarg, "raxml") == 0)
+					opt->tree_tool = TREE_RAXML;
+				else if (strcmp(optarg, "fasttree") == 0)
+					opt->tree_tool = TREE_FASTTREE;
+				else if (strcmp(optarg, "veryfasttree") == 0)
+					opt->tree_tool = TREE_VERYFASTTREE;
+				else {
+					fprintf(stderr, "Unknown --tree-tool: %s (options: raxml, fasttree, veryfasttree)\n", optarg);
+					exit(-1);
+				}
+				break;
+			case 257: /* --tree-seed */
+				success = sscanf(optarg, "%d", &(opt->tree_seed));
+				if (!success)
+					fprintf(stderr, "Invalid --tree-seed value\n");
+				break;
+			case 258: /* --no-gamma */
+				opt->no_gamma = 1;
+				break;
+			case 'E':
+				opt->export_subtrees = 1;
 				break;
 			case 'c':
 				success = sscanf(optarg, "%d", &(opt->famsa_threads));
@@ -188,6 +225,20 @@ void parse_options(int argc, char **argv, Options *opt){
 				success = sscanf(optarg, "%d", &(opt->restart));
 				if (!success)
 					fprintf(stderr, "Invalid number\n");
+				break;
+			case 'J':
+				success = sscanf(optarg, "%d", &(opt->parallel_jobs));
+				if (!success)
+					fprintf(stderr, "Invalid number of parallel jobs\n");
+				if (opt->parallel_jobs < 1) opt->parallel_jobs = 1;
+				break;
+			case 'W':
+				success = sscanf(optarg, "%lf", &(opt->column_gap_threshold));
+				if (!success)
+					fprintf(stderr, "Invalid column gap threshold\n");
+				break;
+			case 'L':
+				opt->legacy_sp = 1;
 				break;
 		}
 	}

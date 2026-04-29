@@ -19,6 +19,7 @@ int npar, CENTRALMODE, PRECISIONLEVEL;
 FILE *tempfile;
 static double maxarg1,maxarg2;
 static double sqrarg;
+#pragma omp threadprivate(maxarg1, maxarg2, sqrarg)
 double oldf0;
 
 void nrerror(char error_text[])
