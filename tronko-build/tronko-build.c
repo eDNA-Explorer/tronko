@@ -55,6 +55,39 @@ node **treeArr;
 static pthread_mutex_t mastermap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t spscore_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* Compare two masterArr* by integer value of m->index. Used to iterate
+   mastermap in input-cluster order rather than hashmap-bucket order, which
+   is the order tronko-build was reading input cluster files (line 1884:
+   sprintf(m->index, "%d", i)). Without this, downstream consumers that
+   assume reference_tree.txt's tree position N corresponds to the Nth input
+   cluster get shuffled output. */
+static int compare_master_by_index(const void *a, const void *b) {
+	struct masterArr *ma = *(struct masterArr * const *)a;
+	struct masterArr *mb = *(struct masterArr * const *)b;
+	long ia = strtol(ma->index, NULL, 10);
+	long ib = strtol(mb->index, NULL, 10);
+	if (ia < ib) return -1;
+	if (ia > ib) return 1;
+	return 0;
+}
+
+/* Build a flat array of all masterArr* in mastermap, sorted by integer
+   value of m->index. Caller frees the returned array; the masterArr*
+   values inside still belong to mastermap. */
+static struct masterArr **sorted_master_array(int *out_n) {
+	int n = 0;
+	int _key;
+	struct masterArr *_m;
+	hashmap_foreach(_key, _m, &mastermap) { (void)_key; n++; }
+	struct masterArr **arr = malloc(n * sizeof(struct masterArr *));
+	if (!arr) { fprintf(stderr, "Out of memory in sorted_master_array\n"); exit(1); }
+	int idx = 0;
+	hashmap_foreach(_key, _m, &mastermap) { (void)_key; arr[idx++] = _m; }
+	qsort(arr, n, sizeof(struct masterArr *), compare_master_by_index);
+	*out_n = n;
+	return arr;
+}
+
 /*This function calculates the number of  desdencents of each node in the tree stored in tree[node].nd*/
 int get_number_descendantsArr(int node, struct masterArr *m){
 	if (node==-1) return 0;
@@ -2043,7 +2076,11 @@ int main(int argc, char **argv){
 			snprintf(fp_buf2,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
 			FILE* fp_file2 = fopen(fp_buf2,"w");
 			if ( fp_file2 == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
-			hashmap_foreach(key,final,&mastermap){
+			{
+			int n_two_step = 0;
+			struct masterArr **two_step_sorted = sorted_master_array(&n_two_step);
+			for (int ts = 0; ts < n_two_step; ts++) {
+				final = two_step_sorted[ts];
 				fprintf(list_newick_files,"%s\n",final->filename);
 				char directory[BUFFER_SIZE]; // Adjust size as needed
     				char *last_slash;
@@ -2111,6 +2148,8 @@ int main(int argc, char **argv){
 					}
 				}
 			}
+			free(two_step_sorted);
+			}
 			fclose(list_newick_files);
 			fclose(fp_file2);
 			exit(1);
@@ -2140,29 +2179,35 @@ int main(int argc, char **argv){
 	snprintf(fp_buf,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
 	FILE* fp_file = fopen(fp_buf,"w");
 	if ( fp_file == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
-	hashmap_foreach(key,final,&mastermap){
-		treeArr[index] = final->tree;
-		taxonomyArr[index] =  final->taxonomy;
-		seqArr[index] = final->msa;
-		numbaseArr[index] = final->numbase;
-		numspecArr[index] = final->numspec;
-		rootArr[index] = final->root;
-		//printtreeArr(index);
-		index++;
-		fprintf(list_newick_files,"%s\n",final->filename);
-		/* Extract partition number from filename for final_partitions.txt */
-		{
-			char *fn = strrchr(final->filename, '/');
-			fn = fn ? fn + 1 : final->filename;
-			char *start = strstr(fn, "partition");
-			if (start) {
-				start += strlen("partition");
-				char *end = strchr(start, '.');
-				if (end) {
-					fprintf(fp_file, "%.*s\n", (int)(end - start), start);
+	{
+		int n_sorted = 0;
+		struct masterArr **sorted = sorted_master_array(&n_sorted);
+		for (int s = 0; s < n_sorted; s++) {
+			final = sorted[s];
+			treeArr[index] = final->tree;
+			taxonomyArr[index] =  final->taxonomy;
+			seqArr[index] = final->msa;
+			numbaseArr[index] = final->numbase;
+			numspecArr[index] = final->numspec;
+			rootArr[index] = final->root;
+			//printtreeArr(index);
+			index++;
+			fprintf(list_newick_files,"%s\n",final->filename);
+			/* Extract partition number from filename for final_partitions.txt */
+			{
+				char *fn = strrchr(final->filename, '/');
+				fn = fn ? fn + 1 : final->filename;
+				char *start = strstr(fn, "partition");
+				if (start) {
+					start += strlen("partition");
+					char *end = strchr(start, '.');
+					if (end) {
+						fprintf(fp_file, "%.*s\n", (int)(end - start), start);
+					}
 				}
 			}
 		}
+		free(sorted);
 	}
 	fclose(list_newick_files);
 	fclose(fp_file);
@@ -2178,8 +2223,10 @@ int main(int argc, char **argv){
 
 		int export_idx = 0;
 		struct masterArr* efinal;
-		int ekey;
-		hashmap_foreach(ekey, efinal, &mastermap) {
+		int n_export_sorted = 0;
+		struct masterArr **export_sorted = sorted_master_array(&n_export_sorted);
+		for (int es = 0; es < n_export_sorted; es++) {
+			efinal = export_sorted[es];
 			/* Derive source file paths from the partition's Newick filename on disk.
 			   Example: /path/to/RAxML_bestTree.partition42.reroot
 			   → MSA:      /path/to/partition42_MSA.fasta
@@ -2251,6 +2298,7 @@ int main(int argc, char **argv){
 
 			export_idx++;
 		}
+		free(export_sorted);
 		printf("Exported %d subtrees to %s\n", export_idx, export_dir);
 	}
 
