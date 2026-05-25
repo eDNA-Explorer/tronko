@@ -1,5 +1,6 @@
 #include "options.h"
 #include <getopt.h>
+#include <string.h>
 
 static struct option long_options[]=
 {
@@ -47,6 +48,11 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+	{"max-leaf-matches",required_argument,0,0},
+	{"max-bwa-matches",required_argument,0,0},
+	{"aligner",required_argument,0,0},
+	{"minimap2-kmer",required_argument,0,0},
+	{"minimap2-window",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
 #endif
@@ -93,6 +99,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	--max-leaf-matches [INT], Maximum leaf matches per read [default: 100] (alias: --max-bwa-matches)\n\
+	--aligner [bwa|minimap2], Aligner to use for read seeding [default: bwa]\n\
+	--minimap2-kmer [INT], minimap2 k-mer size [default: 15]\n\
+	--minimap2-window [INT], minimap2 minimizer window size [default: 5]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -159,6 +169,37 @@ void parse_options(int argc, char **argv, Options *opt){
 					if (sscanf(optarg, "%lf", &(opt->pruning_factor)) != 1) {
 						fprintf(stderr, "Invalid pruning-factor value\n");
 						opt->pruning_factor = 2.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "max-leaf-matches") == 0 ||
+				         strcmp(long_options[option_index].name, "max-bwa-matches") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_leaf_matches)) != 1 ||
+					    opt->max_leaf_matches < 1) {
+						fprintf(stderr, "Invalid max-leaf-matches value; using default %d\n",
+						        MAX_NUM_LEAF_MATCHES);
+						opt->max_leaf_matches = MAX_NUM_LEAF_MATCHES;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "aligner") == 0) {
+					if (strcmp(optarg, "bwa") != 0 && strcmp(optarg, "minimap2") != 0) {
+						fprintf(stderr, "Invalid aligner '%s'; expected 'bwa' or 'minimap2'\n", optarg);
+						exit(1);
+					}
+					strncpy(opt->aligner, optarg, sizeof(opt->aligner) - 1);
+					opt->aligner[sizeof(opt->aligner) - 1] = '\0';
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-kmer") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_kmer)) != 1 ||
+					    opt->minimap2_kmer < 1) {
+						fprintf(stderr, "Invalid minimap2-kmer value; using default 15\n");
+						opt->minimap2_kmer = 15;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-window") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_window)) != 1 ||
+					    opt->minimap2_window < 1) {
+						fprintf(stderr, "Invalid minimap2-window value; using default 5\n");
+						opt->minimap2_window = 5;
 					}
 				}
 #ifdef ENABLE_PARQUET

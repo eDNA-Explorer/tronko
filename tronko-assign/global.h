@@ -40,7 +40,7 @@
 #define MAX_NUMBEROFROOTS 20000
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
-#define MAX_NUM_BWA_MATCHES 10
+#define MAX_NUM_LEAF_MATCHES 100
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 40000
 #define MAXTAXLENGTHNAME 256
@@ -179,6 +179,10 @@ typedef struct mystruct{
 	int max_strikes;
 	int enable_pruning;
 	type_of_PP pruning_factor;
+	int max_leaf_matches;
+	char aligner[16];
+	int minimap2_kmer;
+	int minimap2_window;
 #ifdef ENABLE_PARQUET
 	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
 	int thread_id;         // Thread index for filename
@@ -256,6 +260,10 @@ typedef struct Options{
 	int max_strikes;            // Maximum strikes before termination (default: 6)
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
+	int max_leaf_matches;       // Maximum candidate leaf matches per read (default: MAX_NUM_LEAF_MATCHES)
+	char aligner[16];           // "bwa" (default) or "minimap2"
+	int minimap2_kmer;          // minimap2 k-mer size (default: 15)
+	int minimap2_window;        // minimap2 minimizer window size (default: 5)
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled

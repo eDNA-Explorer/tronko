@@ -45,6 +45,7 @@ typedef struct {
 	int max_query_length;
 	int max_readname_length;
 	int max_acc_name;
+	int max_leaf_matches;
 } ktp_aux_t;
 
 typedef struct {
@@ -193,7 +194,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 				}
 				if ( j > 0 && whichMat==1 ){
-					for(k=0; k<MAX_NUM_BWA_MATCHES; k++){
+					for(k=0; k<aux->max_leaf_matches; k++){
 						//if ( aux->results[j-1].concordant_matches[k] == -1 ){
 						//	break;
 						//}
@@ -220,7 +221,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					if (aux->concordant==1 && no_add==0 && strcmp(read2,"=")!=0){ no_add=1;}
-					if (no_add==0 && strcmp(read2,"=")==0){
+					if (no_add==0 && strcmp(read2,"=")==0 && k < aux->max_leaf_matches){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
@@ -253,7 +254,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 					//if (aux->concordant==1){ no_add=1;}
 					if (k==0){ no_add=1; }
-					if (no_add==0 && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0){
+					if (no_add==0 && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0 && k < aux->max_leaf_matches){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
@@ -266,7 +267,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					no_add=0;
-					for(k=0; k<MAX_NUM_BWA_MATCHES; k++){
+					for(k=0; k<aux->max_leaf_matches; k++){
 						//if ( aux->results[j-1].discordant_matches[k]== -1 ){
 						//	break;
 						//}
@@ -292,7 +293,7 @@ static void *process(void *shared, int step, void *_data)
 							}
 						}
 					}
-					if (no_add==0 && strcmp(read2,"=") != 0){
+					if (no_add==0 && strcmp(read2,"=") != 0 && k < aux->max_leaf_matches){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
@@ -323,7 +324,7 @@ static void *process(void *shared, int step, void *_data)
 						//	no_add=1;
 						//}
 					}
-					if (no_add==0 && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0){
+					if (no_add==0 && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0 && k < aux->max_leaf_matches){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
@@ -336,7 +337,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					no_add=0;
-					if ( decimal == 0 && aux->results[j-1].use_portion==1){
+					if ( decimal == 0 && aux->results[j-1].use_portion==1 && k < aux->max_leaf_matches){
 						strcpy(aux->results[j-1].cigars_reverse[k],cigar);
 						aux->results[j-1].starts_reverse[k] = start_position;
 					}
@@ -354,7 +355,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 					//if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && aux->results[j].concordant_matches[0] != hashmap_get(&map,read2)){
 					//if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(aux->results[j].concordant_leaf_matches[0],read2) != 0){
-					if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && (aux->results[j].concordant_matches_roots[0] != leaf_map->root && aux->results[j].concordant_matches_nodes[0] != leaf_map->node)){
+					if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && (aux->results[j].concordant_matches_roots[0] != leaf_map->root && aux->results[j].concordant_matches_nodes[0] != leaf_map->node)){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j].concordant_matches_roots[1] = leaf_map->root;
@@ -381,7 +382,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 					//if (strcmp(read2,"*")!=0 && aux->results[j].discordant_matches[0] != hashmap_get(&map,read2)){
 					//if ( strcmp(read2,"*") != 0 && strcmp(aux->results[j].discordant_leaf_matches[0],read2) != 0 ){
-					if ( strcmp(read2,"*") != 0 && (aux->results[j].discordant_matches_roots[0] != leaf_map->root && aux->results[j].discordant_matches_nodes[0] != leaf_map->node)){
+					if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && (aux->results[j].discordant_matches_roots[0] != leaf_map->root && aux->results[j].discordant_matches_nodes[0] != leaf_map->node)){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j].discordant_matches_roots[1] = leaf_map->root;
@@ -415,7 +416,7 @@ static void *process(void *shared, int step, void *_data)
 						//}
 						//if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && aux->results[j].concordant_matches[0] != hashmap_get(&map,read2)){
 						//if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(aux->results[j].concordant_leaf_matches[0],read2) != 0 ){
-						if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
+						if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
 							aux->results[j].concordant_matches_roots[1] = leaf_map->root;
@@ -437,7 +438,7 @@ static void *process(void *shared, int step, void *_data)
 						//aux->results[j].discordant_matches[0] = hashmap_get(&map,read1);
 						//if (strcmp(read2,"*") != 0 && aux->results[j].discordant_matches[0] != hashmap_get(&map,read2) ){
 						//if (strcmp(read2,"*") != 0 && strcmp(aux->results[j].discordant_leaf_matches[0],read2) != 0 ){
-						if (strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
+						if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
 							aux->results[j].discordant_matches_roots[1] = leaf_map->root;
@@ -463,7 +464,7 @@ static void *process(void *shared, int step, void *_data)
 							aux->results[j].starts_forward[0] = start_position;
 						}
 						//if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(aux->results[j].concordant_leaf_matches[0],read2) != 0 ){
-						if (strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
+						if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
 							aux->results[j].concordant_matches_roots[1] = leaf_map->root;
@@ -489,7 +490,7 @@ static void *process(void *shared, int step, void *_data)
 								strcpy(aux->results[j].cigars_forward[0],cigar);
 								aux->results[j].starts_forward[0]=start_position;
 							}
-							if (strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
+							if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
 							struct leafMap *leaf_map;
 								leaf_map=hashmap_get(&map,read2);
 								aux->results[j].discordant_matches_roots[1] = leaf_map->root;
@@ -569,7 +570,7 @@ static void update_a(mem_opt_t *opt, const mem_opt_t *opt0)
 	}
 }
 
-int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaMatches* bwa_results, int concordant, int numberOfTrees, int startline, int paired, int start, int end, int max_query_length, int max_readname_length, int max_acc_name)
+int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaMatches* bwa_results, int concordant, int numberOfTrees, int startline, int paired, int start, int end, int max_query_length, int max_readname_length, int max_acc_name, int max_leaf_matches)
 {
 	mem_opt_t *opt, opt0;
 	int fd, fd2, i, c, ignore_alt = 0, no_mt_io = 0;
@@ -827,6 +828,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	aux.max_query_length = max_query_length;
 	aux.max_readname_length = max_readname_length;
 	aux.max_acc_name = max_acc_name;
+	aux.max_leaf_matches = max_leaf_matches;
 	aux.number_of_seqs = number_of_seqs;
 	aux.results = bwa_results;
 	aux.concordant = concordant;
