@@ -208,8 +208,27 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 			continue;
 		}
 
-		if (len1 > 0) regs1 = mm_map(mi, len1, seq1, &n_regs1, tbuf, &mopt, NULL);
-		if (paired != 0 && len2 > 0) regs2 = mm_map(mi, len2, seq2, &n_regs2, tbuf, &mopt, NULL);
+		if (paired != 0 && len1 > 0 && len2 > 0) {
+			int qlens[2] = { len1, len2 };
+			const char *seqs[2] = { seq1, seq2 };
+			int n_regs[2] = { 0, 0 };
+			mm_reg1_t *regs[2] = { NULL, NULL };
+			const char *qname = pairedQueryMat->forward_name[start + i];
+
+			/*
+			 * BWA parity: pass Tronko's stored mate sequences as-is. The -z option
+			 * already reverse-complements read 2 before this point when callers want
+			 * the reverse read pre-oriented for Tronko placement.
+			 */
+			mm_map_frag(mi, 2, qlens, seqs, n_regs, regs, tbuf, &mopt, qname);
+			n_regs1 = n_regs[0];
+			n_regs2 = n_regs[1];
+			regs1 = regs[0];
+			regs2 = regs[1];
+		} else {
+			if (len1 > 0) regs1 = mm_map(mi, len1, seq1, &n_regs1, tbuf, &mopt, NULL);
+			if (paired != 0 && len2 > 0) regs2 = mm_map(mi, len2, seq2, &n_regs2, tbuf, &mopt, NULL);
+		}
 
 		if (paired != 0) {
 			char cigar_buf[MAX_CIGAR];
