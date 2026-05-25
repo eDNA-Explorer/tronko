@@ -99,8 +99,8 @@ MINIMAP2_CORE_OBJS = $(MINIMAP2_CORE_SRCS:.c=.o)
 # KSW2 alignment files (need architecture-specific flags)
 MINIMAP2_KSW2_SRCS = $(MINIMAP2_DIR)/ksw2_ll_sse.c
 UNAME_M := $(shell uname -m)
-ifeq ($(UNAME_M),arm64)
-    # ARM64 (Apple Silicon / aarch64): use NEON via sse2neon
+ifneq (,$(filter arm64 aarch64,$(UNAME_M)))
+    # ARM64 (Apple Silicon "arm64" / Linux "aarch64"): use NEON via sse2neon
     MINIMAP2_KSW2_FLAGS = $(MINIMAP2_COMMON_FLAGS) -DKSW_SSE2_ONLY -D__SSE2__ -I$(MINIMAP2_DIR)/sse2neon
     MINIMAP2_KSW2_SRCS += $(MINIMAP2_DIR)/ksw2_extz2_sse.c $(MINIMAP2_DIR)/ksw2_extd2_sse.c $(MINIMAP2_DIR)/ksw2_exts2_sse.c
 else

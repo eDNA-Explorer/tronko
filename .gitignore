@@ -11,6 +11,7 @@ debug.log
 # Build artifacts
 tronko-assign/tronko-assign
 tronko-build/tronko-build
+tronko-assign/libminimap2.a
 *.o
 *.so
 
@@ -28,4 +29,6 @@ tronko-build/tronko-build
 
 # Example/test data outputs
 test_results_*.txt
-missingreads_*_results.txttests/unity/
+
+# Unity test framework (cloned at runtime by CI / `make -f Makefile.simple install`)
+tests/unity/
