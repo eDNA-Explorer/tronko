@@ -19,6 +19,20 @@ static char g_mm2_db_path[MAXFILENAME] = "";
 static int g_mm2_kmer = 0;
 static int g_mm2_window = 0;
 static pthread_mutex_t g_mm2_index_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int g_mm2_atexit_registered = 0;
+
+/* Release the cached index at normal program exit (registered via atexit on
+ * first build). For a CLI run the OS would reclaim it anyway, but this keeps
+ * leak checkers clean and is correct if the wrapper is ever reused. */
+static void mm2_destroy_index_atexit(void)
+{
+	pthread_mutex_lock(&g_mm2_index_mutex);
+	if (g_mm2_idx != NULL) {
+		mm_idx_destroy(g_mm2_idx);
+		g_mm2_idx = NULL;
+	}
+	pthread_mutex_unlock(&g_mm2_index_mutex);
+}
 
 static void cigar_to_string(const uint32_t *cigar, int n_cigar, char *buf, int buf_size)
 {
@@ -65,6 +79,10 @@ static mm_idx_t *build_index_locked(const char *db_path, int kmer, int window)
 	return idx;
 }
 
+/* Serialized lazy build of the shared index: every worker takes the mutex,
+ * the first to find no valid cached index builds it, the rest reuse it.
+ * Cache-hit hold time is a strcmp + 3 int compares, so contention is
+ * negligible; the index is rebuilt only if the path/k/w change. */
 static mm_idx_t *get_or_build_index(const char *db_path, int kmer, int window)
 {
 	mm_idx_t *idx;
@@ -94,6 +112,10 @@ static mm_idx_t *get_or_build_index(const char *db_path, int kmer, int window)
 		g_mm2_db_path[sizeof(g_mm2_db_path) - 1] = '\0';
 		g_mm2_kmer = kmer;
 		g_mm2_window = window;
+		if (!g_mm2_atexit_registered) {
+			atexit(mm2_destroy_index_atexit);
+			g_mm2_atexit_registered = 1;
+		}
 	}
 	pthread_mutex_unlock(&g_mm2_index_mutex);
 	return idx;
