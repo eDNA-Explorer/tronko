@@ -182,6 +182,16 @@ int detect_reference_format(const char *filename) {
     LOG_WARN("Unknown file format: %s", filename);
     return FORMAT_UNKNOWN;
 }
+/* Strip a trailing mate-pair suffix ("/1", "/2", ...) from a read name, matching
+ * BWA's trim_readno so stored query names match BWA's reported (suffix-stripped)
+ * names. No-op for names without a "/<digit>" suffix (e.g. "ACC_8_1"), so the
+ * legacy "_1"/"_2" convention is unaffected. */
+static void strip_mate_suffix(char *name){
+	size_t n = strlen(name);
+	if (n >= 2 && name[n-2] == '/' && name[n-1] >= '0' && name[n-1] <= '9'){
+		name[n-2] = '\0';
+	}
+}
 int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int whichPair, Options opt, int max_query_length, int max_readname_length,int first_iter){
 	char* buffer;
 	char* query;
@@ -253,6 +263,7 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 			}
 			seqname[i-1] = '\0';
 			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strip_mate_suffix(seqname);
 			strcpy(pairedQueryMat->forward_name[iter],seqname);
 			memset(seqname,'\0',max_readname_length);
 			next=1;
@@ -307,6 +318,7 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 			for(i=0; i<max_readname_length; i++){
 				singleQueryMat->name[iter][i]='\0';
 			}
+			strip_mate_suffix(seqname);
 			strcpy(singleQueryMat->name[iter],seqname);
 			for (i=0; i<size-1; i++){
 				seqname[i]='\0';
@@ -426,6 +438,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 			}
 			seqname[i-1] = '\0';
 			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strip_mate_suffix(seqname);
 			strcpy(pairedQueryMat->forward_name[iter],seqname);
 			memset(seqname,'\0',max_readname_length);
 			next=1;
@@ -487,6 +500,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 			for(i=0; i<max_readname_length; i++){
 				singleQueryMat->name[iter][i]='\0';
 			}
+			strip_mate_suffix(seqname);
 			strcpy(singleQueryMat->name[iter],seqname);
 			for (i=0; i<size-1; i++){
 				seqname[i]='\0';
@@ -1951,6 +1965,7 @@ int readInXNumberOfLines_cf(int numberOfLinesToRead, CompressedFile* query_reads
 			}
 			seqname[i-1] = '\0';
 			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strip_mate_suffix(seqname);
 			strcpy(pairedQueryMat->forward_name[iter],seqname);
 			memset(seqname,'\0',max_readname_length);
 			next=1;
@@ -1989,6 +2004,7 @@ int readInXNumberOfLines_cf(int numberOfLinesToRead, CompressedFile* query_reads
 			for(i=0; i<max_readname_length; i++){
 				singleQueryMat->name[iter][i]='\0';
 			}
+			strip_mate_suffix(seqname);
 			strcpy(singleQueryMat->name[iter],seqname);
 			for (i=0; i<size-1; i++){
 				seqname[i]='\0';
@@ -2109,6 +2125,7 @@ int readInXNumberOfLines_fastq_cf(int numberOfLinesToRead, CompressedFile* query
 			}
 			seqname[i-1] = '\0';
 			memset(pairedQueryMat->forward_name[iter],'\0',max_readname_length);
+			strip_mate_suffix(seqname);
 			strcpy(pairedQueryMat->forward_name[iter],seqname);
 			memset(seqname,'\0',max_readname_length);
 			next=1;
@@ -2147,6 +2164,7 @@ int readInXNumberOfLines_fastq_cf(int numberOfLinesToRead, CompressedFile* query
 			for(i=0; i<max_readname_length; i++){
 				singleQueryMat->name[iter][i]='\0';
 			}
+			strip_mate_suffix(seqname);
 			strcpy(singleQueryMat->name[iter],seqname);
 			for (i=0; i<size-1; i++){
 				seqname[i]='\0';

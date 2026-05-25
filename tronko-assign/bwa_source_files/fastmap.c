@@ -215,6 +215,7 @@ static void *process(void *shared, int step, void *_data)
 							//}
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read1);
+							if (!leaf_map) continue;
 							if ( aux->results[j-1].concordant_matches_roots[l] == leaf_map->root && aux->results[j-1].concordant_matches_nodes[l] == leaf_map->node){
 								no_add=1;
 							}
@@ -224,6 +225,7 @@ static void *process(void *shared, int step, void *_data)
 					if (no_add==0 && strcmp(read2,"=")==0 && k < aux->max_leaf_matches){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
+						if (!leaf_map) continue;
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
 						aux->results[j-1].concordant_matches_nodes[k] = leaf_map->node;
 						//aux->results[j-1].concordant_matches[k] = hashmap_get(&map,read1);
@@ -248,6 +250,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						if ( aux->results[j-1].concordant_matches_roots[l] == leaf_map->root && aux->results[j-1].concordant_matches_nodes[l] == leaf_map->node ){
 							no_add=1;
 						}
@@ -257,6 +260,7 @@ static void *process(void *shared, int step, void *_data)
 					if (no_add==0 && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0 && k < aux->max_leaf_matches){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
 						aux->results[j-1].concordant_matches_nodes[k] = leaf_map->node;
 						//aux->results[j-1].concordant_matches[k] = hashmap_get(&map,read2);
@@ -288,6 +292,7 @@ static void *process(void *shared, int step, void *_data)
 							//}
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read1);
+							if (!leaf_map) continue;
 							if ( aux->results[j-1].discordant_matches_roots[l] == leaf_map->root && aux->results[j-1].discordant_matches_nodes[l] == leaf_map->node ){
 								no_add=1;
 							}
@@ -296,6 +301,7 @@ static void *process(void *shared, int step, void *_data)
 					if (no_add==0 && strcmp(read2,"=") != 0 && k < aux->max_leaf_matches){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
+						if (!leaf_map) continue;
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
 						aux->results[j-1].discordant_matches_nodes[k] = leaf_map->node;
 						//aux->results[j-1].discordant_matches[k]=hashmap_get(&map,read1);
@@ -317,6 +323,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						if ( aux->results[j-1].discordant_matches_roots[l] == leaf_map->root && aux->results[j-1].discordant_matches_nodes[l] == leaf_map->node){
 							no_add=1;
 						}
@@ -327,6 +334,7 @@ static void *process(void *shared, int step, void *_data)
 					if (no_add==0 && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0 && k < aux->max_leaf_matches){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
 						aux->results[j-1].discordant_matches_nodes[k] = leaf_map->node;
 						//aux->results[j-1].discordant_matches[k] = hashmap_get(&map,read2);
@@ -345,6 +353,7 @@ static void *process(void *shared, int step, void *_data)
 					//strcpy(aux->results[j].readname,readname);
 							struct leafMap *leaf_map;
 					leaf_map=hashmap_get(&map,read1);
+					if (!leaf_map) continue;
 					aux->results[j].concordant_matches_roots[0] = leaf_map->root;
 					aux->results[j].concordant_matches_nodes[0] = leaf_map->node;
 					//aux->results[j].concordant_matches[0] = hashmap_get(&map,read1);
@@ -358,6 +367,7 @@ static void *process(void *shared, int step, void *_data)
 					if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && (aux->results[j].concordant_matches_roots[0] != leaf_map->root && aux->results[j].concordant_matches_nodes[0] != leaf_map->node)){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						aux->results[j].concordant_matches_roots[1] = leaf_map->root;
 						aux->results[j].concordant_matches_nodes[1] = leaf_map->node;
 						//aux->results[j].concordant_matches[1] = hashmap_get(&map,read2);
@@ -372,6 +382,7 @@ static void *process(void *shared, int step, void *_data)
 					//strcpy(aux->results[j].readname,readname);
 					struct leafMap *leaf_map;
 					leaf_map=hashmap_get(&map,read1);
+					if (!leaf_map) continue;
 					aux->results[j].discordant_matches_roots[0] = leaf_map->root;
 					aux->results[j].discordant_matches_nodes[0] = leaf_map->node;
 					//aux->results[j].discordant_matches[0] = hashmap_get(&map,read1);
@@ -385,6 +396,7 @@ static void *process(void *shared, int step, void *_data)
 					if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && (aux->results[j].discordant_matches_roots[0] != leaf_map->root && aux->results[j].discordant_matches_nodes[0] != leaf_map->node)){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
+						if (!leaf_map) continue;
 						aux->results[j].discordant_matches_roots[1] = leaf_map->root;
 						aux->results[j].discordant_matches_nodes[1] = leaf_map->node;
 						//aux->results[j].discordant_matches[1] = hashmap_get(&map,read2);
@@ -401,6 +413,7 @@ static void *process(void *shared, int step, void *_data)
 							//strcpy(aux->results[j].readname,readname);
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read1);
+							if (!leaf_map) continue;
 							aux->results[j].concordant_matches_roots[0] = leaf_map->root;
 							aux->results[j].concordant_matches_nodes[0] = leaf_map->node;
 							//aux->results[j].concordant_matches[0] = hashmap_get(&map,read1);
@@ -419,6 +432,7 @@ static void *process(void *shared, int step, void *_data)
 						if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
+							if (!leaf_map) continue;
 							aux->results[j].concordant_matches_roots[1] = leaf_map->root;
 							aux->results[j].concordant_matches_nodes[1] = leaf_map->node;
 							//aux->results[j].concordant_matches[1] = hashmap_get(&map,read2);
@@ -433,6 +447,7 @@ static void *process(void *shared, int step, void *_data)
 						//strcpy(aux->results[j].readname,readname);
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
+						if (!leaf_map) continue;
 						aux->results[j].discordant_matches_roots[0] = leaf_map->root;
 						aux->results[j].discordant_matches_nodes[0] = leaf_map->node;
 						//aux->results[j].discordant_matches[0] = hashmap_get(&map,read1);
@@ -441,6 +456,7 @@ static void *process(void *shared, int step, void *_data)
 						if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
+							if (!leaf_map) continue;
 							aux->results[j].discordant_matches_roots[1] = leaf_map->root;
 							aux->results[j].discordant_matches_nodes[1] = leaf_map->node;
 							//aux->results[j].discordant_matches[1] = hashmap_get(&map,read2);
@@ -455,6 +471,7 @@ static void *process(void *shared, int step, void *_data)
 						//strcpy(aux->results[j].readname,readname);
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
+						if (!leaf_map) continue;
 						aux->results[j].concordant_matches_roots[0] = leaf_map->root;
 						aux->results[j].concordant_matches_nodes[0] = leaf_map->node;
 						//aux->results[j].concordant_matches[0] = hashmap_get(&map,read1);
@@ -467,6 +484,7 @@ static void *process(void *shared, int step, void *_data)
 						if (aux->max_leaf_matches > 1 && strcmp(read2,"=") != 0 && strcmp(read2,"*") != 0 && strcmp(read1,read2)!=0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read2);
+							if (!leaf_map) continue;
 							aux->results[j].concordant_matches_roots[1] = leaf_map->root;
 							aux->results[j].concordant_matches_nodes[1] = leaf_map->node;
 							//aux->results[j].concordant_matches[1] = hashmap_get(&map,read2);
@@ -482,6 +500,7 @@ static void *process(void *shared, int step, void *_data)
 						if ( strcmp(read1,"*") != 0 ){
 							struct leafMap *leaf_map;
 							leaf_map=hashmap_get(&map,read1);
+							if (!leaf_map) continue;
 							aux->results[j].discordant_matches_roots[0] = leaf_map->root;
 							aux->results[j].discordant_matches_nodes[0] = leaf_map->node;
 							//aux->results[j].discordant_matches[0] = hashmap_get(&map,read1);
@@ -493,6 +512,7 @@ static void *process(void *shared, int step, void *_data)
 							if (aux->max_leaf_matches > 1 && strcmp(read2,"*") != 0 && strcmp(read1,read2) != 0 ){
 							struct leafMap *leaf_map;
 								leaf_map=hashmap_get(&map,read2);
+								if (!leaf_map) continue;
 								aux->results[j].discordant_matches_roots[1] = leaf_map->root;
 								aux->results[j].discordant_matches_nodes[1] = leaf_map->node;
 								//aux->results[j].discordant_matches[1] = hashmap_get(&map,read2);
@@ -513,7 +533,7 @@ static void *process(void *shared, int step, void *_data)
 						j++;	
 					}else{
 						if (aux->paired != 0){
-							while(strcmp(pairedQueryMat->forward_name[aux->startline+j],readname)!=0){
+							while(j < aux->number_of_seqs && strcmp(pairedQueryMat->forward_name[aux->startline+j],readname)!=0){
 								//strcpy(aux->results[j].readname,pairedQueryMat->forward_name[aux->startline+j]);
 								aux->results[j].concordant_matches_roots[0]=-1;
 								aux->results[j].concordant_matches_nodes[0]=-1;
@@ -524,7 +544,7 @@ static void *process(void *shared, int step, void *_data)
 								j++;
 							}
 						}else{
-							while(strcmp(singleQueryMat->name[aux->startline+j],readname)!=0){
+							while(j < aux->number_of_seqs && strcmp(singleQueryMat->name[aux->startline+j],readname)!=0){
 								//strcpy(aux->results[j].readname,singleQueryMat->name[aux->startline+j]);
 								aux->results[j].concordant_matches_roots[0]=-1;
 								aux->results[j].concordant_matches_nodes[0]=-1;
