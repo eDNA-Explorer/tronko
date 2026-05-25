@@ -10,7 +10,7 @@ on:
 
 jobs:
   analyze:
-    name: Analyze C/C++
+    name: Analyze
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'c-cpp' ]
+        language: [ 'c-cpp', 'actions' ]
 
     steps:
     - name: Checkout repository
@@ -30,11 +30,13 @@ jobs:
         submodules: recursive
 
     - name: Install dependencies
+      if: matrix.language == 'c-cpp'
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           cmake
 
     - name: Initialize CodeQL
@@ -48,6 +50,7 @@ jobs:
             - uses: security-and-quality
 
     - name: Manual C/C++ Build
+      if: matrix.language == 'c-cpp'
       run: |
         echo "Building tronko-build..."
         cd tronko-build
