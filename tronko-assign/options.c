@@ -50,6 +50,9 @@ static struct option long_options[]=
 	{"pruning-factor",required_argument,0,0},
 	{"max-leaf-matches",required_argument,0,0},
 	{"max-bwa-matches",required_argument,0,0},
+	{"best-leaf-threshold",required_argument,0,0},
+	{"best-leaf-max-votes",required_argument,0,0},
+	{"normalize-scores",no_argument,0,0},
 	{"aligner",required_argument,0,0},
 	{"minimap2-kmer",required_argument,0,0},
 	{"minimap2-window",required_argument,0,0},
@@ -100,9 +103,12 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
 	--max-leaf-matches [INT], Maximum leaf matches per read [default: 100] (alias: --max-bwa-matches)\n\
+	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: 0 = disabled]\n\
+	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 0 = disabled]\n\
+	--normalize-scores, Normalize scores per informative position before LCA [default: off]\n\
 	--aligner [bwa|minimap2], Aligner to use for read seeding [default: bwa]\n\
-	--minimap2-kmer [INT], minimap2 k-mer size [default: 15]\n\
-	--minimap2-window [INT], minimap2 minimizer window size [default: 5]\n\
+	--minimap2-kmer [INT], minimap2 k-mer size [default: 11]\n\
+	--minimap2-window [INT], minimap2 minimizer window size [default: 3]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -180,6 +186,22 @@ void parse_options(int argc, char **argv, Options *opt){
 						opt->max_leaf_matches = MAX_NUM_LEAF_MATCHES;
 					}
 				}
+				else if (strcmp(long_options[option_index].name, "best-leaf-threshold") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->best_leaf_threshold)) != 1) {
+						fprintf(stderr, "Invalid best-leaf-threshold value; disabling\n");
+						opt->best_leaf_threshold = 0.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "best-leaf-max-votes") == 0) {
+					if (sscanf(optarg, "%d", &(opt->best_leaf_max_votes)) != 1 ||
+					    opt->best_leaf_max_votes < 0) {
+						fprintf(stderr, "Invalid best-leaf-max-votes value (must be >= 0); disabling\n");
+						opt->best_leaf_max_votes = 0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "normalize-scores") == 0) {
+					opt->normalize_scores = 1;
+				}
 				else if (strcmp(long_options[option_index].name, "aligner") == 0) {
 					if (strcmp(optarg, "bwa") != 0 && strcmp(optarg, "minimap2") != 0) {
 						fprintf(stderr, "Invalid aligner '%s'; expected 'bwa' or 'minimap2'\n", optarg);
@@ -191,15 +213,15 @@ void parse_options(int argc, char **argv, Options *opt){
 				else if (strcmp(long_options[option_index].name, "minimap2-kmer") == 0) {
 					if (sscanf(optarg, "%d", &(opt->minimap2_kmer)) != 1 ||
 					    opt->minimap2_kmer < 1) {
-						fprintf(stderr, "Invalid minimap2-kmer value; using default 15\n");
-						opt->minimap2_kmer = 15;
+						fprintf(stderr, "Invalid minimap2-kmer value; using default 11\n");
+						opt->minimap2_kmer = 11;
 					}
 				}
 				else if (strcmp(long_options[option_index].name, "minimap2-window") == 0) {
 					if (sscanf(optarg, "%d", &(opt->minimap2_window)) != 1 ||
 					    opt->minimap2_window < 1) {
-						fprintf(stderr, "Invalid minimap2-window value; using default 5\n");
-						opt->minimap2_window = 5;
+						fprintf(stderr, "Invalid minimap2-window value; using default 3\n");
+						opt->minimap2_window = 3;
 					}
 				}
 #ifdef ENABLE_PARQUET

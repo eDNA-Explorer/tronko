@@ -1,6 +1,6 @@
 #include "allocateMemoryForResults.h"
 
-void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes, int max_leaf_matches){
+void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes, int max_leaf_matches, int normalize_scores){
 	int i,j, k;
 	if (use_portion==1){
 		results->positions = malloc((max_query_length+max_query_length+2*padding_size+1)*(sizeof(int)));
@@ -10,12 +10,25 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		results->locQuery = malloc((max_query_length+max_numbase+1)*(sizeof(char)));
 	}
 	results->nodeScores = (type_of_PP ***)malloc(max_leaf_matches*(sizeof(type_of_PP **)));
+	results->informativeCounts = NULL;
+	if (normalize_scores) {
+		results->informativeCounts = (int ***)malloc(max_leaf_matches*(sizeof(int **)));
+	}
 	for (i=0; i<max_leaf_matches; i++){
 		results->nodeScores[i] = (type_of_PP **)malloc(numberOfTrees*(sizeof(type_of_PP *)));
+		if (normalize_scores) {
+			results->informativeCounts[i] = (int **)malloc(numberOfTrees*(sizeof(int *)));
+		}
 		for (j=0; j<numberOfTrees; j++){
 			results->nodeScores[i][j] = (type_of_PP *)malloc((2*numspecArr[j]-1)*(sizeof(type_of_PP)));
+			if (normalize_scores) {
+				results->informativeCounts[i][j] = (int *)malloc((2*numspecArr[j]-1)*(sizeof(int)));
+			}
 			for(k=0; k<2*numspecArr[j]-1; k++){
 				results->nodeScores[i][j][k] = 0;
+				if (normalize_scores) {
+					results->informativeCounts[i][j][k] = 0;
+				}
 			}
 		}
 	}
@@ -94,10 +107,19 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 	for(i=0; i<max_leaf_matches; i++){
 		for(j=0; j<numberOfTrees; j++){
 			free(results->nodeScores[i][j]);
+			if (results->informativeCounts != NULL) {
+				free(results->informativeCounts[i][j]);
+			}
 		}
 		free(results->nodeScores[i]);
+		if (results->informativeCounts != NULL) {
+			free(results->informativeCounts[i]);
+		}
 	}
 	free(results->nodeScores);
+	if (results->informativeCounts != NULL) {
+		free(results->informativeCounts);
+	}
 	for(i=0; i<numberOfTrees; i++){
 		free(results->voteRoot[i]);
 	}

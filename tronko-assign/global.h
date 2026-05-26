@@ -118,6 +118,7 @@ typedef struct resultsStruct{
 	alignment_t *aln;
 	scoring_t *scoring;
 	type_of_PP ***nodeScores;
+	int ***informativeCounts;
 	int **voteRoot;
 	int *positions;
 	char *locQuery;
@@ -180,6 +181,9 @@ typedef struct mystruct{
 	int enable_pruning;
 	type_of_PP pruning_factor;
 	int max_leaf_matches;
+	type_of_PP best_leaf_threshold;
+	int best_leaf_max_votes;
+	int normalize_scores;
 	char aligner[16];
 	int minimap2_kmer;
 	int minimap2_window;
@@ -261,9 +265,12 @@ typedef struct Options{
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
 	int max_leaf_matches;       // Maximum candidate leaf matches per read (default: MAX_NUM_LEAF_MATCHES)
+	double best_leaf_threshold; // Best-leaf override score threshold (default: 0 = disabled)
+	int best_leaf_max_votes;    // Max total votes for best-leaf override (default: 0 = disabled)
+	int normalize_scores;       // Normalize scores per informative position (default: 0)
 	char aligner[16];           // "bwa" (default) or "minimap2"
-	int minimap2_kmer;          // minimap2 k-mer size (default: 15)
-	int minimap2_window;        // minimap2 minimizer window size (default: 5)
+	int minimap2_kmer;          // minimap2 k-mer size (default: 11)
+	int minimap2_window;        // minimap2 minimizer window size (default: 3)
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled

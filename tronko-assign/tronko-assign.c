@@ -287,6 +287,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	int max_readname_length = mstr->max_readname_length;
 	int max_acc_name = mstr->max_acc_name;
 	int max_leaf_matches = mstr->max_leaf_matches;
+	type_of_PP best_leaf_threshold = mstr->best_leaf_threshold;
+	int best_leaf_max_votes = mstr->best_leaf_max_votes;
+	int normalize_scores = mstr->normalize_scores;
 	int max_numbase = mstr->max_numbase;
 	int number_of_total_nodes = mstr->number_of_total_nodes;
 	int print_all_nodes = mstr->print_all_nodes;
@@ -599,28 +602,31 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			//strcmp(results->cigars_forward[0],"*")!=0 && strcmp(results->cigars_forward[0]," ")!=0){
 		if (paired != 0){
 			if ( use_nw==0 ){
-				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->informativeCounts,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes,normalize_scores);
 			}else{
-				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->informativeCounts,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes,normalize_scores);
 			}
 		}else{
 			if (use_nw==0){
-				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->informativeCounts,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes,normalize_scores);
 			}else{
-				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->informativeCounts,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor,best_leaf_threshold,best_leaf_max_votes,normalize_scores);
 			}
 		}
 		numberOfTrees = leaf_iter;
-		for(i=0;i<number_of_total_nodes;i++){
-			minNodes[i]=-1;
-		}
-		for(i=0; i<leaf_iter; i++){
-			for(j=0; j<2*numspecArr[trees_search[i]]-1; j++){
-				results->nodeScores[i][trees_search[i]][j]=0;
+			for(i=0;i<number_of_total_nodes;i++){
+				minNodes[i]=-1;
 			}
-			results->leaf_coordinates[i][0]=-1;
-			results->leaf_coordinates[i][1]=-1;
-		}
+			for(i=0; i<leaf_iter; i++){
+				for(j=0; j<2*numspecArr[trees_search[i]]-1; j++){
+					results->nodeScores[i][trees_search[i]][j]=0;
+					if (results->informativeCounts != NULL) {
+						results->informativeCounts[i][trees_search[i]][j]=0;
+					}
+				}
+				results->leaf_coordinates[i][0]=-1;
+				results->leaf_coordinates[i][1]=-1;
+			}
 			if (use_leaf_portion==1 && leaf_iter < max_leaf_matches){
 				results->starts_forward[leaf_iter] = -1;
 				for(j=0; j<MAX_CIGAR; j++){
@@ -931,6 +937,7 @@ int main(int argc, char **argv){
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
+	opt.cinterval = 0.0; // voting window width; 0 = only the single best-scoring node votes (prior effective default). Override with --Cinterval.
 	opt.print_all_nodes=0;
 	opt.verbose_level = -1;  // Disabled by default
 	opt.log_file[0] = '\0';
@@ -944,12 +951,26 @@ int main(int argc, char **argv){
 	opt.enable_pruning = 0;
 	opt.pruning_factor = 2.0;
 	opt.max_leaf_matches = MAX_NUM_LEAF_MATCHES;
+	opt.best_leaf_threshold = 0.0;
+	opt.best_leaf_max_votes = 0;
+	opt.normalize_scores = 0;
 	strcpy(opt.aligner, "bwa");
-	opt.minimap2_kmer = 15;
-	opt.minimap2_window = 5;
+	opt.minimap2_kmer = 11;
+	opt.minimap2_window = 3;
 
 	parse_options(argc, argv, &opt);
-	
+
+	/* minimap2's paired path needs read 2 pre-oriented reference-forward (BWA self-handles
+	   strand internally; the minimap2 wrapper does not). Auto-enable the read-2
+	   reverse-complement for paired minimap2 so -z is not a silent requirement. Must be
+	   set before reads are loaded. */
+	if (strcmp(opt.aligner, "minimap2") == 0 && strcmp(opt.paired_or_single, "paired") == 0
+	        && opt.reverse_second_of_paired_read != 1) {
+		opt.reverse_second_of_paired_read = 1;
+		if (opt.verbose_level >= 0)
+			fprintf(stderr, "[INFO] minimap2 paired: auto-enabling read-2 reverse-complement (equivalent to -z)\n");
+	}
+
 	// Initialize logging based on options
 	if (opt.verbose_level >= 0) {
 		log_level_t level = (log_level_t)(3 - opt.verbose_level);  // Convert to our enum (3=DEBUG, 2=INFO, etc.)
@@ -1287,9 +1308,9 @@ int main(int argc, char **argv){
 		for(i=0; i<opt.number_of_cores; i++){
 			mstr[i].str = malloc(sizeof(struct resultsStruct));
 			if ( opt.fastq == 0){
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches);
+				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches,opt.normalize_scores);
 			}else{
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches);
+				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches,opt.normalize_scores);
 			}
 			mstr[i].concordant=0;
 			mstr[i].maxNumSpec=maxNumSpec;
@@ -1308,6 +1329,9 @@ int main(int argc, char **argv){
 			mstr[i].number_of_total_nodes = number_of_total_nodes;
 			mstr[i].print_all_nodes = opt.print_all_nodes;
 			mstr[i].max_leaf_matches = opt.max_leaf_matches;
+			mstr[i].best_leaf_threshold = opt.best_leaf_threshold;
+			mstr[i].best_leaf_max_votes = opt.best_leaf_max_votes;
+			mstr[i].normalize_scores = opt.normalize_scores;
 			strncpy(mstr[i].aligner, opt.aligner, sizeof(mstr[i].aligner) - 1);
 			mstr[i].aligner[sizeof(mstr[i].aligner) - 1] = '\0';
 			mstr[i].minimap2_kmer = opt.minimap2_kmer;
@@ -1615,9 +1639,9 @@ int main(int argc, char **argv){
 		for(i=0;i<opt.number_of_cores;i++){
 			mstr[i].str = malloc(sizeof(struct resultsStruct));
 			if ( opt.fastq == 0){
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches);
+				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches,opt.normalize_scores);
 			}else{
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches);
+				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes,opt.max_leaf_matches,opt.normalize_scores);
 			}
 			mstr[i].concordant=concordant;
 			mstr[i].maxNumSpec=maxNumSpec;
@@ -1636,6 +1660,9 @@ int main(int argc, char **argv){
 			mstr[i].number_of_total_nodes = number_of_total_nodes;
 			mstr[i].print_all_nodes = opt.print_all_nodes;
 			mstr[i].max_leaf_matches = opt.max_leaf_matches;
+			mstr[i].best_leaf_threshold = opt.best_leaf_threshold;
+			mstr[i].best_leaf_max_votes = opt.best_leaf_max_votes;
+			mstr[i].normalize_scores = opt.normalize_scores;
 			strncpy(mstr[i].aligner, opt.aligner, sizeof(mstr[i].aligner) - 1);
 			mstr[i].aligner[sizeof(mstr[i].aligner) - 1] = '\0';
 			mstr[i].minimap2_kmer = opt.minimap2_kmer;
