@@ -1,5 +1,6 @@
 #include "options.h"
 #include <getopt.h>
+#include <string.h>
 
 static struct option long_options[]=
 {
@@ -47,6 +48,15 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+	{"max-leaf-matches",required_argument,0,0},
+	{"max-bwa-matches",required_argument,0,0},
+	{"best-leaf-threshold",required_argument,0,0},
+	{"best-leaf-max-votes",required_argument,0,0},
+	{"normalize-scores",no_argument,0,0},
+	{"no-normalize-scores",no_argument,0,0},
+	{"aligner",required_argument,0,0},
+	{"minimap2-kmer",required_argument,0,0},
+	{"minimap2-window",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
 #endif
@@ -67,7 +77,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-g [FILE], compatible only with -s, path to single-end reads file\n\
 	-1 [FILE], compatible only with -p, path to paired-end forward read file\n\
 	-2 [FILE], compatible only with -p, path to paired-end reverse read file\n\
-	-c [INT], LCA cut-off to use [default:5]\n\
+	-c [FLOAT], LCA cut-off / Cinterval to use [default: 0.02]\n\
 	-C [INT], number of cores [default:1] (use -C 1 for reproducible results)\n\
 	-L [INT], number of lines to read for assignment [default:50000]\n\
 	-P, print alignments to stdout\n\
@@ -77,7 +87,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences\n\
 	-5 [FILE], Print tree number and leaf number and exit\n\
 	-6, Skip the bwa build if database already exists\n\
-	-u, Score constant [default: 0.01]\n\
+	-u [FLOAT], Score constant [default: 0.0001]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
 	-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]\n\
 	-l [FILE], Log file path [default: stderr only]\n\
@@ -93,6 +103,14 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	--max-leaf-matches [INT], Maximum leaf matches per read [default: 10] (alias: --max-bwa-matches)\n\
+	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: -0.1]\n\
+	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 10]\n\
+	--normalize-scores, Normalize scores per informative position before LCA [default: on]\n\
+	--no-normalize-scores, Disable per-informative-position score normalization (use raw summed scores)\n\
+	--aligner [bwa|minimap2], Aligner to use for read seeding [default: minimap2]\n\
+	--minimap2-kmer [INT], minimap2 k-mer size [default: 11]\n\
+	--minimap2-window [INT], minimap2 minimizer window size [default: 3]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -159,6 +177,56 @@ void parse_options(int argc, char **argv, Options *opt){
 					if (sscanf(optarg, "%lf", &(opt->pruning_factor)) != 1) {
 						fprintf(stderr, "Invalid pruning-factor value\n");
 						opt->pruning_factor = 2.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "max-leaf-matches") == 0 ||
+				         strcmp(long_options[option_index].name, "max-bwa-matches") == 0) {
+					if (sscanf(optarg, "%d", &(opt->max_leaf_matches)) != 1 ||
+					    opt->max_leaf_matches < 1) {
+						fprintf(stderr, "Invalid max-leaf-matches value; using default %d\n",
+						        MAX_NUM_LEAF_MATCHES);
+						opt->max_leaf_matches = MAX_NUM_LEAF_MATCHES;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "best-leaf-threshold") == 0) {
+					if (sscanf(optarg, "%lf", &(opt->best_leaf_threshold)) != 1) {
+						fprintf(stderr, "Invalid best-leaf-threshold value; disabling\n");
+						opt->best_leaf_threshold = 0.0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "best-leaf-max-votes") == 0) {
+					if (sscanf(optarg, "%d", &(opt->best_leaf_max_votes)) != 1 ||
+					    opt->best_leaf_max_votes < 0) {
+						fprintf(stderr, "Invalid best-leaf-max-votes value (must be >= 0); disabling\n");
+						opt->best_leaf_max_votes = 0;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "normalize-scores") == 0) {
+					opt->normalize_scores = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "no-normalize-scores") == 0) {
+					opt->normalize_scores = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "aligner") == 0) {
+					if (strcmp(optarg, "bwa") != 0 && strcmp(optarg, "minimap2") != 0) {
+						fprintf(stderr, "Invalid aligner '%s'; expected 'bwa' or 'minimap2'\n", optarg);
+						exit(1);
+					}
+					strncpy(opt->aligner, optarg, sizeof(opt->aligner) - 1);
+					opt->aligner[sizeof(opt->aligner) - 1] = '\0';
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-kmer") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_kmer)) != 1 ||
+					    opt->minimap2_kmer < 1) {
+						fprintf(stderr, "Invalid minimap2-kmer value; using default 11\n");
+						opt->minimap2_kmer = 11;
+					}
+				}
+				else if (strcmp(long_options[option_index].name, "minimap2-window") == 0) {
+					if (sscanf(optarg, "%d", &(opt->minimap2_window)) != 1 ||
+					    opt->minimap2_window < 1) {
+						fprintf(stderr, "Invalid minimap2-window value; using default 3\n");
+						opt->minimap2_window = 3;
 					}
 				}
 #ifdef ENABLE_PARQUET

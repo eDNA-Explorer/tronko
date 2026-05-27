@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     make \
     zlib1g-dev \
+    libzstd-dev \
     libc6-dev \
     git \
     && rm -rf /var/lib/apt/lists/*

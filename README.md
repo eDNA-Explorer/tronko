@@ -54,7 +54,7 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		-g [FILE], compatible only with -s, path to single-end reads file
 		-1 [FILE], compatible only with -p, path to paired-end forward read file
 		-2 [FILE], compatible only with -p, path to paired-end reverse read file
-		-c [INT], LCA cut-off to use [default:5]
+		-c [FLOAT], LCA cut-off / Cinterval to use [default: 0.02]
 		-C [INT], number of cores [default:1]
 		-L [INT], number of lines to read for assignment [default:50000]
 		-P, print alignments to stdout
@@ -64,11 +64,41 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences
 		-5 [FILE], Print tree number and leaf number and exit
 		-6, Skip the bwa build if database already exists
-		-u, Score constant [default: 0.01]
+		-u [FLOAT], Score constant [default: 0.0001]
 		-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]
 		-l [FILE], Log file path [default: stderr only]
 		-R, Enable resource monitoring (memory/CPU usage)
 		-T, Enable timing information
+		-7, Print scores for all nodes [scores_all_nodes.txt]
+		--max-leaf-matches [INT], Maximum leaf matches per read [default: 10] (alias: --max-bwa-matches)
+		--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: -0.1]
+		--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 10]
+		--normalize-scores, Normalize scores per informative position before LCA [default: on]
+		--aligner [bwa|minimap2], Aligner to use for read seeding [default: minimap2]
+		--minimap2-kmer [INT], minimap2 k-mer size [default: 11]
+		--minimap2-window [INT], minimap2 minimizer window size [default: 3]
+
+## Recommended defaults & evidence
+
+The current recommended default assign-time configuration is:
+
+```bash
+tronko-assign --aligner minimap2 --normalize-scores --Cinterval 0.02 \
+  --score-constant 0.0001 --max-leaf-matches 10 \
+  --best-leaf-threshold -0.1 --best-leaf-max-votes 10
+```
+
+These defaults come from the eDNA AC-grid benchmark on `assignment-tool-benchmarking` commit `55e55a39e`. The full findings report is `projects/assignment_benchmarks/findings/tronko_ac_grid_settings_report.md` in the eDNA data-pipelines repository. The benchmark covered 15,120 assignments: 1,008 tronko-assign configurations across 3 communities for each of 5 LCA markers.
+
+| Marker | Best objective | Best config |
+|---|---:|---|
+| `12s_mifish_lca` | 0.5491 | `minimap2 --normalize-scores --Cinterval 0.05 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 10` |
+| `16smamm_lca` | 0.5327 | `minimap2 --normalize-scores --Cinterval 0.05 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 5` |
+| `its2_plants_lca` | 0.4913 | `minimap2 --normalize-scores --Cinterval 0.02 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.02 --best-leaf-max-votes 10` |
+| `vert12s_lca` | 0.4512 | `minimap2 --normalize-scores --Cinterval 0.005 --score-constant 0.0001 --max-leaf-matches 10` |
+| `18s_euk_lca` | 0.3282 | `bwa --normalize-scores --Cinterval 0.01 --score-constant 0.001 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 10` |
+
+The common default reaches 95.9% of each marker-specific best on average. Minimap2 is the global default because controlled paired comparisons showed it out-seeded BWA decisively on most markers, including 504/504 paired wins on both 16Smamm and 12S_MiFish. Score normalization helped every marker, and `--max-leaf-matches 10` was faster and marginally more accurate than 100 across the grid. The best-leaf override at `-0.1` with 10 votes was net-positive or neutral for the common configuration.
 
 ## Verbose Logging and Performance Monitoring
 
@@ -122,11 +152,11 @@ Log levels:
 - `-V2`: INFO, WARN, and ERROR messages (recommended)
 - `-V3`: DEBUG, INFO, WARN, and ERROR messages (most verbose)
 
-Tronko uses the <a href="https://github.com/smarco/WFA2-lib">Wavefront Alignment Algorithm (version 2)</a> or <a href="https://github.com/noporpoise/seq-align">Needleman-Wunsch Algorithm</a> for semi-global alignments. It uses <a href="https://github.com/lh3/bwa">bwa</a> for alignment to leaf nodes, and uses <a href="https://github.com/DavidLeeds/hashmap">David Leeds' hashmap</a> for hashmap implementation in C. `tronko-assign` does not reverse complement your reads automatically. You must use options `-v` or `-z` to reverse complement your read for better alignment to the reference database. For more information on the direction of your reads based on your library prep, please refer to this helpful blog here: <a href="http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html">http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html</a>.
+Tronko uses the <a href="https://github.com/smarco/WFA2-lib">Wavefront Alignment Algorithm (version 2)</a> or <a href="https://github.com/noporpoise/seq-align">Needleman-Wunsch Algorithm</a> for semi-global alignments. It uses minimap2 by default for alignment to leaf nodes, with <a href="https://github.com/lh3/bwa">bwa</a> still available via `--aligner bwa`, and uses <a href="https://github.com/DavidLeeds/hashmap">David Leeds' hashmap</a> for hashmap implementation in C. For BWA runs, use options `-v` or `-z` when your reads need reverse complementation for better alignment to the reference database. For more information on the direction of your reads based on your library prep, please refer to this helpful blog here: <a href="http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html">http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html</a>.
 
 ## Example output
 
-The output file is a tab-delimited text file where only the forward readname is retained (if using paired-end reads). The output displays the taxonomic path for assignment, the score, the number of forward read mismatches with the `bwa` hit, the number of reverse read mismatches with the `bwa` hit, the tree number for the best assignment (0 if using 1 tree), and the node number the read (or reads in the case of paired-end reads) was assigned to. For single-end reads, the `Reverse_Mismatch` will always be 0 and the `Forward_Mismatch` is the number of read mismatches with the `bwa` hit.
+The output file is a tab-delimited text file where only the forward readname is retained (if using paired-end reads). The output displays the taxonomic path for assignment, the score, the number of forward read mismatches with the seed hit, the number of reverse read mismatches with the seed hit, the tree number for the best assignment (0 if using 1 tree), and the node number the read (or reads in the case of paired-end reads) was assigned to. For single-end reads, the `Reverse_Mismatch` will always be 0 and the `Forward_Mismatch` is the number of read mismatches with the seed hit.
 
 ```
 Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node_Number
@@ -181,7 +211,7 @@ To run `tronko-build` with the container:
 	singularity exec --bind <root-dir-to-bind-to-container> tronko_1.0.sif tronko-build
 
 # `tronko-assign` Usage
-Tronko does not detect the correct orientation of the reads. If your reverse read needs to be reverse complemented use the option `-z`. The default options of Tronko assume that your reads are in FASTA format. If you want to assign reads in FASTQ format, use the option `-q`. You will also need a FASTA file (not gzipped) of all of your reference sequences in the reference database (use the option `-a`). `tronko-assign` will create a `bwa index` of the reference sequences with the extension of *.fasta.ann, etc. If you already have the `bwa index` files present in the same directory and naming scheme as your reference sequences, you can choose skip the `bwa index` build use `-6`. The reads (and reference database file) can be gzipped or not gzipped. Assigning paired-end reads in FASTA format:
+The default options of Tronko assume that your reads are in FASTA format. If you want to assign reads in FASTQ format, use the option `-q`. You will also need a FASTA file (not gzipped) of all of your reference sequences in the reference database (use the option `-a`). When using `--aligner bwa`, `tronko-assign` will create a `bwa index` of the reference sequences with the extension of *.fasta.ann, etc. If you already have the `bwa index` files present in the same directory and naming scheme as your reference sequences, you can choose skip the `bwa index` build use `-6`. The reads (and reference database file) can be gzipped or not gzipped. Assigning paired-end reads in FASTA format:
 ```
 tronko-assign -r -f [tronko-build REFERENCE DB FILE] -p -1 [FORWARD READS FASTA] -2 [REVERSE READS FASTA] -a [REFERENCE SEQUENCES FASTA] -o [OUTPUT FILE]
 ```
@@ -231,13 +261,13 @@ An example dataset for `tronko-assign` is provided in `example_datasets/single_t
 CCTGGCTGGTAATCTAGCCCATGCCGGAGCTTCAGTGGATTTAGCAATCTTCTCCCTTCACTTAGCAGGTGTATCATCTATTCTAGGCGCTATCAACTTTATCACAACAGCCATCAACATAAAGCCTCCAGCCCTCTCACAATACCAAACCCCCCTATTCGTATGATCAGTACTTATCACTGCTGTCCTACTACTACTCTCACTCCCAGTACTTGCTGCTGGTATCACTATATTACTAACAGATCGAAACTTAAACACAACATTCTTTGATCCAGCTGGAGGTGGTGACCCAGTACTTTACCAACACCTCTTC
 ``` 
 
-This particular sequence, `GU572157.1`, has been removed from the single tree example database. To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment and a default LCA cut-off of 5):
+This particular sequence, `GU572157.1`, has been removed from the single tree example database. To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment and the recommended default Cinterval of 0.02):
 
 ```
 tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta -o example_datasets/single_tree/missingreads_singleend_150bp_2error_results.txt -w
 ```
 
-To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the paired-end reads (using the Needleman-Wunsch alignment and a default LCA cut-off of 5):
+To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the paired-end reads (using the Needleman-Wunsch alignment and the recommended default Cinterval of 0.02):
 
 ```
 tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta -p -1 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read1.fasta -2 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read2.fasta -o example_datasets/single_tree/missingreads_pairedend_150bp_2error_results.txt -w
@@ -250,7 +280,7 @@ An example dataset for `tronko-assign` with multiple trees is provided in `examp
 TTTGAGCACTGTGGGACATAGGGGTGGAGCAGTGGATTTGGGTATCTTCTCTTTGCACCTGGCTGGCGTTAGAAGAATCTTGGGGAGAGCTAATTTTATTACCACTATCACCAATATAAAAGGGGAAGGTATGACTATAGAACTCATGCCTTTATTCGTGTGGGCGGTGCTCCTCACGGCTGTCTTACTTTTACTCTCTCTACCTGTATTAGCTGGGGCTATCACAATGTTAC
 ```
 
-This particular sequence, `KP857443.1`, has been removed from the multiple trees example databases. To obtain assignments, run `tronko-assign` with the multiple trees example database with partitions from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and a default LCA cut-off of 5 `-c 5`):
+This particular sequence, `KP857443.1`, has been removed from the multiple trees example databases. To obtain assignments, run `tronko-assign` with the multiple trees example database with partitions from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and the recommended default Cinterval of 0.02):
 
 ```
 tronko-assign -r -f out_oneMSA/reference_tree.txt -s -g example_datasets/multiple_trees/missingreads_singleend_150bp_2error.fasta -o example_datasets/multiple_trees/missingreads_singleend_150bp_2error_partition_results.txt -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
@@ -261,7 +291,7 @@ To assign paired-end reads on the same reference database run `tronko-assign`:
 tronko-assign -r -f out_oneMSA/reference_tree.txt -p -1 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta -2 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read2.fasta -o example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_partition_results.txt -a -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
 ```
 
-To obtain assignments, run `tronko-assign` with the multiple trees example database with multiple MSAs from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and a default LCA cut-off of 5 `-c 5`):
+To obtain assignments, run `tronko-assign` with the multiple trees example database with multiple MSAs from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and the recommended default Cinterval of 0.02):
 
 ```
 tronko-assign -r -f outdir_multiple_MSA/reference_tree.txt -s -g example_datasets/multiple_trees/missingreads_singleend_150bp_2error.fasta -o example_datasets/multiple_trees/missingreads_singleend_150bp_2error_multiple_MSA_results.txt -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
