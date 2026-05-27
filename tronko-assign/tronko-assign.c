@@ -936,25 +936,25 @@ int main(int argc, char **argv){
 	opt.skip_build=0;
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
-	opt.score_constant = 0.01;
-	opt.cinterval = 0.0; // voting window width; 0 = only the single best-scoring node votes (prior effective default). Override with --Cinterval.
+	opt.score_constant = 0.0001;
+	opt.cinterval = 0.02; // normalized-score voting window width; override with --Cinterval.
 	opt.print_all_nodes=0;
 	opt.verbose_level = -1;  // Disabled by default
 	opt.log_file[0] = '\0';
 	opt.enable_resource_monitoring = 0;
 	opt.enable_timing = 0;
 	opt.tsv_log_file[0] = '\0';
-	// Tier 1 optimization defaults (disabled by default for baseline comparison)
+	// Tier 1 optimization defaults.
 	opt.early_termination = 0;
 	opt.strike_box = 1.0;
 	opt.max_strikes = 6;
 	opt.enable_pruning = 0;
 	opt.pruning_factor = 2.0;
-	opt.max_leaf_matches = MAX_NUM_LEAF_MATCHES;
-	opt.best_leaf_threshold = 0.0;
-	opt.best_leaf_max_votes = 0;
-	opt.normalize_scores = 0;
-	strcpy(opt.aligner, "bwa");
+	opt.max_leaf_matches = 10;
+	opt.best_leaf_threshold = -0.1;
+	opt.best_leaf_max_votes = 10;
+	opt.normalize_scores = 1;
+	strcpy(opt.aligner, "minimap2");
 	opt.minimap2_kmer = 11;
 	opt.minimap2_window = 3;
 

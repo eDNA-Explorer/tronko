@@ -76,7 +76,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-g [FILE], compatible only with -s, path to single-end reads file\n\
 	-1 [FILE], compatible only with -p, path to paired-end forward read file\n\
 	-2 [FILE], compatible only with -p, path to paired-end reverse read file\n\
-	-c [INT], LCA cut-off to use [default:5]\n\
+	-c [FLOAT], LCA cut-off / Cinterval to use [default: 0.02]\n\
 	-C [INT], number of cores [default:1] (use -C 1 for reproducible results)\n\
 	-L [INT], number of lines to read for assignment [default:50000]\n\
 	-P, print alignments to stdout\n\
@@ -86,7 +86,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences\n\
 	-5 [FILE], Print tree number and leaf number and exit\n\
 	-6, Skip the bwa build if database already exists\n\
-	-u, Score constant [default: 0.01]\n\
+	-u [FLOAT], Score constant [default: 0.0001]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
 	-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]\n\
 	-l [FILE], Log file path [default: stderr only]\n\
@@ -102,11 +102,11 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
-	--max-leaf-matches [INT], Maximum leaf matches per read [default: 100] (alias: --max-bwa-matches)\n\
-	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: 0 = disabled]\n\
-	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 0 = disabled]\n\
-	--normalize-scores, Normalize scores per informative position before LCA [default: off]\n\
-	--aligner [bwa|minimap2], Aligner to use for read seeding [default: bwa]\n\
+	--max-leaf-matches [INT], Maximum leaf matches per read [default: 10] (alias: --max-bwa-matches)\n\
+	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: -0.1]\n\
+	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 10]\n\
+	--normalize-scores, Normalize scores per informative position before LCA [default: on]\n\
+	--aligner [bwa|minimap2], Aligner to use for read seeding [default: minimap2]\n\
 	--minimap2-kmer [INT], minimap2 k-mer size [default: 11]\n\
 	--minimap2-window [INT], minimap2 minimizer window size [default: 3]\n\
 	\n\
