@@ -143,7 +143,10 @@ Build and functional checks run locally on this branch (Ubuntu 24.04, x86_64):
 ## Updates since first review
 
 - **Added `--no-normalize-scores`** (commit `4ac2a1c`): normalization defaults on, so an explicit off-switch is required for the documented legacy-reproduction path and for raw-vs-normalized comparison. Verified: default output is byte-identical to the goldens; `--no-normalize-scores` reverts to raw summed scores.
-- **CodeQL**: the advanced-workflow C/C++ analysis reported 66 alerts (23 high) because `paths-ignore` used bare directory names, which don't filter alerts for compiled languages. Switched to `<dir>/**` globs so vendored `minimap2_src` / `bwa_source_files` / `WFA2` are excluded (~51 alerts). The remaining high alerts (`cpp/missing-check-scanf`, `cpp/uncontrolled-allocation-size`) all traced to two unchecked parses in `readreference.c`; their return values are now checked and parsed tree dimensions bounded (`MAX_TREE_LEAVES`), hardening DB loading against corrupt files with no behavior change on valid databases.
+- **CodeQL** (now passing, 0 alerts). Two root causes were addressed:
+  - *Vendored code:* `paths-ignore` does not filter alerts for compiled C/C++, so the vendored minimap2 v2.30 sources are instead kept out of the CodeQL database entirely — `libminimap2.a` is pre-built *before* CodeQL tracing starts, so the traced `make` reuses it and never recompiles `minimap2_src/*.c`.
+  - *Query suite:* the workflow had opted into `security-and-quality` (the noisiest suite), whose medium-precision `cpp/missing-check-scanf` flagged ~70 pre-existing unchecked `scanf`/`fscanf` sites across the whole module — including files this branch never touches — all counted as "new" because `main` has no baseline with that suite. Reverted to the default high-precision `code-scanning` suite, which still covers real high-confidence vulnerabilities.
+  - As genuine hardening (kept regardless), the two reference-DB parses in `readreference.c` now check their `sscanf` return inline and bound parsed tree dimensions (`MAX_TREE_LEAVES`); no behavior change on valid databases (goldens byte-identical).
 - Refreshed stale default-value comments in `global.h`. (Greptile's "freeMemForResults param order" note does not reproduce — header and implementation already agree.)
 
 ## Changelog
