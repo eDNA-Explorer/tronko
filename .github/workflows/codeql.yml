@@ -39,6 +39,18 @@ jobs:
           libzstd-dev \
           cmake
 
+    # Pre-build the vendored minimap2 static library BEFORE CodeQL tracing starts.
+    # paths-ignore does not filter alerts for compiled C/C++, so we instead keep the
+    # vendored upstream sources (tronko-assign/minimap2_src) out of the CodeQL database
+    # entirely: once libminimap2.a exists, the traced `make` reuses it and never
+    # recompiles minimap2_src/*.c, so those translation units are never analyzed.
+    - name: Pre-build vendored minimap2 (excluded from CodeQL analysis)
+      if: matrix.language == 'c-cpp'
+      run: |
+        cd tronko-assign
+        make clean
+        make libminimap2.a
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
@@ -61,12 +73,11 @@ jobs:
         cd tronko-build
         make clean
         make
-        
-        echo "Building tronko-assign..."
+
+        echo "Building tronko-assign (libminimap2.a prebuilt; minimap2_src not traced)..."
         cd ../tronko-assign
-        make clean
         make
-        
+
         echo "Build completed successfully"
 
     - name: Perform CodeQL Analysis
