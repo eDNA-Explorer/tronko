@@ -622,12 +622,7 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 					break;
 				}
 				s = strtok(buffer, "\n");
-				if ( s == NULL ){
-					success = 0;
-				}else{
-					success = sscanf(s, "%d\t%d\t%d",&(numbaseArr[i]),&(rootArr[i]),&(numspecArr[i]));
-				}
-				if ( success != 3 ){
+				if ( s == NULL || sscanf(s, "%d\t%d\t%d",&(numbaseArr[i]),&(rootArr[i]),&(numspecArr[i])) != 3 ){
 					fprintf(stderr, "Error: malformed reference database: tree %d header expected 3 integer fields\n", i);
 					exit(1);
 				}
@@ -685,8 +680,7 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 			break;
 		}
 		s = strtok(buffer, "\n");
-		success = sscanf(s, "%d %d %d %d %d %d %d %d %s",&treeNumber, &nodeNumber, &(up[0]), &(up[1]), &down, &depth, &(taxIndex[0]), &(taxIndex[1]), acc_name);
-		if ( success < 8 ){
+		if ( s == NULL || sscanf(s, "%d %d %d %d %d %d %d %d %s",&treeNumber, &nodeNumber, &(up[0]), &(up[1]), &down, &depth, &(taxIndex[0]), &(taxIndex[1]), acc_name) < 8 ){
 			fprintf(stderr, "Error: malformed reference database: node line expected at least 8 integer fields\n");
 			exit(1);
 		}
