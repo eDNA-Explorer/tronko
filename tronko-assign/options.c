@@ -53,6 +53,7 @@ static struct option long_options[]=
 	{"best-leaf-threshold",required_argument,0,0},
 	{"best-leaf-max-votes",required_argument,0,0},
 	{"normalize-scores",no_argument,0,0},
+	{"no-normalize-scores",no_argument,0,0},
 	{"aligner",required_argument,0,0},
 	{"minimap2-kmer",required_argument,0,0},
 	{"minimap2-window",required_argument,0,0},
@@ -106,6 +107,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--best-leaf-threshold [FLOAT], Best-leaf override score threshold [default: -0.1]\n\
 	--best-leaf-max-votes [INT], Max total votes for best-leaf override [default: 10]\n\
 	--normalize-scores, Normalize scores per informative position before LCA [default: on]\n\
+	--no-normalize-scores, Disable per-informative-position score normalization (use raw summed scores)\n\
 	--aligner [bwa|minimap2], Aligner to use for read seeding [default: minimap2]\n\
 	--minimap2-kmer [INT], minimap2 k-mer size [default: 11]\n\
 	--minimap2-window [INT], minimap2 minimizer window size [default: 3]\n\
@@ -201,6 +203,9 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "normalize-scores") == 0) {
 					opt->normalize_scores = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "no-normalize-scores") == 0) {
+					opt->normalize_scores = 0;
 				}
 				else if (strcmp(long_options[option_index].name, "aligner") == 0) {
 					if (strcmp(optarg, "bwa") != 0 && strcmp(optarg, "minimap2") != 0) {

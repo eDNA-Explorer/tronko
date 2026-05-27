@@ -49,10 +49,10 @@ jobs:
           queries:
             - uses: security-and-quality
           paths-ignore:
-            - tronko-assign/minimap2_src
-            - tronko-assign/bwa_source_files
-            - tronko-assign/WFA2
-            - tronko-assign/carquet
+            - 'tronko-assign/minimap2_src/**'
+            - 'tronko-assign/bwa_source_files/**'
+            - 'tronko-assign/WFA2/**'
+            - 'tronko-assign/carquet/**'
 
     - name: Manual C/C++ Build
       if: matrix.language == 'c-cpp'

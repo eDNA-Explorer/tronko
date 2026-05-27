@@ -41,6 +41,7 @@
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
 #define MAX_NUM_LEAF_MATCHES 100
+#define MAX_TREE_LEAVES 10000000 /* sanity cap on leaves per tree when parsing a reference DB (guards against corrupt/huge allocation sizes) */
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 40000
 #define MAXTAXLENGTHNAME 256
@@ -265,10 +266,10 @@ typedef struct Options{
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
 	int max_leaf_matches;       // Maximum candidate leaf matches per read (default: MAX_NUM_LEAF_MATCHES)
-	double best_leaf_threshold; // Best-leaf override score threshold (default: 0 = disabled)
-	int best_leaf_max_votes;    // Max total votes for best-leaf override (default: 0 = disabled)
-	int normalize_scores;       // Normalize scores per informative position (default: 0)
-	char aligner[16];           // "bwa" (default) or "minimap2"
+	double best_leaf_threshold; // Best-leaf override score threshold (default: -0.1; 0 disables)
+	int best_leaf_max_votes;    // Max total votes for best-leaf override (default: 10; 0 disables)
+	int normalize_scores;       // Normalize scores per informative position (default: 1 = on; disable with --no-normalize-scores)
+	char aligner[16];           // "minimap2" (default) or "bwa"
 	int minimap2_kmer;          // minimap2 k-mer size (default: 11)
 	int minimap2_window;        // minimap2 minimizer window size (default: 3)
 #ifdef ENABLE_PARQUET

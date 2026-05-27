@@ -626,7 +626,16 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 					success = 0;
 				}else{
 					success = sscanf(s, "%d\t%d\t%d",&(numbaseArr[i]),&(rootArr[i]),&(numspecArr[i]));
-				}	
+				}
+				if ( success != 3 ){
+					fprintf(stderr, "Error: malformed reference database: tree %d header expected 3 integer fields\n", i);
+					exit(1);
+				}
+				if ( numspecArr[i] <= 0 || numspecArr[i] > MAX_TREE_LEAVES || numbaseArr[i] < 0 ){
+					fprintf(stderr, "Error: reference database tree %d has implausible dimensions (numspec=%d, numbase=%d)\n",
+					        i, numspecArr[i], numbaseArr[i]);
+					exit(1);
+				}
 			}
 			//for(i=0;i<numberOfTrees;i++){
 			//	printf("Tree %d Numbase: %d, Root: %d, Numspec %d\n",i,numbaseArr[i],rootArr[i],numspecArr[i]);
@@ -676,7 +685,16 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 			break;
 		}
 		s = strtok(buffer, "\n");
-		sscanf(s, "%d %d %d %d %d %d %d %d %s",&treeNumber, &nodeNumber, &(up[0]), &(up[1]), &down, &depth, &(taxIndex[0]), &(taxIndex[1]), acc_name);
+		success = sscanf(s, "%d %d %d %d %d %d %d %d %s",&treeNumber, &nodeNumber, &(up[0]), &(up[1]), &down, &depth, &(taxIndex[0]), &(taxIndex[1]), acc_name);
+		if ( success < 8 ){
+			fprintf(stderr, "Error: malformed reference database: node line expected at least 8 integer fields\n");
+			exit(1);
+		}
+		if ( treeNumber < 0 || treeNumber >= numberOfTrees ||
+		     nodeNumber < 0 || nodeNumber >= 2*numspecArr[treeNumber]-1 ){
+			fprintf(stderr, "Error: reference database node line out of range (tree=%d, node=%d)\n", treeNumber, nodeNumber);
+			exit(1);
+		}
 		treeArr[treeNumber][nodeNumber].up[0] = up[0];
 		treeArr[treeNumber][nodeNumber].up[1] = up[1];
 		treeArr[treeNumber][nodeNumber].down = down;
