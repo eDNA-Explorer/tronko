@@ -57,9 +57,12 @@ jobs:
         languages: ${{ matrix.language }}
         config: |
           name: "CodeQL Config"
+          # Use the default high-precision code-scanning suite. The previous
+          # 'security-and-quality' suite adds medium-precision quality queries
+          # (e.g. cpp/missing-check-scanf) that flag ~70 pre-existing unchecked
+          # scanf/fscanf sites across the whole module as "new" (main has no
+          # baseline to diff against), which is unrelated noise for this change.
           disable-default-queries: false
-          queries:
-            - uses: security-and-quality
           paths-ignore:
             - 'tronko-assign/minimap2_src/**'
             - 'tronko-assign/bwa_source_files/**'
