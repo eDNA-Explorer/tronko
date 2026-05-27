@@ -200,7 +200,14 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 			lm->name = treeArr[i][j].name;
 			lm->root = i;
 			lm->node = j;
-			hashmap_put(&map, lm->name, lm);
+			/* hashmap_put keeps the first entry and returns -EEXIST (without
+			   storing lm) if another tree already has a leaf with this name,
+			   as can happen when an accession appears in multiple AncestralClust
+			   per-cluster trees. Free lm in that case so duplicates don't leak.
+			   (Matches the first-wins resolution of the BWA fastmap.c path.) */
+			if (hashmap_put(&map, lm->name, lm) != 0) {
+				free(lm);
+			}
 		}
 	}
 
