@@ -955,7 +955,21 @@ int main(int argc, char **argv){
 	opt.best_leaf_max_votes = 10;
 	opt.normalize_scores = 1;
 	strcpy(opt.aligner, "minimap2");
-	opt.minimap2_kmer = 11;
+	/* k=21 matches the "sr" preset applied in minimap2_wrapper.c, whose chain
+	   filters (min_chain_score=25, min_cnt=2, pri_ratio=0.5) assume near-unique
+	   anchors. k=11 does not provide them here: an 11-mer recurs ~19x by chance
+	   across a 78.6 Mbase reference, so chaining ran on coincidental seeds.
+	   w stays at 3 rather than the preset's 11 -- amplicon reads are 118-275 bp
+	   and need dense minimizer sampling; w=11 assumes a long genome where sparse
+	   sampling is affordable. Measured on production CruxV2 DBs, 500 real reads:
+
+	     marker            k11/w3   k21/w3   k21/w11   bwa
+	     vert12S  (118bp)    248      315       288    339
+	     V16S-U   (225bp)    258      261       259    239
+	     CO1      (275bp)    461      479       459    475
+
+	   k21/w3 is best on all three, and beats bwa on two. */
+	opt.minimap2_kmer = 21;
 	opt.minimap2_window = 3;
 
 	parse_options(argc, argv, &opt);

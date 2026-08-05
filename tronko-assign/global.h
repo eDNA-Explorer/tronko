@@ -270,7 +270,7 @@ typedef struct Options{
 	int best_leaf_max_votes;    // Max total votes for best-leaf override (default: 10; 0 disables)
 	int normalize_scores;       // Normalize scores per informative position (default: 1 = on; disable with --no-normalize-scores)
 	char aligner[16];           // "minimap2" (default) or "bwa"
-	int minimap2_kmer;          // minimap2 k-mer size (default: 11)
+	int minimap2_kmer;          // minimap2 k-mer size (default: 21)
 	int minimap2_window;        // minimap2 minimizer window size (default: 3)
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)

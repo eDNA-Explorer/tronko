@@ -109,7 +109,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--normalize-scores, Normalize scores per informative position before LCA [default: on]\n\
 	--no-normalize-scores, Disable per-informative-position score normalization (use raw summed scores)\n\
 	--aligner [bwa|minimap2], Aligner to use for read seeding [default: minimap2]\n\
-	--minimap2-kmer [INT], minimap2 k-mer size [default: 11]\n\
+	--minimap2-kmer [INT], minimap2 k-mer size [default: 21]\n\
 	--minimap2-window [INT], minimap2 minimizer window size [default: 3]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
@@ -218,8 +218,8 @@ void parse_options(int argc, char **argv, Options *opt){
 				else if (strcmp(long_options[option_index].name, "minimap2-kmer") == 0) {
 					if (sscanf(optarg, "%d", &(opt->minimap2_kmer)) != 1 ||
 					    opt->minimap2_kmer < 1) {
-						fprintf(stderr, "Invalid minimap2-kmer value; using default 11\n");
-						opt->minimap2_kmer = 11;
+						fprintf(stderr, "Invalid minimap2-kmer value; using default 21\n");
+						opt->minimap2_kmer = 21;
 					}
 				}
 				else if (strcmp(long_options[option_index].name, "minimap2-window") == 0) {
