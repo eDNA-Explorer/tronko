@@ -62,6 +62,21 @@ static mm_idx_t *build_index_locked(const char *db_path, int kmer, int window)
 	mm_set_opt(0, &iopt, &mopt_dummy);
 	iopt.k = kmer;
 	iopt.w = window;
+	/* mm_idx_reader_read() is a *batched* API: one call returns at most one
+	   mini-batch of reference sequence, and callers are expected to loop until
+	   it returns NULL. Tronko keeps a single global index and calls it once, so
+	   everything past the first mini-batch was silently dropped -- measured at
+	   97k of 218k sequences for V16S-U and 167k of 257k for vert12S. Reads whose
+	   true reference landed past the cutoff came back unassigned with no error
+	   and no warning. BWA was unaffected because it loads a prebuilt on-disk
+	   index spanning the whole reference, which is why this hid for so long.
+	   Size one mini-batch to cover the entire reference instead.
+	   CAUTION: mm_idx_gen() takes mini_batch_size as an int. A value above
+	   INT_MAX wraps negative and the index degenerates to a single sequence
+	   (observed with 8e9). 2e9 stays inside int32 and covers the largest
+	   reference we ship (CO1_Metazoa, ~300 Mbases). */
+	iopt.batch_size = 0x7FFFFFFFFFFFFFFFULL;
+	iopt.mini_batch_size = 2000000000;
 
 	reader = mm_idx_reader_open(db_path, &iopt, NULL);
 	if (reader == NULL) {
@@ -70,6 +85,18 @@ static mm_idx_t *build_index_locked(const char *db_path, int kmer, int window)
 	}
 
 	idx = mm_idx_reader_read(reader, 1);
+	if (idx != NULL) {
+		/* Cheap guard: at EOF this returns NULL immediately. A non-NULL batch
+		   means the reference outgrew one mini-batch and the index is short. */
+		mm_idx_t *overflow = mm_idx_reader_read(reader, 1);
+		if (overflow != NULL) {
+			fprintf(stderr,
+				"[minimap2] ERROR: reference '%s' exceeds one index batch; "
+				"%u sequences were NOT indexed. Alignments against them will "
+				"silently fail.\n", db_path, overflow->n_seq);
+			mm_idx_destroy(overflow);
+		}
+	}
 	mm_idx_reader_close(reader);
 	if (idx == NULL) {
 		fprintf(stderr, "[minimap2] ERROR: failed to build index from '%s'\n", db_path);
