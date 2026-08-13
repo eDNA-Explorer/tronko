@@ -1,5 +1,59 @@
 #include "placement.h"
 
+static type_of_PP placement_score(type_of_PP ***nodeScores, int ***informativeCounts,
+	int match, int root, int node, int normalize_scores) {
+	type_of_PP score = nodeScores[match][root][node];
+	if (normalize_scores && informativeCounts != NULL) {
+		int count = informativeCounts[match][root][node];
+		if (count > 0) {
+			score = score / (type_of_PP)count;
+		}
+	}
+	return score;
+}
+
+static void apply_best_leaf_override(type_of_PP ***nodeScores, int ***informativeCounts, int **voteRoot,
+    int number_of_matches, int **leaf_coordinates, type_of_PP best_leaf_threshold,
+    int best_leaf_max_votes, int normalize_scores) {
+	int i, k;
+
+	if (best_leaf_max_votes <= 0 || number_of_matches <= 0) {
+		return;
+	}
+
+	type_of_PP bl_best = -9999999999999999;
+	int bl_node = -1;
+	int bl_tree = -1;
+	int bl_total = 0;
+
+	for (i = 0; i < number_of_matches; i++) {
+		int t = leaf_coordinates[i][0];
+		if (t == -1) continue;
+		int nn = 2 * numspecArr[t] - 1;
+		for (k = 0; k < nn; k++) {
+			if (treeArr[t][k].up[0] == -1 && treeArr[t][k].up[1] == -1) {
+				type_of_PP s = placement_score(nodeScores, informativeCounts, i, t, k, normalize_scores);
+				if (s > bl_best) {
+					bl_best = s;
+					bl_node = k;
+					bl_tree = t;
+				}
+			}
+			if (voteRoot[t][k] > 0) bl_total++;
+		}
+	}
+
+	if (bl_node >= 0 && bl_best > best_leaf_threshold && bl_total < best_leaf_max_votes) {
+		for (i = 0; i < number_of_matches; i++) {
+			int t = leaf_coordinates[i][0];
+			if (t == -1) continue;
+			int nn = 2 * numspecArr[t] - 1;
+			for (k = 0; k < nn; k++) voteRoot[t][k] = 0;
+		}
+		voteRoot[bl_tree][bl_node] = 1;
+	}
+}
+
 int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,char* seq1, char* seq2,char* const pattern_alg,char* const text_alg, char* const ops_alg, int begin_offset, int end_offset){
 	char* const operations = cigar->operations;
 	int k, alg_pos =0, pattern_pos= 0, text_pos =0;
@@ -57,7 +111,7 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int ***informativeCounts, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes, int normalize_scores){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -455,7 +509,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		type_of_PP strike_box_threshold = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match,print_all_nodes,site_scores_file,forward_name,
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, informativeCounts, alength, match,print_all_nodes,site_scores_file,forward_name,
 		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
 		    enable_pruning, pruning_threshold_calc);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -859,7 +913,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,informativeCounts,alength,match,print_all_nodes,site_scores_file,reverse_name,
 		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
 		    enable_pruning, pruning_threshold_calc2);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -890,8 +944,9 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[j]-1; k++){
 				//printf("Tree %d Node %d Taxonomy (%s) Score: %lf\n",j,k,taxonomyArr[j][treeArr[j][k].taxIndex[0]][treeArr[j][k].taxIndex[1]],nodeScores[i][j][k]);
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
+				type_of_PP score = placement_score(nodeScores, informativeCounts, i, j, k, normalize_scores);
+				if ( maximum < score){
+					maximum=score;
 					match_number=i;
 					minRoot=j;
 					minNode=k;
@@ -927,7 +982,8 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	for(i=0; i<number_of_matches; i++){
 		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
+				type_of_PP score = placement_score(nodeScores, informativeCounts, i, leaf_coordinates[i][0], k, normalize_scores);
+				if ( score >= (maximum-Cinterval) && score <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
 					voteRoot[leaf_coordinates[i][0]][k]=1;
 					index++;
@@ -937,6 +993,8 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	apply_best_leaf_override(nodeScores, informativeCounts, voteRoot, number_of_matches, leaf_coordinates,
+	    best_leaf_threshold, best_leaf_max_votes, normalize_scores);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;
@@ -944,7 +1002,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int ***informativeCounts, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, type_of_PP best_leaf_threshold, int best_leaf_max_votes, int normalize_scores){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -1325,7 +1383,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match, print_all_nodes, site_scores_file,forward_name,
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, informativeCounts, alength, match, print_all_nodes, site_scores_file,forward_name,
 		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
 		    enable_pruning, pruning_threshold_calc);
 		if ( print_all_nodes == 1){
@@ -1720,7 +1778,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,informativeCounts,alength,match,print_all_nodes,site_scores_file,reverse_name,
 		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
 		    enable_pruning, pruning_threshold_calc2);
 		if ( print_all_nodes == 1){
@@ -1746,8 +1804,9 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	for (i=0; i<number_of_matches;i++){
 		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[j]-1; k++){
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
+				type_of_PP score = placement_score(nodeScores, informativeCounts, i, j, k, normalize_scores);
+				if ( maximum < score){
+					maximum=score;
 					match_number=i;
 					minRoot=j;
 					minNode=k;
@@ -1783,7 +1842,8 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	for(i=0; i<number_of_matches; i++){
 		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
 			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
+				type_of_PP score = placement_score(nodeScores, informativeCounts, i, leaf_coordinates[i][0], k, normalize_scores);
+				if ( score >= (maximum-Cinterval) && score <= (maximum+Cinterval) ){
 					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
 					voteRoot[leaf_coordinates[i][0]][k]=1;
 					index++;
@@ -1793,6 +1853,8 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	apply_best_leaf_override(nodeScores, informativeCounts, voteRoot, number_of_matches, leaf_coordinates,
+	    best_leaf_threshold, best_leaf_max_votes, normalize_scores);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;
