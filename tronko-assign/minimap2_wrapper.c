@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "allocatetreememory.h"
 #include "global.h"
 #include "hashmap.h"
 #include "hashmap_base.h"
@@ -21,19 +22,12 @@ static int g_mm2_window = 0;
 static pthread_mutex_t g_mm2_index_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_mm2_atexit_registered = 0;
 
+/* basemap[] (allocatetreememory.c) is the repo's IUPAC complement table. Complementing
+   only ACGT would leave R Y S W K M B D H V merely reversed, which is a silent,
+   position-dependent corruption of the query fed to placement scoring. */
 static char complement_base(char base)
 {
-	switch (base) {
-		case 'A': return 'T';
-		case 'C': return 'G';
-		case 'G': return 'C';
-		case 'T': return 'A';
-		case 'a': return 't';
-		case 'c': return 'g';
-		case 'g': return 'c';
-		case 't': return 'a';
-		default: return base;
-	}
+	return (char)basemap[(unsigned char)base];
 }
 
 static void reverse_complement_in_place(char *sequence)
@@ -256,14 +250,9 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 	(void)max_readname_length;
 	(void)max_acc_name;
 
-	/* Reorienting a reverse-strand query invalidates the alignment start and CIGAR
-	   recorded alongside it, which -e (leaf-portion mode) is the only consumer of.
-	   Refuse the combination rather than score against a mislocated reference window. */
-	if (n_reads > 0 && bwa_results[0].use_portion == 1) {
-		fprintf(stderr, "[minimap2] ERROR: -e (leaf-portion mode) is not supported with "
-		        "--aligner minimap2. Re-run with --aligner bwa, or without -e.\n");
-		exit(EXIT_FAILURE);
-	}
+	/* -e (leaf-portion mode) is rejected for minimap2 in main(), before any worker
+	   is spawned: reorienting a reverse-strand query invalidates the alignment start
+	   and CIGAR recorded alongside it, which -e is the only consumer of. */
 
 	if (mi == NULL) {
 		for (i = 0; i < n_reads; i++) mark_unmatched(&bwa_results[i]);

@@ -78,7 +78,7 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		--minimap2-kmer [INT], minimap2 k-mer size [default: 11]
 		--minimap2-window [INT], minimap2 minimizer window size [default: 3]
 
-## Recommended defaults & evidence
+## Recommended defaults
 
 The current recommended default assign-time configuration is:
 
@@ -88,17 +88,17 @@ tronko-assign --aligner minimap2 --normalize-scores --Cinterval 0.02 \
   --best-leaf-threshold -0.1 --best-leaf-max-votes 10
 ```
 
-These defaults come from the eDNA AC-grid benchmark on `assignment-tool-benchmarking` commit `55e55a39e`. The full findings report is `projects/assignment_benchmarks/findings/tronko_ac_grid_settings_report.md` in the eDNA data-pipelines repository. The benchmark covered 15,120 assignments: 1,008 tronko-assign configurations across 3 communities for each of 5 LCA markers.
+These are the compiled-in defaults; the command above is written out only to make them explicit.
 
-| Marker | Best objective | Best config |
-|---|---:|---|
-| `12s_mifish_lca` | 0.5491 | `minimap2 --normalize-scores --Cinterval 0.05 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 10` |
-| `16smamm_lca` | 0.5327 | `minimap2 --normalize-scores --Cinterval 0.05 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 5` |
-| `its2_plants_lca` | 0.4913 | `minimap2 --normalize-scores --Cinterval 0.02 --score-constant 0.00005 --max-leaf-matches 10 --best-leaf-threshold -0.02 --best-leaf-max-votes 10` |
-| `vert12s_lca` | 0.4512 | `minimap2 --normalize-scores --Cinterval 0.005 --score-constant 0.0001 --max-leaf-matches 10` |
-| `18s_euk_lca` | 0.3282 | `bwa --normalize-scores --Cinterval 0.01 --score-constant 0.001 --max-leaf-matches 10 --best-leaf-threshold -0.1 --best-leaf-max-votes 10` |
+### Why minimap2 is the default aligner
 
-The common default reaches 95.9% of each marker-specific best on average. Minimap2 is the global default because controlled paired comparisons showed it out-seeded BWA decisively on most markers, including 504/504 paired wins on both 16Smamm and 12S_MiFish. Score normalization helped every marker, and `--max-leaf-matches 10` was faster and marginally more accurate than 100 across the grid. The best-leaf override at `-0.1` with 10 votes was net-positive or neutral for the common configuration.
+Minimap2 replaced BWA as the global default on the strength of the eDNA AC-grid benchmark on `assignment-tool-benchmarking` commit `55e55a39e`, reported in full at `projects/assignment_benchmarks/findings/tronko_ac_grid_settings_report.md` in the eDNA data-pipelines repository. That benchmark covered 15,120 assignments: 1,008 tronko-assign configurations across 3 communities for each of 5 LCA markers.
+
+Controlled paired comparisons showed minimap2 out-seeded BWA decisively on most markers, including **504/504 paired wins on both 16Smamm and 12S_MiFish**. Score normalization helped every marker, and `--max-leaf-matches 10` was faster and marginally more accurate than 100 across the grid. The best-leaf override at `-0.1` with 10 votes was net-positive or neutral for the common configuration.
+
+That comparison almost certainly *understated* minimap2: it ran before `f0a608a`, when the wrapper indexed only minimap2's first mini-batch of reference sequence and silently dropped the rest (167k of 257k sequences for vert12S). BWA loads a prebuilt on-disk index spanning the whole reference and was unaffected, so minimap2 won those comparisons while seeding against a partial database.
+
+The per-marker objective scores from the same sweep have been removed rather than left to read as current. They were measured at k11/w3 before `f0a608a` and before the minimap2 strand fix, and `66a545c` already recorded the sweep as non-comparable — they are not reproducible on this code. The aligner choice above is retained because it is the reason for the current default and the direction of that result is robust to both fixes. Re-measurement of the per-marker tuning is tracked separately.
 
 ## Verbose Logging and Performance Monitoring
 
