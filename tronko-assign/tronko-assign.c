@@ -960,15 +960,25 @@ int main(int argc, char **argv){
 
 	parse_options(argc, argv, &opt);
 
-	/* minimap2's paired path needs read 2 pre-oriented reference-forward (BWA self-handles
-	   strand internally; the minimap2 wrapper does not). Auto-enable the read-2
-	   reverse-complement for paired minimap2 so -z is not a silent requirement. Must be
-	   set before reads are loaded. */
+	/* Placement scores the stored query against reference-forward tree sequences, so a
+	   paired ASV must have both mates on one strand before it is loaded. Auto-enable the
+	   read-2 reverse-complement for paired minimap2 so -z is not a silent requirement.
+	   Must be set before reads are loaded. */
 	if (strcmp(opt.aligner, "minimap2") == 0 && strcmp(opt.paired_or_single, "paired") == 0
 	        && opt.reverse_second_of_paired_read != 1) {
 		opt.reverse_second_of_paired_read = 1;
 		if (opt.verbose_level >= 0)
 			fprintf(stderr, "[INFO] minimap2 paired: auto-enabling read-2 reverse-complement (equivalent to -z)\n");
+	}
+
+	/* Reorienting a reverse-strand query invalidates the alignment start and CIGAR
+	   recorded alongside it, which -e (leaf-portion mode) is the only consumer of.
+	   Refuse the combination here -- before the reference index is built and before any
+	   worker thread exists -- rather than score against a mislocated reference window. */
+	if (strcmp(opt.aligner, "minimap2") == 0 && opt.use_leaf_portion == 1) {
+		fprintf(stderr, "[minimap2] ERROR: -e (leaf-portion mode) is not supported with "
+		        "--aligner minimap2. Re-run with --aligner bwa, or without -e.\n");
+		return EXIT_FAILURE;
 	}
 
 	// Initialize logging based on options
