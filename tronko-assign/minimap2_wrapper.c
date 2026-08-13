@@ -21,6 +21,37 @@ static int g_mm2_window = 0;
 static pthread_mutex_t g_mm2_index_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_mm2_atexit_registered = 0;
 
+static char complement_base(char base)
+{
+	switch (base) {
+		case 'A': return 'T';
+		case 'C': return 'G';
+		case 'G': return 'C';
+		case 'T': return 'A';
+		case 'a': return 't';
+		case 'c': return 'g';
+		case 'g': return 'c';
+		case 't': return 'a';
+		default: return base;
+	}
+}
+
+static void reverse_complement_in_place(char *sequence)
+{
+	size_t left = 0;
+	size_t right = strlen(sequence);
+	if (right == 0) return;
+	right--;
+	while (left < right) {
+		char left_base = sequence[left];
+		sequence[left] = complement_base(sequence[right]);
+		sequence[right] = complement_base(left_base);
+		left++;
+		right--;
+	}
+	if (left == right) sequence[left] = complement_base(sequence[left]);
+}
+
 /* Release the cached index at normal program exit (registered via atexit on
  * first build). For a CLI run the OS would reclaim it anyway, but this keeps
  * leak checkers clean and is correct if the wrapper is ever reused. */
@@ -148,6 +179,22 @@ static mm_idx_t *get_or_build_index(const char *db_path, int kmer, int window)
 	return idx;
 }
 
+/* Keep only best-scoring records. minimap2 flags a hit "secondary" when it overlaps
+   another on the *query*, not when it is worse: 58% of secondaries score exactly equal
+   to their primary. Those co-equal hits are what the LCA is meant to consume, so filter
+   on score rather than on id != parent. Frees dropped records' extras so the caller's
+   cleanup loop stays correct after n_regs shrinks. */
+static int mm2_keep_top_scoring(mm_reg1_t *regs, int n)
+{
+	int i, k = 0, best = 0;
+	for (i = 0; i < n; ++i) if (regs[i].score > best) best = regs[i].score;
+	for (i = 0; i < n; ++i) {
+		if (regs[i].score == best) regs[k++] = regs[i];
+		else if (regs[i].p) free(regs[i].p);
+	}
+	return k;
+}
+
 static int add_match(bwaMatches *result, int root, int node_id,
                      const char *cigar_str, int start_pos,
                      int is_concordant, int is_forward,
@@ -208,6 +255,15 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 	(void)max_query_length;
 	(void)max_readname_length;
 	(void)max_acc_name;
+
+	/* Reorienting a reverse-strand query invalidates the alignment start and CIGAR
+	   recorded alongside it, which -e (leaf-portion mode) is the only consumer of.
+	   Refuse the combination rather than score against a mislocated reference window. */
+	if (n_reads > 0 && bwa_results[0].use_portion == 1) {
+		fprintf(stderr, "[minimap2] ERROR: -e (leaf-portion mode) is not supported with "
+		        "--aligner minimap2. Re-run with --aligner bwa, or without -e.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	if (mi == NULL) {
 		for (i = 0; i < n_reads; i++) mark_unmatched(&bwa_results[i]);
@@ -284,6 +340,34 @@ void run_minimap2(int start, int end, bwaMatches *bwa_results, int concordant,
 		} else {
 			if (len1 > 0) regs1 = mm_map(mi, len1, seq1, &n_regs1, tbuf, &mopt, NULL);
 			if (paired != 0 && len2 > 0) regs2 = mm_map(mi, len2, seq2, &n_regs2, tbuf, &mopt, NULL);
+		}
+
+		n_regs1 = mm2_keep_top_scoring(regs1, n_regs1);
+		n_regs2 = mm2_keep_top_scoring(regs2, n_regs2);
+
+		/* Tronko stores paired ASVs in one common orientation and placement scores
+		 * both directly against reference-forward tree sequences. Orient the pair
+		 * from the strongest minimap2 hit before scoring; orienting mates separately
+		 * incorrectly puts a stored pair onto opposite strands. */
+		{
+			int best_score = -1;
+			int reverse_pair = 0;
+			for (j = 0; j < n_regs1; j++) {
+				if (regs1[j].score > best_score) {
+					best_score = regs1[j].score;
+					reverse_pair = regs1[j].rev;
+				}
+			}
+			for (j = 0; j < n_regs2; j++) {
+				if (regs2[j].score > best_score) {
+					best_score = regs2[j].score;
+					reverse_pair = regs2[j].rev;
+				}
+			}
+			if (reverse_pair) {
+				if (seq1) reverse_complement_in_place(seq1);
+				if (seq2) reverse_complement_in_place(seq2);
+			}
 		}
 
 		if (paired != 0) {
