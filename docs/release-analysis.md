@@ -52,7 +52,24 @@ tronko source. The BWA arm is far lighter — it memory-maps a prebuilt on-disk 
 - Gate the next job on memory actually being released, *not* on an output file
   appearing — a finished-looking file does not mean the process freed its pages.
   That mistake is what caused the OOM.
-- vert12S is ~2 GB and may overlap with itself, but never with a CO1 job.
+
+Measured peak RSS, by marker. The footprint is dominated by loading the reference,
+not by the query count — a 200-read probe and a 210k-read cell cost the same:
+
+| reference | trees | peak RSS |
+|---|---:|---:|
+| vert12S 2023-04-07 | 10,144 | **5.5 GB** |
+| CO1_Metazoa 2023-04-07 | 18,330 | **24.6 GB** |
+
+So two vert12S cells can overlap (~11 GB), but a vert12S cell must never overlap a
+CO1 one. `tronko_job_queue.py` enforces this: it refuses to start the next job until
+live `tronko-assign` processes hold less than `--max-rss-gb`, and records the peak
+for every cell.
+
+> An earlier draft of this document put vert12S at "~2 GB". That figure came from the
+> smaller synthetic holdout database, not the production reference, and was wrong by
+> nearly 3×. The numbers above are from `/usr/bin/time -l` on the production
+> databases.
 
 ## Bootstrap on a fresh instance
 
@@ -611,10 +628,10 @@ Under `scripts/release_analysis/`:
 | `subsample.py` | seeded, pair-preserving subsample | ready |
 | `test_arbiter.py` | 30 cases over the adjudication logic | ready |
 | `tronko_minimap2_fix_ab.py` | the earlier synthetic A/B driver — carried for reuse of its subprocess/provenance handling, `MAX_TRONKO_PATH` guard, and FASTA helpers | reference |
-| `bioscape_co1_fetch_nov25.py` | pull the November set from the **legacy** prefix (`assign/CO1_Metazoa/paired/`) → TSV + paired/unpaired FASTA; assert 100% FASTA↔TSV `forward_length` agreement before writing | **to write** |
-| `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filter vs placement | **to write** |
-| `tronko_job_queue.py` | serial runner with the RSS gate; records peak RSS per cell | **to write** |
-| `tronko_release_gate.py` | evaluate G1–G7, emit `gate_result.json` | **to write** |
+| `bioscape_co1_fetch_nov25.py` | pull the November set from the **legacy** prefix (`assign/CO1_Metazoa/paired/`) → TSV + paired/unpaired FASTA; refuses to emit queries unless FASTA↔TSV `forward_length` agreement clears the threshold | ready |
+| `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filtering vs placement | ready, smoke-tested |
+| `tronko_job_queue.py` | serial runner with the RSS gate; records peak RSS per cell, resumes, redoes partials | ready, tested end-to-end |
+| `tronko_release_gate.py` | evaluate G1–G7, emit `gate_result.json` | ready, tested |
 
 Two notes on reuse. `run_cell.sh` validates that the output row count matches the
 query count before treating a cell as complete — a killed run leaves a partial TSV
