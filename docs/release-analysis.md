@@ -202,7 +202,45 @@ All under `gs://edna-project-files-ca/projects/cm4n7f2bb0001ssovx4mh0dt4/assign/
 | Aug 2026 (minimap2) | `cmsqafuvp000004ld45fuy60z` | current |
 
 The legacy November prefix holds `*-CO1_Metazoa-paired.txt.zst` (the TSV assignments)
-alongside `*-paired_F.fasta.zst` / `*-paired_R.fasta.zst`.
+alongside `*-paired_F.fasta.zst` / `*-paired_R.fasta.zst`. The canonical November
+output also survives under a backup prefix carrying the November `tronkoRunId`, which
+is the least ambiguous handle on it:
+
+```
+.../assign/CO1_Metazoa/backup/20251113_003348_y61zs0orvnaw0sn3nzjtw7io/paired/
+```
+
+| run | TronkoRun.id | qcRunId | pipeline |
+|---|---|---|---|
+| Nov 2025 (BWA) | `y61zs0orvnaw0sn3nzjtw7io` | `cmhwjvd4z000ejs042nriini2` | 2.1.2 |
+| Mar 2026 (BWA) | `khl1n7zmq1fpq3sd2wsirnrl` | `cmmjfc1ph0003js040lgonrcr` | 2.1.2 |
+| Jul 2026 (broken minimap2) | `wkm1cnhq2xcptfhsh6nzj63a` | `n1b2grbmyiri37t0mdxrouud` | 2.1.3 |
+
+**Sequences.** The November ASVs with their `forward_sequence` / `reverse_sequence`
+are in BigQuery at `edna-explorer-canada.tronko_output.assignments` — the
+**non-`_prod`** dataset. `tronko_output_prod.assignments` holds only current state
+(4,612,161 CO1 readnames = the Aug 2026 run); November is overwritten there.
+
+```sql
+SELECT readname, forward_sequence, reverse_sequence, taxonomic_path,
+       phylum, class, `order`, family, genus, species,
+       mismatch, forward_mismatch, reverse_mismatch, score
+FROM `edna-explorer-canada.tronko_output.assignments`
+WHERE project_id = 'cm4n7f2bb0001ssovx4mh0dt4' AND primer = 'CO1_Metazoa'
+```
+
+Expect 2,823 rows / 2,821 distinct readnames; 2,559 carry a reverse sequence, the
+remaining 264 are the unpaired partitions. Invertebrate counts in that set:
+Arthropoda 639, Insecta 478, Diptera 283, Chironomidae 171, Coleoptera 55.
+
+**Verify which run BigQuery holds before using it.** `TronkoRun.tronkoVersion` is
+NULL for every run, so the aligner is only inferable from date. Fingerprinting gives
+mean depth 3.82 / species 14.7% / 415 distinct paths / 0 unassigned, which rules out
+July decisively (depth 2.93 / species 4.6% / 247 taxa) and confirms a BWA-era run —
+but November (3.77) and March (3.75) are indistinguishable on aggregates. Join the BQ
+rows on `readname` against both runs' `assignments.parquet`; whichever agrees ~100%
+is what BQ holds. If it is March, relabel honestly or pull November from GCS instead.
+Both are BWA so the science barely moves, but the label must be right.
 
 ## Strand A/B/C — controlled pre/post A/B
 
@@ -286,25 +324,118 @@ ties are reported as their own bucket rather than broken arbitrarily.
 
 ## Strand E — CO1 invertebrate case study
 
-Both the November 2025 BWA run and the August 2026 minimap2 run indexed the **same
-2023 CO1 reference**, so the reference is already held constant in production and no
-2×2 reconstruction is needed.
+A research colleague reports that invertebrate recovery dropped in the BioSCape
+(Plate TI) CO1 data: Insecta −59.6% vs Nov 2025, Diptera −61.3%, Chironomidae
+−46.5%, Arthropoda −44.0%, Coleoptera −32.2%. The November 2025 run used **BWA**;
+August 2026 used the **fixed minimap2**. Both indexed the same 2023 CO1 reference.
 
-- **Input**: November 2025 CO1 sequences, 2,557 dereplicated paired ASVs
-- **Reference**: CO1_Metazoa 2023-04-07
-- **Arm A** — BWA, `71f6ec3`
-- **Arm B** — fixed minimap2, `530caf9`
-- **Arm C** — minimap2 with `normalize_scores` / `best_leaf_threshold` disabled
+The question is not only *whether* the aligner swap costs the insects, but **where**:
+at **seeding** (minimap2 never finds the leaf) or at **placement** (it finds the leaf
+and then scores it away). Those have different fixes.
 
-Arm C is what makes this diagnostic rather than merely descriptive. The
-BWA→minimap2 swap also carried placement-scoring changes, which are flag-gated and
-default-off since `cd534e5`. If the invertebrates return with those flags off, the
-aligner is exonerated and the scoring change is the cause — a distinction worth
-having before concluding the aligner is at fault.
+### This repo already contains evidence pointing at seeding
 
-Changed ASVs are then adjudicated with the Strand C arbiter, and filtered to the
-invertebrate clades (Insecta, Diptera, Chironomidae, Coleoptera, Arthropoda) for the
-case study view.
+Measured previously, never followed up on for arthropods specifically:
+
+| commit | measurement |
+|---|---|
+| `f0a608a` | 500 real project ASVs: **CO1 minimap2 434/500, BWA 475/500** |
+| `66a545c` | CO1 k-mer sweep: **k11/w3 → 461**, BWA 475 — and k=11/w=3 is the *shipped default* |
+| `f3bdfac` | reverted k=21→k=11: k=21 aligned more reads but cost 13–18% recall on truth-scored synthetic benchmarks |
+
+So a CO1 seeding deficit relative to BWA is already on record. Whether it is
+concentrated in arthropods has never been checked.
+
+### Design
+
+**BWA was never removed** — both aligners compile into one binary and `--aligner
+bwa|minimap2` selects at runtime.
+
+```
+INPUT : the November 2025 CO1 ASVs (2,821; 2,557 paired + 264 unpaired)
+REF   : CO1_Metazoa 2023-04-07
+A. November, as recorded   legacy pre-backfill TSV (has tree/node)      [free]
+B. local minimap2          tronko-assign.post 530caf9                   [minutes]
+C. local BWA               71f6ec3, BWA-only, November-era params       [build + minutes]
+```
+
+Because the *sequences* come from the November record, preprocessing is baked in and
+identical across arms — no QC-version drift enters any diff. Run all 2,821; the
+~2,184 non-arthropod ASVs are a free internal control. If they move as much as the
+arthropods, this is a global effect and not an invertebrate story at all — a result
+just as worth having.
+
+- **A vs C** — the **fidelity gate**: does the harness reproduce November at all?
+- **C vs B** — the honest aligner + placement delta on identical input
+- **Step 5** — which of the two it mechanistically was
+
+Do **not** read A-vs-B as the aligner effect: it bundles the aligner swap with the
+2025→2026 placement/scoring changes (`normalize_scores`, `best_leaf_threshold`) and
+an assignment diff cannot separate them.
+
+### Arm C: which commit, and why the parameters differ
+
+The November parameter surface no longer exists. Neither `77ade9e` (the exact
+November commit) nor `71f6ec3` accepts `--aligner`, `--max-leaf-matches`,
+`--best-leaf-threshold`, `--best-leaf-max-votes`, `--normalize-scores`, or the
+minimap2 k/w flags — passing today's prod args aborts. And `score_constant`
+defaulted to **0.01** then versus **0.0001** now, a 100× change. Arm C must run with
+its own era's parameters; using today's values would be a different experiment.
+
+**Use `71f6ec3`.** `77ade9e` predates `00cc57e` (binary reference-tree format) and
+cannot read the `.trkb` on disk — it would need the 4 GiB `reference_tree.txt.gz`.
+`71f6ec3` is still BWA-only, reads `.trkb`, and its additions over `77ade9e`
+(early-termination, pruning, strike-box, parquet, tsv-log) are all verified
+default-off (`tronko-assign.c:930-933`). If A-vs-C disagrees materially, escalate to
+`77ade9e` plus the text tree before drawing conclusions.
+
+### Flags that are not optional
+
+- **`-6`** — without it, `bwa_index()` **rebuilds and overwrites** the 400 MB BWA
+  index in the shared reference directory (`tronko-assign.c:1243/1569`). This is
+  destructive to a shared asset. Pass it even on minimap2 runs.
+- **`-z` must be explicit on the BWA arm.** minimap2 auto-forces it for paired mode
+  (`tronko-assign.c:967-973`); BWA does not. Omitting it feeds placement
+  differently-oriented mates and silently invalidates the comparison.
+- **`--number-of-cores 1`** — as everywhere else here.
+- Mirror production's partitioning: paired (2,557) with `-p`, unpaired (264)
+  single-end with `-s -g`.
+- Capture **stderr** — `f0a608a`'s guard prints `reference '…' exceeds one index
+  batch` there if the index silently truncates again. That is exactly what broke the
+  July run.
+
+### Step 5 — seeding vs placement
+
+`-P` prints the per-read candidate alignments. `-5 <FILE>` dumps the leaf→(tree,node)
+map — note it **prints and exits**, so it is a separate one-off invocation, not
+something that can share a pass with `-P`.
+
+For each lost invertebrate ASV, compare BWA's candidate leaves against minimap2's:
+
+| observation | verdict |
+|---|---|
+| minimap2 candidate set **empty** | **seeding failure** — consistent with the recorded 434/500 vs 475/500. Fix lives in k/w or the `mm_set_opt("sr")` preset. |
+| non-empty but BWA's leaf **absent** | never seeded, or dropped by the `score == best` filter / `best_n` cap. Distinguish by whether the leaf's *tree* appears among candidates at all. |
+| BWA's leaf **present but not chosen** | placement/scoring, not the aligner. |
+
+If it is seeding, sweep `--minimap2-kmer` × `--minimap2-window` (k ∈ {11,13,15,19,21},
+w ∈ {3,5,10}) on the invertebrate subset — several values, not one. Any
+recommendation must be scored on non-arthropod accuracy too: `f3bdfac` reverted k=21
+for exactly that tradeoff.
+
+### Caveats that must travel with this result
+
+- **The clade percentages above were never persisted.** They exist only inside
+  conversation transcripts — computed in-conversation, never written to a script or
+  CSV. They must be re-derived before being cited. The −86.6% Coleoptera figure in
+  particular does not follow from anything measured so far.
+- **The "same 2023 database" claim rests on a statement, not on prod metadata.**
+  `TronkoRun.tronkoVersion` is NULL on every run and no run record names a reference
+  build, so it is not independently checkable. The experiment holds the reference
+  constant regardless, but the report should attribute the claim rather than assert it.
+- November (ASV-level, 2,821) and August (read-level, 4.6M) are different units.
+  Holding the input fixed sidesteps that, but the report must say so or it will read
+  as contradicting the earlier CO1 dropout investigation.
 
 ### Blocking prerequisite — use the legacy November files
 
@@ -362,6 +493,20 @@ ratified; until then they are not meaningful, and reports say so.
    before diffing; a mangled header set reads as churn rather than as an error.
 5. **Input pairing** — for Strand E, re-assert the legacy November FASTA↔TSV
    agreement is 100% before running.
+5a. **Run identity (Strand E, do this first)** — confirm the BigQuery rows are the
+   November run and not March, by joining on `readname` against both runs'
+   `assignments.parquet`. Everything downstream is mislabelled if this is skipped.
+5b. **Fidelity gate (Strand E)** — arm C vs the November record. High agreement is
+   what licenses reading C-vs-B as the aligner delta. **Do not skip this and then
+   present C-vs-B as authoritative**; `bioscape_co1_aligner_ab.py` exits non-zero when
+   it fails, for that reason.
+5c. **Index preserved** — checksum the five BWA index files before and after every
+   run, proving `-6` held and the shared 400 MB reference index was not rewritten.
+5d. **Index integrity** — assert stderr is free of `reference '…' exceeds one index
+   batch` (the `f0a608a` guard). That bug is what broke the July run.
+5e. **Candidate-set sanity** — no ASV should show more than `--max-leaf-matches` (10)
+   candidates in `-P`; a violation means the `-P` parse is wrong, not that tronko
+   misbehaved.
 6. **Dereplication round-trip** — ASV read weights must sum back to the input count.
 7. **BLAST join** — unresolved top-hit accessions are counted and reported, never
    silently dropped.
@@ -372,17 +517,26 @@ ratified; until then they are not meaningful, and reports say so.
 
 Under `scripts/release_analysis/`:
 
-| script | role |
-|---|---|
-| `tronko_blast_arbiter.py` | Strand C — dereplicate, BLAST, classify, adjudicate, band-stratify |
-| `tronko_change_anatomy.py` | Strand A — path diff, transition matrix, placement movement, taxon deltas |
-| `tronko_bias_audit.py` | Strand B — per-clade and covariate breakdowns |
-| `run_cell.sh` | one `{pre,post}` × cell run at production parameters |
-| `subsample.py` | seeded, pair-preserving subsample |
+| script | role | state |
+|---|---|---|
+| `tronko_blast_arbiter.py` | Strand C — dereplicate, BLAST, classify, adjudicate, band-stratify | ready, unit-tested |
+| `tronko_change_anatomy.py` | Strand A — path diff, transition matrix, placement movement, taxon deltas | ready |
+| `tronko_bias_audit.py` | Strand B — per-clade and covariate breakdowns | ready |
+| `bioscape_co1_aligner_ab.py` | Strand E — join arms A/C/B, fidelity gate, clade retention, depth movement | ready |
+| `run_cell.sh` | one `{pre,post}` × cell run at production parameters | ready |
+| `subsample.py` | seeded, pair-preserving subsample | ready |
+| `test_arbiter.py` | 30 cases over the adjudication logic | ready |
+| `tronko_minimap2_fix_ab.py` | the earlier synthetic A/B driver — carried for reuse of its subprocess/provenance handling, `MAX_TRONKO_PATH` guard, and FASTA helpers | reference |
+| `bioscape_co1_fetch_nov25.py` | pull the November set → paired/unpaired FASTA | **to write** |
+| `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filter vs placement | **to write** |
+| `tronko_job_queue.py` | serial runner with the RSS gate; records peak RSS per cell | **to write** |
+| `tronko_release_gate.py` | evaluate G1–G7, emit `gate_result.json` | **to write** |
 
-`run_cell.sh` validates that the output row count matches the query count before
-treating a cell as complete; a killed run leaves a partial TSV that would otherwise
-be silently accepted as finished.
+Two notes on reuse. `run_cell.sh` validates that the output row count matches the
+query count before treating a cell as complete — a killed run leaves a partial TSV
+that would otherwise be silently accepted as finished. And do **not** reuse
+`tronko_minimap2_fix_ab.py`'s `cmd_score`: it is ground-truth-coupled throughout, and
+the CO1 rcrux reference is a DVC pointer locally, so its remapper cannot be built.
 
 ## Out of scope
 
