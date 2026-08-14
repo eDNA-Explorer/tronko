@@ -38,6 +38,14 @@ binary under test and the inputs fed to it.
 important operational fact in this document — running two such jobs concurrently
 OOM'd a 48 GB machine.
 
+Two caveats on that number. It was measured on a binary built **without**
+`OPTIMIZE_MEMORY=1`, so a production-parity build should sit lower — by how much is
+unmeasured, and the figure should be re-taken rather than assumed halved. And the
+dominant cost is structural: no `.mmi` exists, so minimap2 builds the index in RAM at
+assign time, and `f0a608a` deliberately sets `mini_batch_size` to span the whole
+419 MB / 1.4 M-sequence reference in one batch. That is not tunable without touching
+tronko source. The BWA arm is far lighter — it memory-maps a prebuilt on-disk index.
+
 - Minimum **64 GB RAM** to run CO1 cells with headroom.
 - ~60 GB disk for databases, reads, and outputs.
 - **One CO1-scale job at a time. Never two.**
@@ -74,6 +82,27 @@ for spec in pre:f3bdfac post:530caf9 bwanov:71f6ec3; do
 done
 ```
 
+Flags are folded into `CC` because **the `$(TARGET)` rule does not reference
+`$(CFLAGS)` at all** — it expands only `$(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS)
+$(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT)`. Passing `CFLAGS=…` on the command
+line silently does nothing. `ARCH_FLAGS` is empty by default and is the other clean
+injection point.
+
+**The recipe above is Linux-only.** On macOS the build fails twice, both in
+November-era code: `crash_debug.c` includes `ucontext.h`, which `#error`s without
+`_XOPEN_SOURCE`; and `zstd.h` plus `-lrt` are not on the default search path (`librt`
+does not exist on Darwin at all). Verified working for `bwanov` (`71f6ec3`) on Apple
+Silicon:
+
+```bash
+make -C wt-bwanov/tronko-assign \
+  ARCH_FLAGS="-D_XOPEN_SOURCE=700 -D_DARWIN_C_SOURCE -w -I/opt/homebrew/include -L/opt/homebrew/lib" \
+  LIBS="-lm -pthread -lz -lzstd -std=gnu99"
+```
+
+Add `OPTIMIZE_MEMORY=1` to that line for parity with production. A correct `bwanov`
+build is 539,168 bytes and matches the size of the known BWA-only `main` build.
+
 Provenance assertion — `post` carries a guard string that `pre` does not
 (`tronko-assign.c:975`):
 
@@ -92,10 +121,21 @@ whole substrate from the URIs below. Use `gcloud storage`, **not** `gsutil` —
 Two buckets are involved, and the distinction matters:
 
 - `gs://edna-reference-databases` — the canonical reference databases production
-  loads (`REFERENCE_BUCKET`). Note `gs://edna-project-files-ca/CruxV2/` **also**
-  holds a `CruxV2` tree with the same version labels but *different content* and no
-  `.trkb`; it is not what production uses.
+  loads (`REFERENCE_BUCKET`).
 - `gs://edna-project-files-ca` — project reads and production assignment outputs.
+  It **also** holds a `CruxV2` tree with the same version labels. Treat it as a
+  second copy of unverified provenance, not as an alternative source.
+
+**Correction, verified 2026-08-14:** an earlier draft stated that
+`gs://edna-project-files-ca/CruxV2/` carries no `.trkb`. That is false for CO1 —
+`CruxV2/CO1_Metazoa/2023-04-07/tronko/` contains `reference_tree.trkb` at
+1,186,770,097 bytes alongside the full BWA index and both taxonomy files. A local
+copy at `/Users/ryanmartin/edna-bench/prod_replay/CO1_Metazoa/db/` is byte-identical
+across all nine files and loads successfully, reporting **18,330 trees** (the
+`20250421` build is 4,047 trees, so tree count is a quick build discriminator).
+Whether the two buckets are identical for every marker has **not** been checked;
+until it is, fetch from `edna-reference-databases` and treat a match as a bonus. On
+this machine the local copy avoids a 6.5 GB CO1 fetch entirely.
 
 #### 2a. Reference databases
 
@@ -130,7 +170,8 @@ for M in vert12S CO1_Metazoa 18S_Euk ITS2_Plants ITS1_Fungi; do
     "$REF/$M/2023-04-07/tronko/$M.fasta" \
     "$REF/$M/2023-04-07/tronko/${M}_taxonomy.txt" "db/$M/"
 done
-# Strand E arm A runs BWA, so CO1 additionally needs the BWA index (~752 MB):
+# Strand E arm C runs BWA, so CO1 additionally needs the BWA index (~752 MB).
+# Arm A is the recorded November output and executes nothing.
 gcloud storage cp "$REF/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.*" db/CO1_Metazoa/
 ```
 
@@ -216,31 +257,47 @@ is the least ambiguous handle on it:
 | Mar 2026 (BWA) | `khl1n7zmq1fpq3sd2wsirnrl` | `cmmjfc1ph0003js040lgonrcr` | 2.1.2 |
 | Jul 2026 (broken minimap2) | `wkm1cnhq2xcptfhsh6nzj63a` | `n1b2grbmyiri37t0mdxrouud` | 2.1.3 |
 
-**Sequences.** The November ASVs with their `forward_sequence` / `reverse_sequence`
-are in BigQuery at `edna-explorer-canada.tronko_output.assignments` — the
-**non-`_prod`** dataset. `tronko_output_prod.assignments` holds only current state
-(4,612,161 CO1 readnames = the Aug 2026 run); November is overwritten there.
+**Sequences — do not use BigQuery for the November arm. RESOLVED: BigQuery holds
+March 2026, not November.**
 
-```sql
-SELECT readname, forward_sequence, reverse_sequence, taxonomic_path,
-       phylum, class, `order`, family, genus, species,
-       mismatch, forward_mismatch, reverse_mismatch, score
-FROM `edna-explorer-canada.tronko_output.assignments`
-WHERE project_id = 'cm4n7f2bb0001ssovx4mh0dt4' AND primer = 'CO1_Metazoa'
-```
+`edna-explorer-canada.tronko_output.assignments` (the non-`_prod` dataset) does carry
+`forward_sequence` / `reverse_sequence` for 2,823 rows / 2,821 distinct readnames of
+BioSCape CO1, which makes it look like the November set. It is not.
 
-Expect 2,823 rows / 2,821 distinct readnames; 2,559 carry a reverse sequence, the
-remaining 264 are the unpaired partitions. Invertebrate counts in that set:
-Arthropoda 639, Insecta 478, Diptera 283, Chironomidae 171, Coleoptera 55.
+`TronkoRun.tronkoVersion` is NULL for every run, so the aligner cannot be read from
+metadata, and aggregate fingerprinting cannot separate the two BWA runs (November
+depth 3.77, March 3.75). What does separate them is that taxonomy is remapped to the
+GBIF backbone in BigQuery but `score` and the mismatch counts are not. Joining on
+`readname` and comparing those three numeric fields is decisive:
 
-**Verify which run BigQuery holds before using it.** `TronkoRun.tronkoVersion` is
-NULL for every run, so the aligner is only inferable from date. Fingerprinting gives
-mean depth 3.82 / species 14.7% / 415 distinct paths / 0 unassigned, which rules out
-July decisively (depth 2.93 / species 4.6% / 247 taxa) and confirms a BWA-era run —
-but November (3.77) and March (3.75) are indistinguishable on aggregates. Join the BQ
-rows on `readname` against both runs' `assignments.parquet`; whichever agrees ~100%
-is what BQ holds. If it is March, relabel honestly or pull November from GCS instead.
-Both are BWA so the science barely moves, but the label must be right.
+| candidate run | score | `forward_mismatch` | `reverse_mismatch` |
+|---|---:|---:|---:|
+| Nov 2025 (`cmhwjvd4z…`) | 0.0% | 1.6% | 1.7% |
+| **Mar 2026 (`cmmjfc1ph…`)** | **100.0%** | **100.0%** | **100.0%** |
+| Jul 2026 (`n1b2grbmy…`) | 0.7% | 4.0% | 3.9% |
+
+So any invertebrate counts taken from BigQuery are **March's**: Arthropoda 639,
+Insecta 478, Diptera 283, Chironomidae 171, Coleoptera 55. The actual November
+figures, derived from the legacy TSV's raw tronko paths (paired partition, 2,557
+ASVs), are:
+
+| clade | November (paired) | March (BigQuery) |
+|---|---:|---:|
+| Arthropoda | **593** | 639 |
+| Insecta | **447** | 478 |
+| Diptera | **274** | 283 |
+| Chironomidae | **171** | 171 |
+| Coleoptera | **49** | 55 |
+
+**Take the November sequences from the legacy GCS prefix instead** (see "Blocking
+prerequisite" under Strand E) — `assign/CO1_Metazoa/paired/` holds the assignments
+TSV and both mate FASTAs, verified 100% self-consistent. That prefix also carries
+`tree_number` / `node_number`, which BigQuery lacks and Step 5 needs, and its paths
+are raw tronko rather than backbone-remapped, so they compare directly against local
+run output with no remapping step.
+
+BigQuery remains useful as an independent, internally-consistent **March** BWA
+dataset should a second BWA-era comparison point be wanted.
 
 ## Strand A/B/C — controlled pre/post A/B
 
@@ -353,6 +410,9 @@ bwa|minimap2` selects at runtime.
 
 ```
 INPUT : the November 2025 CO1 ASVs (2,821; 2,557 paired + 264 unpaired)
+        sequences AND assignments both from the legacy pre-backfill prefix
+        assign/CO1_Metazoa/paired/  -- NOT BigQuery (that is March), NOT the
+        v2 assign/<qcRunId>/ prefix (its FASTA is corrupted)
 REF   : CO1_Metazoa 2023-04-07
 A. November, as recorded   legacy pre-backfill TSV (has tree/node)      [free]
 B. local minimap2          tronko-assign.post 530caf9                   [minutes]
@@ -418,6 +478,12 @@ For each lost invertebrate ASV, compare BWA's candidate leaves against minimap2'
 | non-empty but BWA's leaf **absent** | never seeded, or dropped by the `score == best` filter / `best_n` cap. Distinguish by whether the leaf's *tree* appears among candidates at all. |
 | BWA's leaf **present but not chosen** | placement/scoring, not the aligner. |
 
+**The candidate cap is not a minimap2-specific effect.** A BWA arm on this exact data
+logs `Max potential matches seen: 15 (cap is 10)` with `matches dropped: 6`, so
+`--max-leaf-matches 10` binds on both aligners. Any claim that the cap explains an
+invertebrate loss under minimap2 has to show the cap binding *differently* between the
+arms, not merely that it binds.
+
 If it is seeding, sweep `--minimap2-kmer` × `--minimap2-window` (k ∈ {11,13,15,19,21},
 w ∈ {3,5,10}) on the invertebrate subset — several values, not one. Any
 recommendation must be scored on non-arthropod accuracy too: `f3bdfac` reverted k=21
@@ -436,6 +502,17 @@ for exactly that tradeoff.
 - November (ASV-level, 2,821) and August (read-level, 4.6M) are different units.
   Holding the input fixed sidesteps that, but the report must say so or it will read
   as contradicting the earlier CO1 dropout investigation.
+- **Open: are readnames stable across runs?** `CO1_Metazoa_paired_F_<i>` is a
+  positional ordinal emitted by `fasta-gen`, not a content hash, so nothing guarantees
+  that index *i* denotes the same ASV in two different runs. The earlier
+  `CO1-taxa-dropout-investigation.md` treats Nov/Mar/Jul as "a controlled experiment,
+  same 2,821 readnames byte for byte", and every cross-run join here rests on the same
+  assumption. It has **not** been verified against the legacy November FASTA. (A
+  measurement of 76.7% sequence identity between November and March circulated
+  earlier; it used the corrupted v2 November FASTA and establishes nothing — disregard
+  it.) Re-test legacy-November against March by sequence before making any cross-run
+  claim; within a single run the join is sound, which is why the Strand E design keeps
+  all three arms on one input file.
 
 ### Blocking prerequisite — use the legacy November files
 
@@ -493,15 +570,22 @@ ratified; until then they are not meaningful, and reports say so.
    before diffing; a mangled header set reads as churn rather than as an error.
 5. **Input pairing** — for Strand E, re-assert the legacy November FASTA↔TSV
    agreement is 100% before running.
-5a. **Run identity (Strand E, do this first)** — confirm the BigQuery rows are the
-   November run and not March, by joining on `readname` against both runs'
-   `assignments.parquet`. Everything downstream is mislabelled if this is skipped.
+5a. **Run identity (Strand E, do this first)** — assert the input actually is the
+   November run. Already resolved once: BigQuery is **March**, and the legacy prefix
+   is **November** (100% `forward_mismatch` and 98.1% score/tree agreement with the
+   November `assignments.parquet`, against ~1% for March and July). Re-assert rather
+   than assume, by joining on `readname` and comparing `score` / `forward_mismatch` /
+   `reverse_mismatch` against all three candidate runs — taxonomy is remapped in some
+   sources but those numeric fields are not, which is what makes the test decisive.
+   Everything downstream is mislabelled if this is skipped.
 5b. **Fidelity gate (Strand E)** — arm C vs the November record. High agreement is
    what licenses reading C-vs-B as the aligner delta. **Do not skip this and then
    present C-vs-B as authoritative**; `bioscape_co1_aligner_ab.py` exits non-zero when
    it fails, for that reason.
 5c. **Index preserved** — checksum the five BWA index files before and after every
    run, proving `-6` held and the shared 400 MB reference index was not rewritten.
+   Confirmed once empirically on the CO1 2023-04-07 build: `.bwt` and `.sa` md5s were
+   identical before and after a full minimap2 cell run with `-6`.
 5d. **Index integrity** — assert stderr is free of `reference '…' exceeds one index
    batch` (the `f0a608a` guard). That bug is what broke the July run.
 5e. **Candidate-set sanity** — no ASV should show more than `--max-leaf-matches` (10)
@@ -527,7 +611,7 @@ Under `scripts/release_analysis/`:
 | `subsample.py` | seeded, pair-preserving subsample | ready |
 | `test_arbiter.py` | 30 cases over the adjudication logic | ready |
 | `tronko_minimap2_fix_ab.py` | the earlier synthetic A/B driver — carried for reuse of its subprocess/provenance handling, `MAX_TRONKO_PATH` guard, and FASTA helpers | reference |
-| `bioscape_co1_fetch_nov25.py` | pull the November set → paired/unpaired FASTA | **to write** |
+| `bioscape_co1_fetch_nov25.py` | pull the November set from the **legacy** prefix (`assign/CO1_Metazoa/paired/`) → TSV + paired/unpaired FASTA; assert 100% FASTA↔TSV `forward_length` agreement before writing | **to write** |
 | `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filter vs placement | **to write** |
 | `tronko_job_queue.py` | serial runner with the RSS gate; records peak RSS per cell | **to write** |
 | `tronko_release_gate.py` | evaluate G1–G7, emit `gate_result.json` | **to write** |
