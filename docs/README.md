@@ -21,8 +21,20 @@ docs/
 ├── examples/
 │   ├── single_tree_workflow.md - Complete workflow using a single reference tree
 │   └── multiple_tree_workflow.md - Complete workflow using multiple reference trees
+├── reports/
+│   └── 2026-08-14-read-path-sprint-review.html - Read-path bugs and fixes, validated
 └── README.md - This file
 ```
+
+## Reports
+
+Dated, self-contained findings. Each names the commit it describes in its
+provenance footer, because a report may document work that lives on a branch
+other than the one the report itself is committed to.
+
+| Report | Describes |
+|---|---|
+| [2026-08-14 · Where reads were lost](reports/2026-08-14-read-path-sprint-review.html) | Spacer trimming, reverse-strand scoring, and the top-hits cap. Code at `530caf9`, head of `high-perf-aligner`; baselined against `f3bdfac`. |
 
 ## Key Topics
 
