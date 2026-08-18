@@ -3991,13 +3991,24 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 	if ( finished==0 ){
 		return 0;
 	}
+	/* Position k at the first seed at or after iter. k==kseqs simply means no
+	 * seed remains ahead of us -- it does NOT mean there is no data left. The
+	 * `finished` scan above is the only valid end-of-data test.
+	 *
+	 * This used to `return 0` here, which silently abandoned every unassigned
+	 * record positioned after the highest seed index. Those records were then
+	 * marked assigned wholesale at end of round, so they never reached any
+	 * cluster: a silent truncation of the tail of the input, whose length
+	 * depended on where the last random seed happened to land (63,298 seqs at
+	 * -r 2000 lost exactly the last 38; 705,019 at -r 2130 lost 1,027).
+	 *
+	 * Note this is NOT a revert to the pre-ca8336b `k <= kseqs`, which papered
+	 * over the same problem by reading assignedReads[kseqs] out of bounds and
+	 * comparing against heap garbage. k stays strictly bounded below. */
 	for(k=0; k<kseqs; k++){
 		if ( iter <= assignedReads[k] ){
 			break;
 		}
-	}
-	if (k==kseqs){
-		return 0;
 	}
 	int m=0;
 	int countLines=0;
@@ -4035,7 +4046,13 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 		countLines++;
 		if ( s != NULL ){
 			size = strlen(s);
-			if (k < kseqs && iter != assignedReads[k] && assignedSeqs[iter] == -1 && buffer[0] == '>' ){
+			/* Admit any unassigned record that is not the next seed. Once the
+			 * seeds are exhausted (k==kseqs) nothing ahead can be a seed, so
+			 * every remaining unassigned record is admissible -- previously
+			 * they all fell through to the silent `else if (buffer[0]=='>')`
+			 * below and were dropped. The k>=kseqs test short-circuits before
+			 * assignedReads[k], so the out-of-bounds read stays fixed. */
+			if ( (k >= kseqs || iter != assignedReads[k]) && assignedSeqs[iter] == -1 && buffer[0] == '>' ){
 				if (refresh >= numberOfLinesToRead){
 					break;
 				}
@@ -4066,9 +4083,28 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 					readsStruct->sequence[refresh-1][i] = query[buffer_index];
 					buffer_index++;
 				}
-				if( size < MIN_SEQ && refresh==numberOfLinesToRead && last_size != 0){
-					break;
-				}else if ( last_size == 0 && size >= MIN_SEQ && refresh==numberOfLinesToRead ){
+				/* Chunk is full and this record's sequence is complete -- stop here,
+				 * with the stream positioned exactly on the next header.
+				 *
+				 * last_size==0 means this was the record's first sequence line, so
+				 * for the single-line FASTA this tool requires ("expects sequence
+				 * in 1 line") the record is now complete regardless of its length.
+				 * That last clause used to be `size >= MIN_SEQ`, which left a gap:
+				 * a FIRST line shorter than MIN_SEQ (100bp) matched neither break,
+				 * so the loop ran on and consumed the NEXT header, which then hit
+				 * the `refresh >= numberOfLinesToRead` guard and broke *without*
+				 * advancing iter. That desynced iter from the true file position
+				 * for the rest of the round: seeds stopped matching and were
+				 * emitted twice, and saveForLater recorded shifted absolute
+				 * indices, so already-printed records were re-read next round.
+				 * Net effect was an exact one-for-one swap -- 6,969 accessions
+				 * duplicated and 6,969 dropped on a 63,298-sequence input whose
+				 * sequences are 52% shorter than MIN_SEQ.
+				 *
+				 * last_size!=0 keeps the original behaviour: a continuation line
+				 * shorter than MIN_SEQ ends a multi-line record, while a long one
+				 * means more lines may follow. */
+				if( refresh==numberOfLinesToRead && ( last_size == 0 || size < MIN_SEQ ) ){
 					break;
 				}
 			}else if ( k < kseqs && iter == assignedReads[k] && buffer[0] == '>'){
@@ -4092,6 +4128,15 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int* assig
 	}
 	free(buffer);
 	free(query);
+	/* A full pass that admitted nothing means this round has no work left, so
+	 * tell the caller's chunk loop to stop. That loop terminates on a 0 return,
+	 * and until now the seed-exhaustion early return above was what produced it
+	 * -- which is precisely why removing that return (to stop discarding the
+	 * tail) would otherwise spin forever: at EOF the function kept returning a
+	 * non-zero iter and the caller called it again unchanged. */
+	if ( refresh == 0 ){
+		return 0;
+	}
 	return iter;
 }
 void calculateTotalDistanceFromRoot(int node, double distance,int whichTree){

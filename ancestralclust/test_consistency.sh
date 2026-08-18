@@ -108,6 +108,40 @@ for golden_fasta in $golden_fastas; do
     fi
 done
 
+# --- Completeness: every input sequence in exactly one output cluster ---
+# Golden-independent, and the property that actually matters. Comparing only
+# against a golden cannot catch data loss when the clustering also changes, and
+# a silent tail truncation shipped for months behind exactly that blind spot:
+# AncestralClust dropped every record positioned after the highest seed index
+# (1,027 sequences on a 705k-sequence marker, taking 128 species to zero
+# representation), while a count-based check saw nothing because other records
+# were simultaneously duplicated.
+echo ""
+echo "=== Completeness (independent of the golden) ==="
+in_accs=$(mktemp); out_all=$(mktemp); out_uniq=$(mktemp)
+grep '^>' "$INPUT_FASTA" | sed 's/^>//' | awk '{print $1}' | sort -u > "$in_accs"
+find "$TEST_OUTPUT" -maxdepth 1 -name '*.fasta' -exec cat {} + \
+    | grep '^>' | sed 's/^>//' | awk '{print $1}' | sort > "$out_all"
+sort -u "$out_all" > "$out_uniq"
+n_in=$(wc -l < "$in_accs"); n_rec=$(wc -l < "$out_all"); n_uniq=$(wc -l < "$out_uniq")
+n_missing=$(comm -23 "$in_accs" "$out_uniq" | wc -l)
+n_dup=$((n_rec - n_uniq))
+echo "input=$n_in  records=$n_rec  distinct=$n_uniq  missing=$n_missing  duplicated=$n_dup"
+if [[ "$n_missing" -eq 0 ]]; then
+    echo "PASS: no input sequence was dropped"; ((PASS++))
+else
+    echo "FAIL: $n_missing input sequence(s) missing from all clusters"
+    comm -23 "$in_accs" "$out_uniq" | head -5 | sed 's/^/       /'
+    ((FAIL++))
+fi
+if [[ "$n_dup" -eq 0 ]]; then
+    echo "PASS: no sequence written to more than one cluster"; ((PASS++))
+else
+    echo "FAIL: $n_dup duplicated record(s) across clusters"
+    ((FAIL++))
+fi
+rm -f "$in_accs" "$out_all" "$out_uniq"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [[ $FAIL -gt 0 ]]; then
