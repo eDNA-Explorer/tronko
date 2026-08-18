@@ -837,6 +837,34 @@ static void copy_file(const char *src, const char *dst){
 	fclose(in);
 	fclose(out);
 }
+/* Write dst as a gap-free copy of an aligned FASTA. Used when materialising an
+ * unsplit cluster whose input dir carries only the MSA: the documented input
+ * convention is {N}_MSA.fasta / {N}_taxonomy.txt / RAxML_bestTree.{N}.reroot,
+ * with no raw {N}.fasta, but downstream consumers (build-tronko-db.sh step 5)
+ * concatenate the raw partition{N}.fasta. */
+static int degap_fasta(const char *src, const char *dst){
+	FILE *in = fopen(src, "rb");
+	if (!in) return 0;
+	FILE *out = fopen(dst, "wb");
+	if (!out){ fclose(in); return 0; }
+	int c, at_header = 0, line_start = 1;
+	while ((c = fgetc(in)) != EOF){
+		if (line_start){ at_header = (c == '>'); line_start = 0; }
+		if (c == '\n'){ line_start = 1; fputc(c, out); continue; }
+		if (!at_header && (c == '-' || c == '.')) continue;
+		fputc(c, out);
+	}
+	fclose(in);
+	fclose(out);
+	return 1;
+}
+/* Copy src to dst; if src is absent, fall back to de-gapping msa_src. */
+static void copy_file_or_degap(const char *src, const char *msa_src, const char *dst){
+	FILE *probe = fopen(src, "rb");
+	if (probe){ fclose(probe); copy_file(src, dst); return; }
+	if (!degap_fasta(msa_src, dst))
+		fprintf(stderr, "copy_file_or_degap: cannot produce %s\n", dst);
+}
 /* Get number of available CPU cores */
 static int get_num_cores(void){
 	long n = sysconf(_SC_NPROCESSORS_ONLN);
@@ -2182,6 +2210,27 @@ int main(int argc, char **argv){
 	{
 		int n_sorted = 0;
 		struct masterArr **sorted = sorted_master_array(&n_sorted);
+		/* A top-level cluster whose FIRST split is rejected by the <4 guard in
+		 * createNewRoots() never reaches printPartitionsToFileArr(), so no
+		 * partition files are written for it and its data stays in opt.readdir.
+		 * A non-root node in the same situation is fine: its parent's split
+		 * already wrote its files. Left alone, such a cluster is absent from
+		 * final_partitions.txt (its filename carries no "partition" token), so
+		 * build-tronko-db.sh's step-5 FASTA concat silently drops its sequences
+		 * from the reference FASTA and the BWA index. Materialise it here under
+		 * a fresh partition number so it is indistinguishable from any other
+		 * leaf downstream. The two-step branch above already copies these files;
+		 * this additionally renames them so they land in final_partitions.txt. */
+		int max_partition_idx = 0;
+		for (int s = 0; s < n_sorted; s++) {
+			char *fn = strrchr(sorted[s]->filename, '/');
+			fn = fn ? fn + 1 : sorted[s]->filename;
+			char *start = strstr(fn, "partition");
+			if (start) {
+				int v = atoi(start + strlen("partition"));
+				if (v > max_partition_idx) max_partition_idx = v;
+			}
+		}
 		for (int s = 0; s < n_sorted; s++) {
 			final = sorted[s];
 			treeArr[index] = final->tree;
@@ -2192,6 +2241,55 @@ int main(int argc, char **argv){
 			rootArr[index] = final->root;
 			//printtreeArr(index);
 			index++;
+			{
+				char dirbuf[BUFFER_SIZE];
+				char *last_slash = strrchr(final->filename, '/');
+				if (last_slash != NULL) {
+					size_t dlen = (size_t)(last_slash - final->filename);
+					if (dlen < BUFFER_SIZE) {
+						memcpy(dirbuf, final->filename, dlen);
+						dirbuf[dlen] = '\0';
+						/* Files still in the input dir == never materialised. */
+						if (strcmp(dirbuf, opt.readdir) == 0) {
+							char id[BUFFER_SIZE];
+							char *base = last_slash + 1;
+							char *st = strstr(base, "RAxML_bestTree.");
+							char *en = strstr(base, ".reroot");
+							if (st != NULL && en != NULL) {
+								st += strlen("RAxML_bestTree.");
+								size_t ilen = (size_t)(en - st);
+								if (ilen > 0 && ilen < BUFFER_SIZE) {
+									memcpy(id, st, ilen);
+									id[ilen] = '\0';
+									int newIdx = ++max_partition_idx;
+									char src[BUFFER_SIZE], dst[BUFFER_SIZE];
+									printf("materialising unsplit cluster %s as partition%d\n", id, newIdx);
+									{
+										char msa_src[BUFFER_SIZE];
+										snprintf(src,BUFFER_SIZE,"%s/%s.fasta",opt.readdir,id);
+										snprintf(msa_src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,id);
+										snprintf(dst,BUFFER_SIZE,"%s/partition%d.fasta",opt.partitions_directory,newIdx);
+										copy_file_or_degap(src,msa_src,dst);
+									}
+									snprintf(src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,id);
+									snprintf(dst,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,newIdx);
+									copy_file(src,dst);
+									snprintf(src,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.readdir,id);
+									snprintf(dst,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt.partitions_directory,newIdx);
+									copy_file(src,dst);
+									snprintf(src,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.readdir,id);
+									snprintf(dst,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,newIdx);
+									copy_file(src,dst);
+									/* Point tree_list.txt at the materialised copy. The
+									 * line's position is unchanged, so tree indices --
+									 * which are line numbers -- stay correct. */
+									snprintf(final->filename,300,"%s",dst);
+								}
+							}
+						}
+					}
+				}
+			}
 			fprintf(list_newick_files,"%s\n",final->filename);
 			/* Extract partition number from filename for final_partitions.txt */
 			{
