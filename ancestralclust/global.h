@@ -9,7 +9,12 @@
 #define FASTA_MAXLINE 6000
 #define MAXNAME 256
 #define MIN_SEQ 100
-#define MAX_FILENAME 100
+/* Was 100 -- too small for real absolute paths (our database directory
+ * structure alone is ~99 chars), so snprintf() silently truncated away
+ * any filename appended after the directory, leaving fopen() a bare
+ * directory path (EISDIR) and segfaulting on the unchecked NULL FILE*.
+ * 4096 matches Linux's PATH_MAX. */
+#define MAX_FILENAME 4096
 #define DISTMAX 30.0
 #define MINBL 0.00001
 #define MAXBL 2.0

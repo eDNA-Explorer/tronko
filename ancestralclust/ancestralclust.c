@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 #include "needleman_wunsch.h"
 #include "global.h"
 #include "hashmap.h"
@@ -2116,8 +2117,28 @@ void printCLSTR(Options opt, char*** clstr, int ** clstr_lengths, int total_numb
 	}else if (opt.default_directory==1){
 		snprintf(fileName,MAX_FILENAME,"%s",opt.output_file);
 	}
+	{
+		/* Defensive: whatever branch above ran, fileName must not resolve to
+		 * a bare directory (trailing '/') -- that produces
+		 * fopen(..., "w") -> EISDIR, which used to segfault (see the
+		 * clstrFile NULL-check fix below). Seen in production with
+		 * opt.output_file empty despite the default-fill above. */
+		size_t len = strlen(fileName);
+		if (len == 0 || fileName[len-1] == '/'){
+			snprintf(fileName+len,MAX_FILENAME-len,"output.clstr");
+		}
+	}
 	clstrFile = fopen(fileName, "w");
-	if (clstr == NULL ){ printf("Error opening cluster file!"); exit(1); }
+	if (clstrFile == NULL ){
+		/* BUG (fixed): this used to check `clstr` (the cluster data array,
+		 * always non-NULL) instead of `clstrFile` (the actual fopen result),
+		 * so a failed fopen() went undetected and the first fprintf() into
+		 * the NULL FILE* segfaulted -- the crash this codebase has been
+		 * hitting on long/large clustering runs. */
+		fprintf(stderr,"FATAL printCLSTR: fopen(\"%s\", \"w\") failed: %s\n",
+			fileName, strerror(errno));
+		exit(1);
+	}
 	for(i=0; i<MAXNUMBEROFCLUSTERS; i++){
 		if (clstr[i][0][0] == '\0'){ break; }
 		if (clstr[i][0][0] != '\0'){
@@ -3056,6 +3077,15 @@ void findLeaves(node** tree, int node, int whichTree, int* parentCuts, /*int** c
 				}
 			}
 		}
+		if (index==-1){
+			/* parentCuts (size 2*number_of_sequences-1) has no free slot and no
+			 * existing entry for this parentCut -- writing parentCuts[-1] would
+			 * silently corrupt adjacent heap memory instead of crashing here. */
+			fprintf(stderr,"FATAL findLeaves: parentCuts exhausted (no free slot) "
+				"parentCut=%d number_of_sequences=%d node=%d name=%s\n",
+				parentCut, number_of_sequences, node, tree[whichTree][node].name);
+			exit(1);
+		}
 		parentCuts[index]=parentCut;
 		int placement=-1;
 		/*for(i=number_of_sequences-1; i>=0; i--){
@@ -3069,6 +3099,18 @@ void findLeaves(node** tree, int node, int whichTree, int* parentCuts, /*int** c
 				placement=i;
 				break;
 			}
+		}
+		if (placement==-1){
+			/* clusters[index+1] (capacity number_of_sequences) is completely
+			 * full -- writing clusters[index+1][-1] would strcpy into
+			 * whatever garbage/NULL pointer sits one slot before the array,
+			 * which is the documented cause of this tool's layout-sensitive
+			 * segfaults. Fail loudly instead of corrupting memory or
+			 * silently dropping this sequence from its cluster. */
+			fprintf(stderr,"FATAL findLeaves: clusters[%d] exhausted (capacity=%d) "
+				"parentCut=%d node=%d name=%s\n",
+				index+1, number_of_sequences, parentCut, node, tree[whichTree][node].name);
+			exit(1);
 		}
 		strcpy(clusters[index+1][placement],tree[whichTree][node].name);
 		tree[whichTree][node].clusterNumber = index+1;
@@ -3129,6 +3171,13 @@ void addFirstCluster(node** tree, int node, int whichTree, int* parentCuts, int 
 		if ( clusters[index][i][0]=='\0' ){
 			placement=i;
 		}
+	}
+	if (placement==-1){
+		/* Same class of bug as findLeaves(): clusters[index] full means
+		 * writing clusters[index][-1], an out-of-bounds strcpy. Fail loudly. */
+		fprintf(stderr,"FATAL addFirstCluster: clusters[%d] exhausted (capacity=%d) "
+			"node=%d name=%s\n", index, number_of_sequences, node, tree[whichTree][node].name);
+		exit(1);
 	}
 	strcpy(clusters[index][placement],tree[whichTree][node].name);
 	tree[whichTree][node].clusterNumber = index;
