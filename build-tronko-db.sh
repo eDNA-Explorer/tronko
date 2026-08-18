@@ -659,6 +659,44 @@ REF_SIZE_MB=$(du -m "$OUTPUT_DIR/reference_tree.txt.gz" 2>/dev/null | cut -f1)
 # branch's tree format has no "^>" headers to grep anyway -- tree_list.txt is
 # the authoritative list of final trees (matches what tronko-assign loads).
 N_TREES=$(wc -l < "$OUTPUT_DIR/tree_list.txt" 2>/dev/null || echo "$NUM_FINAL_CLUSTERS")
+N_FINAL_PARTITIONS=$(wc -l < "$OUTPUT_DIR/final_partitions.txt" 2>/dev/null || echo 0)
+N_REF_SEQS=$(grep -c '^>' "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || echo 0)
+
+# Recover rCRUX provenance from the input FASTA's own location, so a build is
+# reproducible without the operator having to remember --rcrux-tag. rCRUX
+# publishes each marker as <repo>/databases/<MARKER>/<tier>/, tagged
+# <MARKER>_v<version>, with the generating run recorded in the marker's
+# build.log and the tier's content hash in <tier>.dvc. An explicit --rcrux-tag
+# still wins; everything else is best-effort and emits null when unavailable.
+RCRUX_COMMIT=""; RCRUX_DATE=""; RCRUX_RUN_ID=""; RCRUX_STACK=""
+RCRUX_TIER=""; RCRUX_TIER_MD5=""
+detect_rcrux_provenance() {
+    local fasta_dir marker_dir repo marker
+    fasta_dir=$(cd "$(dirname "$1")" 2>/dev/null && pwd) || return 0
+    RCRUX_TIER=$(basename "$fasta_dir")
+    marker_dir=$(dirname "$fasta_dir")
+    marker=$(basename "$marker_dir")
+    # Only trust the layout if it really is <...>/databases/<MARKER>/<tier>
+    [ "$(basename "$(dirname "$marker_dir")")" = "databases" ] || { RCRUX_TIER=""; return 0; }
+    if [ -f "$marker_dir/${RCRUX_TIER}.dvc" ]; then
+        RCRUX_TIER_MD5=$(awk '/md5:/{print $3; exit}' "$marker_dir/${RCRUX_TIER}.dvc")
+    fi
+    repo=$(git -C "$marker_dir" rev-parse --show-toplevel 2>/dev/null) || return 0
+    [ -n "$RCRUX_TAG" ] || RCRUX_TAG=$(git -C "$repo" tag -l "${marker}_v*" --sort=-v:refname 2>/dev/null | head -1)
+    if [ -n "$RCRUX_TAG" ]; then
+        RCRUX_COMMIT=$(git -C "$repo" rev-parse --short "${RCRUX_TAG}^{commit}" 2>/dev/null || true)
+        RCRUX_DATE=$(git -C "$repo" log -1 --format=%cs "$RCRUX_TAG" 2>/dev/null || true)
+    fi
+    if [ -f "$marker_dir/build.log" ]; then
+        RCRUX_RUN_ID=$(grep -oE 'run-id [A-Za-z0-9._-]+' "$marker_dir/build.log" 2>/dev/null | head -1 | awk '{print $2}')
+        RCRUX_STACK=$(grep -oE '\-\-stack [A-Za-z0-9._-]+' "$marker_dir/build.log" 2>/dev/null | head -1 | awk '{print $2}')
+    fi
+    return 0
+}
+detect_rcrux_provenance "$INPUT_FASTA" || true
+# JSON string-or-null, so absent provenance doesn't emit bare/empty values
+jstr() { [ -n "${1:-}" ] && printf '"%s"' "$1" || printf 'null'; }
+
 cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
 {
   "marker": "$PRIMER",
@@ -666,7 +704,13 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "input_sequences": $(grep -c '^>' "$INPUT_FASTA"),
   "input_fasta": "$INPUT_FASTA",
   "input_taxonomy": "$INPUT_TAXONOMY",
-  "rcrux_tag": $([ -n "$RCRUX_TAG" ] && echo "\"$RCRUX_TAG\"" || echo null),
+  "rcrux_tag": $(jstr "$RCRUX_TAG"),
+  "rcrux_commit": $(jstr "$RCRUX_COMMIT"),
+  "rcrux_published_date": $(jstr "$RCRUX_DATE"),
+  "rcrux_run_id": $(jstr "$RCRUX_RUN_ID"),
+  "rcrux_stack": $(jstr "$RCRUX_STACK"),
+  "rcrux_tier": $(jstr "$RCRUX_TIER"),
+  "rcrux_tier_md5": $(jstr "$RCRUX_TIER_MD5"),
   "clustering": "ancestralclust",
   "ac_bin_size": $AC_BIN_SIZE,
   "ac_descendants": $AC_DESCENDANTS,
@@ -675,6 +719,8 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "sp_normalization": "$([ "$LEGACY_SP" -eq 1 ] && echo legacy || echo corrected)",
   "tree_tool": "${TREE_TOOL:-FastTree}",
   "n_trees": $N_TREES,
+  "n_final_partitions": $N_FINAL_PARTITIONS,
+  "reference_sequences": $N_REF_SEQS,
   "total_build_time_seconds": $TOTAL_TIME,
   "tronko_build_time_seconds": $((STEP4_END - STEP4_START)),
   "reference_tree_gz_mb": ${REF_SIZE_MB:-0},
