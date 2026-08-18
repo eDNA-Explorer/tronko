@@ -25,6 +25,8 @@
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
 #   -J  Parallel jobs for Step 2 cluster processing (default: 1)
+#   --rcrux-tag  rCRUX marker git tag this build's input came from, recorded
+#                verbatim in build_metadata.json for provenance (optional)
 
 set -euo pipefail
 
@@ -40,6 +42,7 @@ LEGACY_SP=0
 AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 AC_DESCENDANTS=75
+RCRUX_TAG=""
 
 # Handle long options by shifting them out before getopts
 ARGS=()
@@ -51,6 +54,8 @@ while [[ $# -gt 0 ]]; do
         --tree-seed=*) TREE_SEED="${1#*=}"; shift ;;
         --cache-dir) SHARED_CACHE_DIR="$2"; shift 2 ;;
         --cache-dir=*) SHARED_CACHE_DIR="${1#*=}"; shift ;;
+        --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
+        --rcrux-tag=*) RCRUX_TAG="${1#*=}"; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -194,6 +199,7 @@ CLUSTER_INPUT_FASTA="$CLEAN_FASTA"
 echo ""
 echo "=== Step 1/5: AncestralClust pre-clustering ==="
 STEP1_START=$(date +%s)
+BUILD_STARTED_AT=$(date -Is)
 
 if [[ -f "$AC_DIR/.step1_done" ]]; then
     NUM_CLUSTERS=$(ls "$AC_DIR"/*.fasta 2>/dev/null | wc -l | tr -d ' ')
@@ -649,7 +655,10 @@ echo "================================================================"
 
 # Write build metadata
 REF_SIZE_MB=$(du -m "$OUTPUT_DIR/reference_tree.txt.gz" 2>/dev/null | cut -f1)
-N_TREES=$(grep -c "^>" "$OUTPUT_DIR/reference_tree.txt" 2>/dev/null || echo "$NUM_FINAL_CLUSTERS")
+# reference_tree.txt is already gzipped by this point (see above), and this
+# branch's tree format has no "^>" headers to grep anyway -- tree_list.txt is
+# the authoritative list of final trees (matches what tronko-assign loads).
+N_TREES=$(wc -l < "$OUTPUT_DIR/tree_list.txt" 2>/dev/null || echo "$NUM_FINAL_CLUSTERS")
 cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
 {
   "marker": "$PRIMER",
@@ -657,6 +666,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "input_sequences": $(grep -c '^>' "$INPUT_FASTA"),
   "input_fasta": "$INPUT_FASTA",
   "input_taxonomy": "$INPUT_TAXONOMY",
+  "rcrux_tag": $([ -n "$RCRUX_TAG" ] && echo "\"$RCRUX_TAG\"" || echo null),
   "clustering": "ancestralclust",
   "ac_bin_size": $AC_BIN_SIZE,
   "ac_descendants": $AC_DESCENDANTS,
@@ -664,7 +674,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "sp_threshold": $SP_THRESHOLD,
   "sp_normalization": "$([ "$LEGACY_SP" -eq 1 ] && echo legacy || echo corrected)",
   "tree_tool": "${TREE_TOOL:-FastTree}",
-  "n_trees": $NUM_FINAL_CLUSTERS,
+  "n_trees": $N_TREES,
   "total_build_time_seconds": $TOTAL_TIME,
   "tronko_build_time_seconds": $((STEP4_END - STEP4_START)),
   "reference_tree_gz_mb": ${REF_SIZE_MB:-0},
@@ -672,7 +682,8 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "threads": $THREADS,
   "parallel_jobs": $PARALLEL_JOBS,
   "tronko_build_flags": "$TRONKO_FLAGS -c $TRONKO_THREADS",
-  "build_date": "$(date '+%Y-%m-%d')"
+  "build_started_at": "$BUILD_STARTED_AT",
+  "build_completed_at": "$(date -Is)"
 }
 METAEOF
 echo "  Metadata: $OUTPUT_DIR/build_metadata.json"
