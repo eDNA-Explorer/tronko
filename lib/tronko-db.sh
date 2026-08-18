@@ -261,10 +261,14 @@ binary_fingerprint() {
 assert_binary_fresh() {
     local bin="$TRONKO_REPO_DIR/tronko-build/tronko-build"
     [ -x "$bin" ] || { echo "tronko-build not built: $bin" >&2; return 1; }
+    # Headers matter as much as .c files here: MAX_NUMBEROFROOTS and the tree
+    # struct layout live in global.h, so a header-only change still requires a
+    # rebuild before the binary reflects it.
     local newer
-    newer=$(find "$TRONKO_REPO_DIR/tronko-build" -maxdepth 1 -name '*.c' -newer "$bin" -printf '%f ' 2>/dev/null)
+    newer=$(find "$TRONKO_REPO_DIR/tronko-build" -maxdepth 1 \( -name '*.c' -o -name '*.h' \) \
+            -newer "$bin" -printf '%f ' 2>/dev/null)
     if [ -n "$newer" ]; then
-        echo "tronko-build is older than its sources ($newer) -- run 'make' first" >&2
+        echo "tronko-build is older than its sources ($newer) -- run 'make' in tronko-build/ first" >&2
         return 1
     fi
 }
