@@ -15,7 +15,14 @@
 #define MAXTIEBREAK 64
 #define type_of_PP double
 #define MAX_NODENAME 30
-#define MAX_NUMBEROFROOTS 300000
+/* Hard bound, not a guess: createNewRoots rejects a split unless all three
+ * children hold >= 4 sequences, so every leaf holds >= 4 and, for R roots and S
+ * internal nodes (leaves = R + 2S, slots = R + 3S), slots < 0.375 * N. This cap
+ * therefore cannot be reached below 5.3M input sequences -- clear of CO1
+ * (~4.2M), ITS1 fungi (1.74M -> 652k worst case) and ITS2 plants (1.46M ->
+ * 549k). Cost is 4 bytes/slot in SPscoreArr (7.6 MB) plus an O(MAX) free-slot
+ * scan per split, which is ~90s spread across a multi-day build. */
+#define MAX_NUMBEROFROOTS 2000000
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
 #define MAX_NUM_BWA_MATCHES 5000
