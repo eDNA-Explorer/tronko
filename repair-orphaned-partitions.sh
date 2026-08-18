@@ -22,6 +22,13 @@ DB="${1:?usage: $0 <db_dir> [--dry-run]}"
 DRY=0
 [[ "${2:-}" == "--dry-run" ]] && DRY=1
 
+# Absolute from here on. The rewritten tree_list.txt lines below embed $DB, and
+# tronko-build writes every other line as an absolute path -- so invoking this
+# with a relative path (e.g. from the repo root) leaves a handful of
+# repo-root-relative entries among thousands of absolute ones, which resolve
+# only from the directory the repair happened to be run from.
+DB=$(cd "$DB" 2>/dev/null && pwd) || { echo "ERROR: no such directory: $1" >&2; exit 1; }
+
 TL="$DB/tree_list.txt"
 FP="$DB/final_partitions.txt"
 

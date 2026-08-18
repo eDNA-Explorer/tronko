@@ -87,10 +87,16 @@ check_one() {
     echo "  FIXABLE POST-HOC: yes. reference_tree.txt/.trkb already contain all"
     echo "  $n_trees trees at correct indices, so no rebuild is needed — only the"
     echo "  FASTA/BWA index and the two list files need repair."
+    return 1
 }
 
 if [[ $# -eq 0 ]]; then
     echo "usage: $0 <db_dir> [<db_dir> ...]" >&2
     exit 2
 fi
-for d in "$@"; do check_one "$d"; done
+# Non-zero exit when any database has orphans, so callers can branch on it.
+# Without this the script is informational only and a build wrapper cannot tell
+# a clean database from one that is silently missing sequences.
+rc=0
+for d in "$@"; do check_one "$d" || rc=1; done
+exit $rc

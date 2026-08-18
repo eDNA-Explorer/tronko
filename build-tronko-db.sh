@@ -575,7 +575,7 @@ if [[ "${TREE_SEED:-0}" != "0" ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS --tree-seed $TREE_SEED"
 fi
 
-if [[ "$NUM_FINAL_CLUSTERS" -gt 1 ]] || [[ "$NUM_FINAL_CLUSTERS" -eq 1 ]]; then
+if [[ "$NUM_FINAL_CLUSTERS" -ge 1 ]]; then
     # tronko-build forks 3 partition pipelines; give each 1/3 of threads
     TRONKO_THREADS=$(( THREADS / 3 ))
     if [[ "$TRONKO_THREADS" -lt 1 ]]; then TRONKO_THREADS=1; fi
@@ -630,10 +630,10 @@ bwa index "$OUTPUT_DIR/${PRIMER}.fasta"
 if command -v tronko-convert &> /dev/null; then
     echo "Converting reference tree to .trkb format..."
     tronko-convert -i "$OUTPUT_DIR/reference_tree.txt" -o "$OUTPUT_DIR/reference_tree.trkb"
-    gzip "$OUTPUT_DIR/reference_tree.txt"
+    gzip -f "$OUTPUT_DIR/reference_tree.txt"
 else
     echo "WARNING: tronko-convert not found, keeping .txt.gz only (tronko-assign may require .trkb)"
-    gzip "$OUTPUT_DIR/reference_tree.txt"
+    gzip -f "$OUTPUT_DIR/reference_tree.txt"
 fi
 
 STEP5_END=$(date +%s)
