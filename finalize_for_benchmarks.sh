@@ -12,8 +12,13 @@
 
 set -euo pipefail
 
+# Repo root, resolved from this script's location, so the same script works
+# whether the checkout lives at ~/tronko or in a worktree such as
+# ~/tronko-build-branch.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 MARKER=CO1_mlCOIintF_Fol-degen-rev
-BASE="$HOME/tronko-build-branch/databases/$MARKER/lca/ac/default"
+BASE="$REPO/databases/$MARKER/lca/ac/default"
 OUT="$BASE/sp0.10"
 SRC="$HOME/rcrux-py/databases/$MARKER/dedup"
 

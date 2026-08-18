@@ -2,7 +2,9 @@
 # Append a status line every 2 minutes so progress is reconstructable
 # after any disconnect. Runs until the build process exits.
 
-BASE="$HOME/tronko-build-branch/databases/CO1_mlCOIintF_Fol-degen-rev/lca/ac/default"
+# Repo root, resolved from this script's location (see run_co1_build.sh).
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE="$REPO/databases/CO1_mlCOIintF_Fol-degen-rev/lca/ac/default"
 OUT="$BASE/sp0.10"
 MON="$OUT/monitor.log"
 

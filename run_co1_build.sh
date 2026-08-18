@@ -6,9 +6,14 @@
 
 set -euo pipefail
 
+# Repo root, resolved from this script's location, so the same script works
+# whether the checkout lives at ~/tronko or in a worktree such as
+# ~/tronko-build-branch.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 MARKER=CO1_mlCOIintF_Fol-degen-rev
 SRC="$HOME/rcrux-py/databases/$MARKER/dedup"
-BASE="$HOME/tronko-build-branch/databases/$MARKER/lca/ac/default"
+BASE="$REPO/databases/$MARKER/lca/ac/default"
 OUT="$BASE/sp0.10"
 
 # 2-column taxonomy: rcrux emits accession<TAB>taxid<TAB>lineage, but
@@ -16,10 +21,10 @@ OUT="$BASE/sp0.10"
 # would silently shift every rank. Column stripped in advance.
 TAX="$BASE/lca_taxonomy.2col.txt"
 
-export PATH="$HOME/tronko-build-branch/bin:$HOME/tronko-build-branch/tronko-build:$HOME/tronko-build-branch/tronko-convert:$PATH"
+export PATH="$REPO/bin:$REPO/tronko-build:$REPO/tronko-convert:$PATH"
 
 mkdir -p "$OUT"
-cd "$HOME/tronko-build-branch"
+cd "$REPO"
 
 # Fail fast rather than burning hours on a bad input
 [[ -f "$SRC/lca.fasta" ]] || { echo "missing $SRC/lca.fasta" >&2; exit 1; }
