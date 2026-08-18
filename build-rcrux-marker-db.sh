@@ -90,7 +90,17 @@ case "$PRIMER" in
     marker|partition*) die "primer name '$PRIMER' collides with reserved filenames" ;;
 esac
 
-CONFIG="$OUT_ROOT/databases/$MARKER/lca/ac/default"
+# The AC config directory is named for the bin size, matching the existing
+# convention (ac-6builds.sh: default=10000, more_bins=5000, fewer_bins=20000).
+# Without this, --bin-size would silently overwrite the default-bin build.
+case "$BIN_SIZE" in
+    10000) AC_CONFIG=default ;;
+    5000)  AC_CONFIG=more_bins ;;
+    20000) AC_CONFIG=fewer_bins ;;
+    *)     AC_CONFIG="bin$BIN_SIZE" ;;
+esac
+
+CONFIG="$OUT_ROOT/databases/$MARKER/lca/ac/$AC_CONFIG"
 OUT="$CONFIG/sp$SP"
 mkdir -p "$CONFIG" || die "cannot create $CONFIG"
 CONFIG=$(cd "$CONFIG" && pwd)
@@ -290,6 +300,6 @@ echo "  Not done (deliberately): dvc add / dvc push / git commit."
 echo "  The benchmark harness looks under TRONKO_DB_ROOT (default ~/tronko/databases)"
 echo "  and its presets use short marker names, so to benchmark this build either:"
 echo "    export TRONKO_DB_ROOT=$OUT_ROOT/databases"
-echo "  and point the preset's tronko_db_dir at $MARKER/lca/ac/default/sp$SP"
+echo "  and point the preset's tronko_db_dir at $MARKER/lca/ac/$AC_CONFIG/sp$SP"
 
 exit $VERIFY_RC
