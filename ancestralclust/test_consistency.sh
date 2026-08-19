@@ -52,11 +52,11 @@ echo "=== Comparing outputs ==="
 # --- Compare .clstr file ---
 if diff -q "$GOLDEN_DIR/output.clstr" "$TEST_OUTPUT/output.clstr" > /dev/null 2>&1; then
     echo "PASS: output.clstr matches golden reference"
-    ((PASS++))
+    PASS=$((PASS+1))
 else
     echo "FAIL: output.clstr differs from golden reference"
     diff "$GOLDEN_DIR/output.clstr" "$TEST_OUTPUT/output.clstr" | head -20
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 
 # --- Compare cluster FASTA files ---
@@ -68,10 +68,10 @@ test_count=$(echo "$test_fastas" | wc -l | tr -d ' ')
 
 if [[ "$golden_count" != "$test_count" ]]; then
     echo "FAIL: different number of cluster files (golden=$golden_count, test=$test_count)"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 else
     echo "PASS: same number of cluster files ($golden_count)"
-    ((PASS++))
+    PASS=$((PASS+1))
 fi
 
 for golden_fasta in $golden_fastas; do
@@ -80,7 +80,7 @@ for golden_fasta in $golden_fastas; do
 
     if [[ ! -f "$test_fasta" ]]; then
         echo "FAIL: missing cluster file $base"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
         continue
     fi
 
@@ -91,20 +91,20 @@ for golden_fasta in $golden_fastas; do
     if [[ "$golden_headers" == "$test_headers" ]]; then
         n_seqs=$(grep -c "^>" "$golden_fasta")
         echo "PASS: $base — $n_seqs sequences match"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "FAIL: $base — sequence headers differ"
         diff <(echo "$golden_headers") <(echo "$test_headers") | head -10
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 
     # Compare actual sequence content (byte-identical)
     if diff -q "$golden_fasta" "$test_fasta" > /dev/null 2>&1; then
         echo "PASS: $base — byte-identical"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "FAIL: $base — content differs (sequences may be reordered)"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
     fi
 done
 
@@ -128,17 +128,17 @@ n_missing=$(comm -23 "$in_accs" "$out_uniq" | wc -l)
 n_dup=$((n_rec - n_uniq))
 echo "input=$n_in  records=$n_rec  distinct=$n_uniq  missing=$n_missing  duplicated=$n_dup"
 if [[ "$n_missing" -eq 0 ]]; then
-    echo "PASS: no input sequence was dropped"; ((PASS++))
+    echo "PASS: no input sequence was dropped"; PASS=$((PASS+1))
 else
     echo "FAIL: $n_missing input sequence(s) missing from all clusters"
     comm -23 "$in_accs" "$out_uniq" | head -5 | sed 's/^/       /'
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 if [[ "$n_dup" -eq 0 ]]; then
-    echo "PASS: no sequence written to more than one cluster"; ((PASS++))
+    echo "PASS: no sequence written to more than one cluster"; PASS=$((PASS+1))
 else
     echo "FAIL: $n_dup duplicated record(s) across clusters"
-    ((FAIL++))
+    FAIL=$((FAIL+1))
 fi
 rm -f "$in_accs" "$out_all" "$out_uniq"
 
