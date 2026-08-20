@@ -238,10 +238,21 @@ else
     echo "AncestralClust: $NUM_SEQS seqs -> $NUM_BINS bins, $NUM_SEEDS seeds, -p $AC_DESCENDANTS, -l $NUM_LINES"
     echo "Running: ancestralclust -f -i $CLUSTER_INPUT_FASTA -b $NUM_BINS -r $NUM_SEEDS -p $AC_DESCENDANTS -l $NUM_LINES -c $THREADS -d $AC_DIR"
 
-    # Cap ancestralclust threads (segfaults with high thread counts)
+    # Cap ancestralclust threads. Was capped at 4 (comment: "segfaults with high
+    # thread counts") by 4bc9c21 on 2026-03-26. Four separate ancestralclust
+    # segfault/buffer-overflow fixes have landed since (9611471, eb8e838,
+    # ca8336b, 328ffdf) plus 3bf3778's tail-truncation/index-desync fix, none of
+    # which re-tested the high-thread-count case, so it's unverified whether the
+    # original crash is still live. mstr[opt.numthreads] and threads_array[threads]
+    # are both correctly-sized VLAs (no fixed-size overflow), and each worker
+    # allocates its own wavefront_aligner_new() rather than sharing one -- no
+    # structural reason found for a thread-count-proportional crash. Raised to 32
+    # (not higher) as a measured step: this phase is embarrassingly parallel
+    # (WFA search per sequence) so real speedup is expected, but a large untested
+    # jump maximizes blast radius if a live concurrency bug remains.
     AC_THREADS="$THREADS"
-    if [[ "$AC_THREADS" -gt 4 ]]; then
-        AC_THREADS=4
+    if [[ "$AC_THREADS" -gt 32 ]]; then
+        AC_THREADS=32
     fi
 
     AC_MAX_RETRIES=10
