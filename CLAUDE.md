@@ -87,6 +87,11 @@ Partition mode (-y):
   -e [DIRECTORY]    Input directory with cluster files
   -n [INT]          Number of clusters in input directory
   -b [INT]          Restart from partition number (default: 0)
+  -J [INT]          Process J input clusters concurrently (default: 1 = sequential)
+  --sequential-clusters [INT]
+                    Process cluster indices [0,N) single-threaded before dispatching
+                    [N, count) to the -J worker pool. Required for a safe resume: see
+                    "Resuming an interrupted partition build" below.
   -s                Use sum-of-pairs score for partitioning
   -u [FLOAT]        SP-score threshold (default: 0.5)
   -v                Use minimum leaf node count for partitioning
@@ -198,6 +203,56 @@ tronko-build computes posterior probabilities for every node at every alignment 
 This preserves the tree's broad phylogenetic context (the tree topology and branch lengths are unchanged) while cleaning up the per-node posterior signal. The hypothesis is that this helps haplotype-level discrimination in diverse partitions without hurting species holdout performance.
 
 Default `-W 1.0` means no masking (gap fraction can never exceed 100%). Useful values: `-W 0.5` masks columns with >50% gaps, `-W 0.7` masks only heavily gapped columns.
+
+## Resuming an interrupted partition build
+
+`-b N` skips partitions at or below N. Its skip logic is a pure integer comparison at
+two sites (`tronko-build.c:1124` gates the disk write, `:1160` gates the fork/compute) —
+it never stats or validates what is already on disk. Setting `-b` at or above a partition
+whose triplet is incomplete (e.g. VeryFastTree was mid-write when the process died)
+**silently drops that partition**: exit code 0, one stderr line, a database with one
+fewer tree. Use `verify-resume-boundary.sh <db-dir>` to compute a safe `-b`.
+
+Partition slot numbers come from a global lowest-free-index scan over `SPscoreArr`
+(`tronko-build.c:1107-1122`), so the slot a cluster receives depends on the cumulative
+history of every prior split. A resume must therefore replay the already-completed
+clusters *in their original order* rather than jumping ahead — that is what
+`--sequential-clusters N` is for. Pair the two flags:
+
+```bash
+tronko-build -y -e <clusters> -n <count> -d <out> -s -u 0.10 \
+  --tree-tool veryfasttree -E --legacy-sp -c 4 \
+  -b $(verify-resume-boundary.sh <out> | grep -oP '(?<=-b )\d+') \
+  --sequential-clusters <clusters started> -J 16
+```
+
+`<clusters started>` = `grep -c '^m->numspec:' build.log`. **Round this up.**
+Undercounting is the dangerous direction: an already-started cluster would be dispatched
+to the worker pool and could be assigned slots that already hold another cluster's data.
+Overcounting only costs a few clusters replayed single-threaded. The log is block-buffered
+when redirected to a file, so a killed process loses its last few KB of output — assume
+the count is low by one or two.
+
+Below the boundary no alignment or tree inference re-runs, so replaying a completed
+prefix is cheap (bookkeeping only).
+
+## Output determinism
+
+With VeryFastTree at more than ~2 threads, tronko-build is **not** reproducible run to
+run, even single-threaded (`-J 1`): VeryFastTree's multithreaded floating-point reduction
+order varies, changing tree topology and therefore where the min-variance split lands.
+Two sequential runs on the same input can yield a different number of leaf partitions.
+This is pre-existing and unrelated to `-J`.
+
+Consequently, "output differs from a `-J 1` rerun" is **not** a bug signal. Validate with
+invariants instead — `check-db-integrity.sh <db-dir> [expected-seqs] [sample-n]` checks
+that every partition's MSA count == taxonomy lines == tree leaf count, that no partition
+is under 4 sequences, and that every input sequence appears exactly once. It supports
+sampling the most recent N partitions for periodic checks during a long build.
+
+Polytomy resolution itself *is* deterministic: `resolvePolytomy` uses `rand_r` seeded by
+a hash of the input Newick (`polytomy_seed`), so identical input trees resolve identically
+across runs, thread counts, and `-b` replays.
 
 ## File Naming Conventions
 

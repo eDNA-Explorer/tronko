@@ -142,6 +142,7 @@ typedef struct Options{
 	TreeTool tree_tool;
 	int export_subtrees;
 	int parallel_jobs;
+	int sequential_clusters; /* process cluster indices [0,N) single-threaded before the -J pool */
 	double column_gap_threshold;
 	int legacy_sp;
 	int tree_seed;   /* seed for VeryFastTree/FastTree (-seed N); 0 = no seed (random) */

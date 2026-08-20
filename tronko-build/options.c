@@ -26,6 +26,7 @@ static struct option long_options[]=
 	{"tree-tool", required_argument, 0, 256},
 	{"tree-seed", required_argument, 0, 257},
 	{"no-gamma",  no_argument,       0, 258},
+	{"sequential-clusters", required_argument, 0, 259},
 	{"export-subtrees", no_argument, 0, 'E'},
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
@@ -58,6 +59,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	--tree-tool [raxml|fasttree|veryfasttree], tree inference tool [default: raxml]\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
+	--sequential-clusters [INT], process cluster indices [0,N) single-threaded before dispatching the rest to -J workers (resume replay) [default: 0]\n\
 	-W [FLOAT], mask alignment columns with gap fraction above threshold [default: 1.0 = no masking]\n\
 	-L, --legacy-sp, use legacy SP normalization (divides by numspec, pre-fix behavior) for comparison\n\
 	\n";
@@ -186,6 +188,12 @@ void parse_options(int argc, char **argv, Options *opt){
 				break;
 			case 258: /* --no-gamma */
 				opt->no_gamma = 1;
+				break;
+			case 259: /* --sequential-clusters */
+				success = sscanf(optarg, "%d", &(opt->sequential_clusters));
+				if (!success)
+					fprintf(stderr, "Invalid --sequential-clusters value\n");
+				if (opt->sequential_clusters < 0) opt->sequential_clusters = 0;
 				break;
 			case 'E':
 				opt->export_subtrees = 1;
