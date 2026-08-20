@@ -121,7 +121,7 @@ Add `OPTIMIZE_MEMORY=1` to that line for parity with production. A correct `bwan
 build is 539,168 bytes and matches the size of the known BWA-only `main` build.
 
 Provenance assertion — `post` carries a guard string that `pre` does not
-(`tronko-assign.c:975`):
+(`tronko-assign.c:979`):
 
 ```bash
 strings bin/tronko-assign.post | grep -c "leaf-portion mode) is not supported"  # 1
@@ -483,9 +483,42 @@ default-off (`tronko-assign.c:930-933`). If A-vs-C disagrees materially, escalat
 
 ### Step 5 — seeding vs placement
 
-`-P` prints the per-read candidate alignments. `-5 <FILE>` dumps the leaf→(tree,node)
-map — note it **prints and exits**, so it is a separate one-off invocation, not
-something that can share a pass with `-P`.
+**Use `-P`, not `-3`.** This was checked two ways before settling: against
+`530caf9`'s source, and empirically against 500 real Jalama CO1 reads run
+through the real `CO1_Metazoa` 2023-04-07 reference (18,330 trees).
+
+tronko dedupes a read's candidates to at most one leaf per distinct **tree**
+(`trees_search[]` in `tronko-assign.c`) and iterates them in placement.c as
+`match = 0 .. number_of_matches-1`. Of the 500-read probe, 96 of the 461
+reads that got any hit at all (~21%) had candidates spanning more than one
+tree — this is not a rare edge case for CO1's 18,330-tree reference.
+`-3`/`--print-alignments-dir` writes only the `match==0` entry
+(`printAlignments.c`'s `printToFile_WFA`, called inside `if (match==0 &&
+...)` at `placement.c` ~line 285) — confirmed directly: for real read
+`CO1_Metazoa_paired_F_1`, `-P` showed both `match(0) root(1121)
+KC494939.1` and `match(1) root(9094) KC494942.1`, while `-3`'s output for
+that same read had only the `KC494939.1` line. `-3` silently drops every
+candidate but the first, specifically for the multi-tree reads this
+classification cares about most.
+
+`-P`/`--print-alignments` does have the full set — its print block sits
+unconditionally inside the `for(match=0; match<number_of_matches; ...)`
+loop — but as a human-formatted stdout dump, not a clean parseable header.
+Per candidate: a blank line, the bare readname, then one or more
+`query_1\t...<chunk>` / `match(N) root(R) refname\t...<chunk>` line pairs,
+repeated every 100 alignment columns — so one candidate can span several
+printed repeats of the same `match(N)` line, and must be deduplicated by
+reference name per read rather than counted per block.
+`bioscape_co1_hit_forensics.py`'s `load_candidates()` implements exactly
+that (structurally: a readname line is one that immediately follows a
+blank line, isn't a `match(...)` line, and isn't one of the fixed
+`query_1`/`query_2` row labels, which are always followed by a tab).
+Run with `--number-of-cores 1` when capturing `-P` output — concurrent
+threads writing to stdout would interleave these blocks.
+
+`-5 <FILE>` dumps the leaf→(tree,node) map — note it **prints and exits**, so
+it is a separate one-off invocation, not something that can share a pass with
+`-P`.
 
 For each lost invertebrate ASV, compare BWA's candidate leaves against minimap2's:
 
@@ -566,14 +599,17 @@ separately rather than folded into the release verdict.
 | G1 determinism | post-vs-post null run byte-identical at `cores=1` |
 | G2 provenance | recorded binary SHA256s + the post-only guard string |
 | G3 reproduces prod | local post-fix vs production `assignments.parquet` ≥99% path agreement |
-| G4 BLAST concordance | post-agrees-better share exceeds pre-agrees-better, per marker |
+| G4 BLAST concordance | post-agrees-better share exceeds pre-agrees-better, per marker, evaluated against the G1 null-run noise band rather than as a bare majority |
 | G5 earned depth | `extension_contradicted` share below threshold in the ≥97% band |
-| G6 no clade bias | no well-powered clade inverting the pooled direction |
+| G6 no clade bias | no clade at or above `g6_min_clade_n` changed ASVs inverts the pooled direction; smaller clades are pooled rather than gated individually |
 | G7 unassigned | no marker's unassigned rate rises by more than 2 pp |
 
 G3 is the gate that would have caught the July reference-indexing regression before
 users did. Thresholds for G4–G7 are calibrated from the first full run and then
-ratified; until then they are not meaningful, and reports say so.
+ratified; until then they are not meaningful, and reports say so. `g6_min_clade_n`
+is the one exception already fixed in code (`tronko_release_gate.py`, default 30) —
+it defines the pooling cutoff, not a pass/fail bar, so it doesn't need the same
+first-run calibration the others do.
 
 ## Verification
 
@@ -606,8 +642,8 @@ ratified; until then they are not meaningful, and reports say so.
 5d. **Index integrity** — assert stderr is free of `reference '…' exceeds one index
    batch` (the `f0a608a` guard). That bug is what broke the July run.
 5e. **Candidate-set sanity** — no ASV should show more than `--max-leaf-matches` (10)
-   candidates in `-P`; a violation means the `-P` parse is wrong, not that tronko
-   misbehaved.
+   distinct candidates parsed from `-P`; a violation means the parse is wrong, not
+   that tronko misbehaved.
 6. **Dereplication round-trip** — ASV read weights must sum back to the input count.
 7. **BLAST join** — unresolved top-hit accessions are counted and reported, never
    silently dropped.
@@ -627,9 +663,10 @@ Under `scripts/release_analysis/`:
 | `run_cell.sh` | one `{pre,post}` × cell run at production parameters | ready |
 | `subsample.py` | seeded, pair-preserving subsample | ready |
 | `test_arbiter.py` | 30 cases over the adjudication logic | ready |
+| `test_hit_forensics.py` | `-P`-parsing (real chunked-multi-candidate fixture) and `classify()` | ready |
 | `tronko_minimap2_fix_ab.py` | the earlier synthetic A/B driver — carried for reuse of its subprocess/provenance handling, `MAX_TRONKO_PATH` guard, and FASTA helpers | reference |
-| `bioscape_co1_fetch_nov25.py` | pull the November set from the **legacy** prefix (`assign/CO1_Metazoa/paired/`) → TSV + paired/unpaired FASTA; refuses to emit queries unless FASTA↔TSV `forward_length` agreement clears the threshold | ready |
-| `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filtering vs placement | ready, smoke-tested |
+| `bioscape_co1_fetch_nov25.py` | pull the November set from the **legacy** prefix (`assign/CO1_Metazoa/paired/`) → TSV + paired/unpaired FASTA; refuses to emit queries unless FASTA↔TSV `forward_length` *and* `reverse_length` agreement both clear the threshold | ready |
+| `bioscape_co1_hit_forensics.py` | parse `-P` / `-5`, classify seeding vs filtering vs placement | ready, verified against 500 real CO1 reads |
 | `tronko_job_queue.py` | serial runner with the RSS gate; records peak RSS per cell, resumes, redoes partials | ready, tested end-to-end |
 | `tronko_release_gate.py` | evaluate G1–G7, emit `gate_result.json` | ready, tested |
 

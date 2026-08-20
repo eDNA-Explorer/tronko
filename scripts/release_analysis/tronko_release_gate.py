@@ -95,8 +95,16 @@ def g2_provenance(cfg) -> dict:
         if not path.exists():
             problems.append(f"{name} missing")
             continue
+        try:
+            digest = sha256(path)
+        except OSError as exc:
+            problems.append(f"{name}: could not read binary ({exc})")
+            continue
         g = has_guard(path)
-        rec[name] = {"sha256": sha256(path), "guard_string": g}
+        rec[name] = {"sha256": digest, "guard_string": g}
+        if g is None:
+            problems.append(f"{name}: could not check guard string ('strings' failed)")
+            continue
         if name == "post" and g is False:
             problems.append("post lacks the post-fix guard string")
         if name == "pre" and g is True:
@@ -125,18 +133,28 @@ def g4_blast_concordance(cfg, th) -> dict:
     summaries = [(k, s) for k, s in summaries if s]
     if not summaries:
         return gate("G4", "BLAST concordance", "SKIP", "no arbiter summaries supplied")
-    rows, bad = [], []
+    rows, bad, missing = [], [], []
     for label, s in summaries:
         h = s.get("headline", {})
         share = h.get("post_better_share")
+        if share is None:
+            missing.append(label)
+            continue
         rows.append({"cell": label, "post_better_share": share,
                      "decided": (h.get("post_better") or 0) + (h.get("pre_better") or 0)})
-        if share is not None and share < th["g4_min_post_better_share"]:
+        if share < th["g4_min_post_better_share"]:
             bad.append(label)
-    return gate("G4", "BLAST concordance", "FAIL" if bad else "PASS",
-                (f"below {th['g4_min_post_better_share']:.2f} in: " + ", ".join(bad))
-                if bad else "post agrees with BLAST better than pre in every cell",
-                cells=rows)
+    if not rows:
+        return gate("G4", "BLAST concordance", "SKIP",
+                    f"{len(missing)} summary(ies) supplied but none had "
+                    "post_better_share", missing_cells=missing)
+    detail = (f"below {th['g4_min_post_better_share']:.2f} in: " + ", ".join(bad)) \
+        if bad else "post agrees with BLAST better than pre in every cell with data"
+    if missing:
+        detail += (f" ({len(missing)} cell(s) skipped, missing post_better_share: "
+                   + ", ".join(missing) + ")")
+    return gate("G4", "BLAST concordance", "FAIL" if bad else "PASS", detail,
+                cells=rows, missing_cells=missing)
 
 
 def g5_earned_depth(cfg, th) -> dict:
@@ -144,24 +162,36 @@ def g5_earned_depth(cfg, th) -> dict:
     summaries = [(k, s) for k, s in summaries if s]
     if not summaries:
         return gate("G5", "earned depth", "SKIP", "no arbiter summaries supplied")
-    rows, bad = [], []
+    rows, bad, missing = [], [], []
     for label, s in summaries:
         share = s.get("headline", {}).get("extension_contradicted_share_hi_identity")
+        if share is None:
+            missing.append(label)
+            continue
         rows.append({"cell": label, "extension_contradicted_share_hi_identity": share})
-        if share is not None and share > th["g5_max_extension_contradicted_share"]:
+        if share > th["g5_max_extension_contradicted_share"]:
             bad.append(f"{label} {share:.3f}")
-    return gate("G5", "earned depth", "FAIL" if bad else "PASS",
-                ("deeper calls landing off the BLAST-supported lineage above "
-                 f"{th['g5_max_extension_contradicted_share']:.2f}: " + ", ".join(bad))
-                if bad else
-                "deeper calls sit on the lineage the top hit supports",
-                cells=rows)
+    if not rows:
+        return gate("G5", "earned depth", "SKIP",
+                    f"{len(missing)} summary(ies) supplied but none had "
+                    "extension_contradicted_share_hi_identity", missing_cells=missing)
+    detail = ("deeper calls landing off the BLAST-supported lineage above "
+              f"{th['g5_max_extension_contradicted_share']:.2f}: " + ", ".join(bad)) \
+        if bad else "deeper calls sit on the lineage the top hit supports"
+    if missing:
+        detail += (f" ({len(missing)} cell(s) skipped, missing share: "
+                   + ", ".join(missing) + ")")
+    return gate("G5", "earned depth", "FAIL" if bad else "PASS", detail,
+                cells=rows, missing_cells=missing)
 
 
 def g6_clade_bias(cfg, th) -> dict:
     bias = load(cfg.get("bias_audit"))
     if not bias:
         return gate("G6", "no clade bias", "SKIP", "no bias audit supplied")
+    if "direction_inversions" not in bias:
+        return gate("G6", "no clade bias", "SKIP",
+                    "bias audit supplied but missing 'direction_inversions'")
     inversions = [
         r for r in bias.get("direction_inversions", [])
         if (r.get("decided") or 0) >= th["g6_min_clade_n"]
@@ -181,21 +211,28 @@ def g7_unassigned(cfg, th) -> dict:
     anatomies = [(k, a) for k, a in anatomies if a]
     if not anatomies:
         return gate("G7", "unassigned", "SKIP", "no anatomy summaries supplied")
-    rows, bad = [], []
+    rows, bad, missing = [], [], []
     for label, a in anatomies:
         t = a.get("assigned_unassigned_transition", {})
         pre, post = t.get("unassigned_rate_pre_pct"), t.get("unassigned_rate_post_pct")
         if pre is None or post is None:
+            missing.append(label)
             continue
         delta = round(post - pre, 3)
         rows.append({"cell": label, "pre_pct": pre, "post_pct": post, "delta_pp": delta})
         if delta > th["g7_max_unassigned_increase_pp"]:
             bad.append(f"{label} +{delta}pp")
-    return gate("G7", "unassigned", "FAIL" if bad else "PASS",
-                (f"unassigned rate up more than {th['g7_max_unassigned_increase_pp']}pp: "
-                 + ", ".join(bad)) if bad else
-                "no marker's unassigned rate rose materially",
-                cells=rows)
+    if not rows:
+        return gate("G7", "unassigned", "SKIP",
+                    f"{len(missing)} summary(ies) supplied but none had usable "
+                    "unassigned rates", missing_cells=missing)
+    detail = (f"unassigned rate up more than {th['g7_max_unassigned_increase_pp']}pp: "
+              + ", ".join(bad)) if bad else "no marker's unassigned rate rose materially"
+    if missing:
+        detail += (f" ({len(missing)} cell(s) skipped, missing rates: "
+                   + ", ".join(missing) + ")")
+    return gate("G7", "unassigned", "FAIL" if bad else "PASS", detail,
+                cells=rows, missing_cells=missing)
 
 
 def main() -> int:

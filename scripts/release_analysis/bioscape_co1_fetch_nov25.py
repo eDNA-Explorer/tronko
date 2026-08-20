@@ -144,35 +144,40 @@ def main() -> int:
     print(f"reverse sequences   : {len(rev):,}")
 
     # --- the blocking check: do the sequences and the calls describe each other?
-    checked = agree_f = agree_r = 0
+    # Both mates are checked and both must clear the threshold -- reverse-only
+    # corruption is just as real a mismatch as forward-only, and checking only
+    # the forward mate would let it through undetected.
+    checked_f = agree_f = checked_r = agree_r = 0
     for name, rec in tsv.items():
         s = fwd.get(name)
         if s is not None and rec["flen"]:
-            checked += 1
+            checked_f += 1
             if len(s) == rec["flen"]:
                 agree_f += 1
         s = rev.get(name)
         if s is not None and rec["rlen"]:
+            checked_r += 1
             if len(s) == rec["rlen"]:
                 agree_r += 1
 
-    pct_f = 100.0 * agree_f / checked if checked else 0.0
-    print(f"\nforward_length agreement: {agree_f:,}/{checked:,} = {pct_f:.1f}%")
-    if checked:
-        print(f"reverse_length agreement: {agree_r:,}/{checked:,} = "
-              f"{100.0 * agree_r / checked:.1f}%")
+    pct_f = 100.0 * agree_f / checked_f if checked_f else 0.0
+    pct_r = 100.0 * agree_r / checked_r if checked_r else 0.0
+    print(f"\nforward_length agreement: {agree_f:,}/{checked_f:,} = {pct_f:.1f}%")
+    print(f"reverse_length agreement: {agree_r:,}/{checked_r:,} = {pct_r:.1f}%")
 
+    passed = pct_f >= args.min_agreement and pct_r >= args.min_agreement
     report = {
         "source": LEGACY,
         "assignments": len(tsv),
         "forward_sequences": len(fwd),
         "reverse_sequences": len(rev),
-        "length_agreement_pct": round(pct_f, 2),
+        "forward_length_agreement_pct": round(pct_f, 2),
+        "reverse_length_agreement_pct": round(pct_r, 2),
         "threshold_pct": args.min_agreement,
-        "status": "PASS" if pct_f >= args.min_agreement else "FAIL",
+        "status": "PASS" if passed else "FAIL",
     }
 
-    if pct_f < args.min_agreement:
+    if not passed:
         report["meaning"] = (
             "The sequences and the recorded calls do not describe each other. "
             "This is the backfill corruption; do not proceed. The v2 prefix "

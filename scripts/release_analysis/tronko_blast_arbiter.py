@@ -122,6 +122,31 @@ def first_conflict(a: list[str | None], b: list[str | None]) -> int | None:
     return None
 
 
+def lca_lineage(lineages: list[list[str | None]]) -> list[str | None]:
+    """Rank-wise common prefix across several lineages.
+
+    Used when BLAST's top bitscore is tied across multiple subjects: picking
+    one arbitrarily and treating its full lineage as "the" BLAST call falsely
+    credits or blames whichever rank the tied subjects disagree at (observed
+    on real vert12S data: ~19% of tied ASVs tie between different species in
+    the same genus, e.g. Anas platyrhynchos vs Anas acuta). The rank where
+    tied lineages first disagree is exactly the rank BLAST cannot actually
+    resolve, so it becomes unresolved (None) here rather than asserted from
+    one arbitrarily-chosen tied subject.
+    """
+    if not lineages:
+        return [None] * N_RANKS
+    out: list[str | None] = []
+    for i in range(N_RANKS):
+        vals = {lin[i] for lin in lineages}
+        if len(vals) == 1:
+            out.append(next(iter(vals)))
+        else:
+            break
+    out += [None] * (N_RANKS - len(out))
+    return out
+
+
 def load_taxonomy(path: Path) -> dict[str, list[str | None]]:
     tax: dict[str, list[str | None]] = {}
     with path.open() as fh:
@@ -284,8 +309,8 @@ def run_blast(
     db: Path,
     work: Path,
     threads: int,
-    max_target_seqs: int = 5,
-) -> dict[str, dict]:
+    max_target_seqs: int = 1000,
+) -> tuple[dict[str, dict], dict]:
     """Blast both mates of each ASV; return the best-supported subject per ASV.
 
     Both mates are queried in one call and their bitscores summed per subject,
@@ -310,6 +335,15 @@ def run_blast(
             "-max_target_seqs", str(max_target_seqs),
             "-evalue", "1e-5",
             "-num_threads", str(threads),
+            # Default mt_mode (0, auto) can decide to split by database rather
+            # than by queries for a comparatively small marker-reference DB,
+            # silently capping effective parallelism far below -num_threads
+            # regardless of query count -- observed directly: one run got 4
+            # real threads despite -num_threads 32, with zero output for 18+
+            # minutes before this was diagnosed. -mt_mode 1 forces query-based
+            # splitting, which is the right mode for many-short-queries-vs-
+            # small-database, the exact shape of every run this script makes.
+            "-mt_mode", "1",
             "-outfmt", "6 qseqid sseqid pident length bitscore qcovhsp",
             "-out", str(outpath),
         ],
@@ -317,44 +351,96 @@ def run_blast(
         capture_output=True,
     )
 
-    # sum bitscore per (asv, subject) across mates, keep best identity
-    agg: dict[str, dict[str, dict]] = defaultdict(dict)
+    # Sum bitscore per (asv, subject) across mates, keep best identity.
+    # Also track, per raw query (one mate), the hit count and min/max
+    # bitscore -- -max_target_seqs caps how many hits BLAST returns for
+    # that query, and on a reference with duplicate-heavy clusters
+    # (measured directly: up to 6,482 exact-duplicate CO1 records, 11,915
+    # for vert12S) a query can have more subjects tied at the single best
+    # bitscore than the cap allows. If every hit returned for a query is
+    # tied at the same top score AND the cap was hit exactly, there's no
+    # way to tell whether that's the whole tied set or a truncated slice
+    # of a larger one -- min(scores) must be strictly below max(scores)
+    # somewhere in the returned set to prove the true best-scoring cluster
+    # was fully captured, not just the cap's worth.
+    #
+    # Both structures below are deliberately lean (fixed-size list per
+    # query / per (asv,subject) pair, no nested dicts or sets) rather than
+    # accumulating every hit or a dict+set per subject. Reproduced directly:
+    # at max_target_seqs=12000 on vert12S production (486M+ hit rows before
+    # it was killed), the previous per-query bitscore-list plus per-subject
+    # dict-of-dicts drove this process to 238GB RSS and it was OOM-killed on
+    # a 245GB box. The completeness check only needs count/min/max per
+    # query; the tie-breaking below only needs bits/pident/qcov/mate-flags
+    # per (asv,subject), not a full history.
+    per_query_stats: dict[str, list] = {}  # q -> [count, min_bits, max_bits]
+    agg: dict[str, dict[str, list]] = defaultdict(dict)  # asv -> subject -> [bits, pident, qcov, mate_flags]
+    FWD_BIT, REV_BIT = 1, 2
     with outpath.open() as fh:
         for line in fh:
             q, s, pid, length, bits, qcov = line.rstrip("\n").split("\t")
             asv_id, _, mate = q.partition("/")
-            rec = agg[asv_id].get(s)
             pid_f, bits_f, qcov_f = float(pid), float(bits), float(qcov)
-            if rec is None:
-                agg[asv_id][s] = {
-                    "bits": bits_f,
-                    "pident": pid_f,
-                    "qcov": qcov_f,
-                    "mates": {mate},
-                }
+            stat = per_query_stats.get(q)
+            if stat is None:
+                per_query_stats[q] = [1, bits_f, bits_f]
             else:
-                rec["bits"] += bits_f
-                rec["pident"] = max(rec["pident"], pid_f)
-                rec["qcov"] = max(rec["qcov"], qcov_f)
-                rec["mates"].add(mate)
+                stat[0] += 1
+                if bits_f < stat[1]:
+                    stat[1] = bits_f
+                if bits_f > stat[2]:
+                    stat[2] = bits_f
+            mate_bit = REV_BIT if mate == "R" else FWD_BIT
+            rec = agg[asv_id].get(s)
+            if rec is None:
+                agg[asv_id][s] = [bits_f, pid_f, qcov_f, mate_bit]
+            else:
+                rec[0] += bits_f
+                if pid_f > rec[1]:
+                    rec[1] = pid_f
+                if qcov_f > rec[2]:
+                    rec[2] = qcov_f
+                rec[3] |= mate_bit
+
+    capped_queries = {
+        q for q, (count, lo, hi) in per_query_stats.items()
+        if count >= max_target_seqs and lo == hi
+    }
+    capped_asvs = {q.partition("/")[0] for q in capped_queries}
 
     best: dict[str, dict] = {}
     for asv_id, subjects in agg.items():
-        top_bits = max(r["bits"] for r in subjects.values())
-        tied = [s for s, r in subjects.items() if r["bits"] == top_bits]
+        top_bits = max(r[0] for r in subjects.values())
+        # `tied` holds references into keys already stored in `subjects`,
+        # not copies -- cheap even when a duplicate-saturated cluster ties
+        # 10,000+ subjects (measured directly on vert12S production).
+        # Keeping the full set (not a preview slice) matters here, not just
+        # for memory: line ~636 takes the LCA across every tied_subjects
+        # lineage as the effective BLAST ground truth, and LCA depth can
+        # only shrink as more taxa are added -- truncating this list would
+        # silently make heavily-tied ASVs look more taxonomically resolved
+        # than the full tied set actually supports.
+        tied = [s for s, r in subjects.items() if r[0] == top_bits]
         s = tied[0]
         r = subjects[s]
         best[asv_id] = {
             "subject": s,
-            "pident": r["pident"],
-            "qcov": r["qcov"],
-            "bits": r["bits"],
-            "both_mates": len(r["mates"]) > 1,
+            "pident": r[1],
+            "qcov": r[2],
+            "bits": r[0],
+            "both_mates": r[3] == (FWD_BIT | REV_BIT),
             "tied": len(tied) > 1,
             "n_tied": len(tied),
             "tied_subjects": tied if len(tied) > 1 else None,
+            "tie_possibly_incomplete": asv_id in capped_asvs,
         }
-    return best
+    diagnostics = {
+        "max_target_seqs": max_target_seqs,
+        "queries_blasted": len(per_query_stats),
+        "queries_capped_while_tied": len(capped_queries),
+        "asvs_with_possibly_incomplete_tie": len(capped_asvs),
+    }
+    return best, diagnostics
 
 
 # --------------------------------------------------------------------------
@@ -471,6 +557,12 @@ def main() -> int:
         help="unchanged ASVs to also BLAST, as a concordance baseline",
     )
     ap.add_argument("--seed", type=int, default=17)
+    ap.add_argument(
+        "--max-target-seqs", type=int, default=1000,
+        help="BLAST hits kept per query; must exceed the largest tied-score "
+             "cluster in the reference or ties silently truncate (see "
+             "queries_capped_while_tied in the summary)",
+    )
     args = ap.parse_args()
 
     out = args.out_dir
@@ -516,7 +608,8 @@ def main() -> int:
     import random
 
     rng = random.Random(args.seed)
-    unchanged = [a for a in asvs if a not in set(changed)]
+    changed_ids = {a.asv_id for a in changed}
+    unchanged = [a for a in asvs if a.asv_id not in changed_ids]
     control = rng.sample(unchanged, min(args.control_sample, len(unchanged)))
 
     to_blast = changed + control
@@ -525,9 +618,15 @@ def main() -> int:
 
     tax = load_taxonomy(args.taxonomy)
     db = ensure_blast_db(args.marker_fasta, out)
-    hits = run_blast(to_blast, db, out, args.threads)
+    hits, blast_diag = run_blast(to_blast, db, out, args.threads, args.max_target_seqs)
+    if blast_diag["asvs_with_possibly_incomplete_tie"]:
+        print(f"[{args.label}] WARNING: {blast_diag['asvs_with_possibly_incomplete_tie']:,} "
+              f"ASVs hit the max_target_seqs={args.max_target_seqs} cap while every returned "
+              f"hit was still tied at the top score -- their tie set may be incomplete",
+              flush=True)
 
     unresolved = 0
+    no_hit = 0
     rows = []
     for asv in to_blast:
         pre_p = asv_paths[asv.asv_id]["pre"]
@@ -539,6 +638,12 @@ def main() -> int:
             blast_lineage = tax.get(hit["subject"])
             if blast_lineage is None:
                 unresolved += 1
+            elif hit["tied"] and hit["tied_subjects"]:
+                tied_lineages = [tax[s] for s in hit["tied_subjects"] if s in tax]
+                if len(tied_lineages) > 1:
+                    blast_lineage = lca_lineage(tied_lineages)
+        else:
+            no_hit += 1
         verdict, detail = adjudicate(kind, pre_p, post_p, blast_lineage)
         p = placement[asv.asv_id]
         rows.append(
@@ -558,6 +663,7 @@ def main() -> int:
                 "blast_qcov": hit["qcov"] if hit else None,
                 "blast_both_mates": hit["both_mates"] if hit else None,
                 "blast_tied": hit["tied"] if hit else None,
+                "blast_tie_possibly_incomplete": hit["tie_possibly_incomplete"] if hit else None,
                 "blast_lineage": (
                     ";".join(x or "NA" for x in blast_lineage) if blast_lineage else None
                 ),
@@ -590,7 +696,9 @@ def main() -> int:
         "control_asvs": len(control),
         "asv_path_inconsistent": inconsistent,
         "blast_subjects_unresolved_in_taxonomy": unresolved,
+        "blast_no_hit": no_hit,
     }
+    summary["blast_completeness"] = blast_diag
     (out / f"{args.label}_summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary["headline"], indent=2))
     print(f"[{args.label}] wrote {detail_path}", flush=True)
@@ -625,6 +733,8 @@ def summarise(rows: list[dict], label: str) -> dict:
     ext_hi = [r for r in ext if r["band"] in (">=99", "97-99")]
     ext_hi_contra = sum(1 for r in ext_hi if r["detail"] == "extension_contradicted")
 
+    bitscore_tied = sum(1 for r in changed if r["blast_tied"])
+
     by_band: dict[str, dict] = {}
     for name, _, _ in BANDS:
         sub = [r for r in changed if r["band"] == name]
@@ -636,6 +746,7 @@ def summarise(rows: list[dict], label: str) -> dict:
             "pre_better": sum(1 for r in sub if r["verdict"] == "pre_better"),
             "tie": sum(1 for r in sub if r["verdict"] == "tie"),
             "unverifiable": sum(1 for r in sub if r["verdict"] == "unverifiable"),
+            "bitscore_tied": sum(1 for r in sub if r["blast_tied"]),
         }
 
     return {
@@ -654,6 +765,7 @@ def summarise(rows: list[dict], label: str) -> dict:
             "extension_contradicted_share_hi_identity": (
                 round(ext_hi_contra / len(ext_hi), 4) if ext_hi else None
             ),
+            "bitscore_tied": bitscore_tied,
         },
         "change_types": tally(changed, "change"),
         "change_types_read_weighted": weighted(changed, "change"),

@@ -1,11 +1,13 @@
 #!/bin/bash
 # Run one {pre,post} x cell tronko assignment at production parameters.
-#   run_cell.sh <cell_dir> <db_dir> <marker_fasta_name> <binary: pre|post>
+#   run_cell.sh <cell_dir> <db_dir> <marker_fasta_name> <binary: pre|post> [bin_dir]
 # Production parameters are also the compiled-in defaults at both commits;
 # cores=1 because tronko is ~3.2% non-deterministic above -C 1.
+# bin_dir (default: bin/, matching the §1 bootstrap's `bin/tronko-assign.$name`
+# output) can also be set via $BIN_DIR; the 5th positional argument wins.
 set -uo pipefail
 
-CELL=$1; DB=$2; FASTA=$3; BIN=$4
+CELL=$1; DB=$2; FASTA=$3; BIN=$4; BIN_DIR=${5:-${BIN_DIR:-bin}}
 OUT="$CELL/${BIN}.tsv"
 
 # A non-empty output is not proof of completion: a killed run leaves a partial
@@ -23,7 +25,7 @@ if [ -s "$OUT" ]; then
 fi
 
 echo "### $(basename "$CELL")/$BIN start $(date '+%H:%M:%S')"
-/Users/ryanmartin/tronko-ab/bin/tronko-assign."$BIN" -r \
+"$BIN_DIR/tronko-assign.$BIN" -r \
   -f "$DB/reference_tree.trkb" \
   -a "$DB/$FASTA" \
   -p -z -w \

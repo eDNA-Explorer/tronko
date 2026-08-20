@@ -161,8 +161,16 @@ def run_job(job: dict, out_dir: Path, args, log) -> dict:
                 f"{MAX_TRONKO_PATH}-byte limit; use a shorter working directory"
             )
 
-    timer = shutil.which("gtime") or "/usr/bin/time"
-    cmd = [timer, "-l", *cmd_core] if Path(timer).exists() else cmd_core
+    # gtime (homebrew coreutils on macOS) is BSD-flavored and takes -l; the
+    # system /usr/bin/time on Linux is GNU time and takes -v instead -- passing
+    # -l there is a hard error and the wrapped command never runs.
+    if shutil.which("gtime"):
+        timer, timer_flag = "gtime", "-l"
+    elif Path("/usr/bin/time").exists():
+        timer, timer_flag = "/usr/bin/time", "-v"
+    else:
+        timer, timer_flag = None, None
+    cmd = [timer, timer_flag, *cmd_core] if timer else cmd_core
 
     if not wait_for_memory(
         int(args.max_rss_gb * 2**30), args.poll_seconds, args.gate_timeout_seconds, log

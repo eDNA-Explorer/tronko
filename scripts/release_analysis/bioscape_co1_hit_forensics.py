@@ -19,9 +19,33 @@ Inputs, and how to produce them:
   --leaf-map      tronko-assign -5 FILE ...    (accession, tree, node per leaf;
                   note -5 prints the map and then exits, so it is its own
                   one-off invocation and cannot share a pass with -P)
-  --bwa-align     the -P alignment output of the BWA arm
-  --minimap2-align  the -P alignment output of the minimap2 arm
+  --bwa-align     the stdout of the BWA arm run with -P (redirect to a file)
+  --minimap2-align  the stdout of the minimap2 arm run with -P
   --joined        bioscape_co1_aligner_ab.py's *_joined.csv
+
+  MUST be -P, not -3. Both were tried against real production data
+  (tronko-assign.post/530caf9, CO1_Metazoa 2023-04-07, 500 real Jalama CO1
+  reads) before settling on this. tronko dedupes candidates to at most one
+  leaf per distinct TREE (`trees_search[]` in tronko-assign.c) and iterates
+  them as `match=0..number_of_matches-1` in placement.c; of that 500-read
+  probe, 96 reads (~21% of the 461 that got any hit) had candidates in more
+  than one tree. `-3`/`--print-alignments-dir` only ever writes the
+  `match==0` entry (printAlignments.c's printToFile_WFA is called inside
+  `if (match==0 && ...)`, placement.c ~line 285) -- confirmed directly: for
+  read CO1_Metazoa_paired_F_1, -P showed match(0) root(1121) KC494939.1 AND
+  match(1) root(9094) KC494942.1, while -3's output for that same read had
+  only the KC494939.1 line. -3 silently drops every candidate but the first,
+  for exactly the multi-tree reads this classification cares about most.
+  -P has the full set (its print block sits inside the `for(match=0;
+  match<number_of_matches; ...)` loop, unconditionally), just in a
+  human-formatted dump rather than a clean header line: for each candidate,
+  a blank line, then the bare readname, then one or more
+  `query_1\t...<chunk>` / `match(N) root(R) refname\t...<chunk>` line pairs
+  (chunked every 100 alignment columns, so one candidate can span several
+  repeats of the same match(N) -- dedupe by refname per read, don't count
+  chunk repeats as separate candidates). load_candidates() below implements
+  exactly that. Run tronko with `--number-of-cores 1` when capturing -P output
+  -- concurrent threads writing to stdout would interleave these blocks.
 
 Usage:
     bioscape_co1_hit_forensics.py --leaf-map leafmap.txt \
@@ -34,6 +58,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -59,16 +84,39 @@ def load_leaf_map(path: Path) -> dict[str, tuple[int, int]]:
     return out
 
 
+_MATCH_RE = re.compile(r"^match\((\d+)\) root\((\d+)\) (\S+)")
+
+
 def load_candidates(path: Path) -> dict[str, set[str]]:
-    """`-P` alignment output: header lines are `>readname\treference\tlength`."""
+    """`-P`/`--print-alignments` output (see the module docstring for why
+    -3/--print-alignments-dir is NOT usable here: it only ever records the
+    first candidate).
+
+    -P's format has no `>` marker or delimiter for a readname -- a readname
+    line is recognized structurally: it immediately follows a blank line, is
+    not one of the fixed row labels ("query_1"/"query_2", always followed by
+    a tab), and isn't a `match(...)` line. Each candidate's alignment is
+    chunked every 100 columns, reprinting the same match(N)/root(R)/refname
+    header each time, so candidates are deduplicated by reference name per
+    read rather than counted per printed block.
+    """
     cands: dict[str, set[str]] = defaultdict(set)
+    cur_read: str | None = None
+    prev_blank = True
     with path.open() as fh:
-        for line in fh:
-            if not line.startswith(">"):
+        for raw in fh:
+            line = raw.rstrip("\n")
+            if line == "":
+                prev_blank = True
                 continue
-            parts = line[1:].rstrip("\n").split("\t")
-            if len(parts) >= 2:
-                cands[parts[0]].add(parts[1])
+            if prev_blank and not line.startswith("match(") and "\t" not in line:
+                cur_read = line
+                prev_blank = False
+                continue
+            prev_blank = False
+            m = _MATCH_RE.match(line)
+            if m and cur_read is not None:
+                cands[cur_read].add(m.group(3))
     return dict(cands)
 
 

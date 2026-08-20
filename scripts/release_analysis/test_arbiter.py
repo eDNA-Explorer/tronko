@@ -13,11 +13,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from tronko_blast_arbiter import (  # noqa: E402
+    Asv,
     adjudicate,
     agree_depth,
     band_of,
     classify_change,
     depth_of,
+    lca_lineage,
     split_path,
 )
 
@@ -137,6 +139,29 @@ check(
     adjudicate("extension", P("A;B"), P("A;B;C"), None),
     ("unverifiable", "no_blast_lineage"),
 )
+
+# ---- unchanged-set computation must not crash ---------------------------
+# regression: Asv is a dataclass with a list field, so it's unhashable by
+# default -- `set(changed)` raised TypeError on every real run.
+_a1, _a2, _a3 = Asv("a", "AAAA", "TTTT"), Asv("b", "CCCC", "GGGG"), Asv("c", "GGCC", "CCGG")
+_changed_ids = {_a1.asv_id}
+_unchanged = [a for a in [_a1, _a2, _a3] if a.asv_id not in _changed_ids]
+check("unchanged excludes changed", sorted(a.asv_id for a in _unchanged), ["b", "c"])
+
+# ---- lca_lineage: tied BLAST hits must not assert an arbitrary species --
+# real vert12S data: Anas platyrhynchos and Anas acuta tie on bitscore for
+# the same ASV -- genus should still be credited, species must not be.
+check(
+    "tied congeners collapse to genus, species unresolved",
+    lca_lineage([P("A;B;C;D;E;Anas;Anas platyrhynchos"), P("A;B;C;D;E;Anas;Anas acuta")]),
+    P("A;B;C;D;E;Anas"),
+)
+check(
+    "tied subjects with identical lineage keep full depth",
+    lca_lineage([P("A;B;C"), P("A;B;C")]),
+    P("A;B;C"),
+)
+check("lca of no lineages is empty", lca_lineage([]), [None] * 7)
 
 # ---- identity bands -----------------------------------------------------
 check("band 100", band_of(100.0), ">=99")
