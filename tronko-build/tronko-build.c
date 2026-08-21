@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/wait.h>
+#include <spawn.h>
+#include <errno.h>
 #include "global.h"
 #include "opt.h"
 #include "options.h"
@@ -583,13 +585,21 @@ void printPartitionsToFileArr(int *partition1,int partition1size, int *partition
 	fclose(p3);
 	fclose(p3_tax);
 }
-double calculateSPArr(struct masterArr *m, int legacy_sp){
+/* Below this much work (pairs * columns) the loop is under a millisecond and
+   OpenMP team setup dominates. Gate on work, not on numspec: numbase spans
+   314..6252 across this dataset, so an n-only threshold mis-fires by 20x. */
+#define SP_MIN_PARALLEL_WORK 50000000LL
+
+double calculateSPArr(struct masterArr *m, int legacy_sp, int max_threads){
 	int i,j,k;
-	/* Build leaf index: leaves sit at [numspec-1 .. 2*numspec-2] in tronko tree layout */
-	int *partition = (int*)malloc(sizeof(int)*m->numspec);
-	for(i=0; i<m->numspec; i++){
-		partition[i] = m->numspec-1+i;
-	}
+	int ns = m->numspec;
+	int nb = m->numbase;
+	int **msa = m->msa;
+	/* The old code built partition[i] = numspec-1+i and then indexed
+	   msa[partition[j]-numspec+1], which is exactly msa[j] -- an identity map.
+	   Dropping it also drops a malloc/free of 4*numspec bytes per call, which
+	   for large partitions exceeds glibc's mmap threshold and so took mmap_lock
+	   for write on every one of ~68,000 calls. */
 	/* Optimized loop order: for j, for k>j, for i
 	   Original order (for i, for j, for k) accessed msa[j][i] and msa[k][i] with
 	   stride = numbase*sizeof(int) between rows — causing O(numspec^2 * numbase)
@@ -599,12 +609,38 @@ double calculateSPArr(struct masterArr *m, int legacy_sp){
 	   Using long long raw accumulation avoids FP rounding and is order-independent. */
 	long long raw_score = 0;
 	long long numpairs = 0;
-	for( j=0; j<m->numspec; j++){
-		int *row_j = m->msa[partition[j]-m->numspec+1];
-		for( k=j+1; k<m->numspec; k++){
-			int *row_k = m->msa[partition[k]-m->numspec+1];
+
+	/* Thread count. A lane already occupies 3*c threads during the tool phase,
+	   and the waitpid join before the scoring loop means the two phases never
+	   overlap within a lane -- but 3*c*J = 180 exceeds the 128 cores here, and
+	   an integer loop realizes ~100% of its threads where the tool phase was
+	   measured realizing 5%. So cap at a real per-lane share of the machine. */
+	long long work = (long long)ns * (ns - 1) / 2 * nb;
+	int t = 1;
+	if (work >= SP_MIN_PARALLEL_WORK && max_threads > 1){
+		long long by_work = work / (SP_MIN_PARALLEL_WORK / 4);
+		t = (by_work < max_threads) ? (int)by_work : max_threads;
+		if (t > ns) t = ns;
+		if (t < 1)  t = 1;
+	}
+
+	/* schedule(dynamic,1): the nest is triangular (k=j+1), so static/guided
+	   hand the heaviest leading rows to one thread as one indivisible chunk --
+	   at ns=63802,t=30 that is 6.6% of the whole job, capping speedup at ~15x.
+	   dynamic issues j in increasing order, i.e. heaviest-first, and the tail
+	   imbalance is a single row. One atomic per j is ~19 ms at ns=63802.
+	   if(t>1) rather than num_threads(1): the latter still builds a team.
+	   The long long reduction is order-independent, so the result is
+	   bit-identical at any thread count -- that was the point of the integer
+	   accumulation noted above. */
+	#pragma omp parallel for schedule(dynamic,1) if(t > 1) num_threads(t) \
+	        shared(msa, ns, nb) private(i, k) reduction(+:raw_score, numpairs)
+	for( j=0; j<ns; j++){
+		int *row_j = msa[j];
+		for( k=j+1; k<ns; k++){
+			int *row_k = msa[k];
 			long long pair_score = 0;
-			for (i=0; i<m->numbase; i++){
+			for (i=0; i<nb; i++){
 				int a = row_j[i];
 				int b = row_k[i];
 				/* Branchless scoring — enables auto-vectorization:
@@ -618,17 +654,16 @@ double calculateSPArr(struct masterArr *m, int legacy_sp){
 				pair_score += eq * (5 - gap) - 2 + gap;
 			}
 			raw_score += pair_score;
-			numpairs += m->numbase;
+			numpairs += nb;
 		}
 	}
-	free(partition);
 	/* Normalize by numpairs only: SPscore = raw_score / numpairs
 	   Range: [-2, +3] where +3 = all pairs identical, -2 = all pairs mismatched.
 	   Previously divided by numspec a second time (bug), which made max achievable
 	   SPscore = 3/numspec — causing any partition with numspec > 3/sp_score to
 	   always fail the threshold regardless of sequence similarity. */
 	double SPscore = (double)raw_score / (double)numpairs;
-	if (legacy_sp) SPscore = SPscore / (double)m->numspec;
+	if (legacy_sp) SPscore = SPscore / (double)ns;
 	printf("SPscore: %lf%s\n",SPscore, legacy_sp ? " (legacy)" : "");
 	return SPscore;
 }
@@ -887,170 +922,178 @@ static int get_num_cores(void){
 	return (n > 0) ? (int)n : 1;
 }
 
-/* Run the external tool pipeline for one partition:
-   FAMSA -> unwrap -> [fasta2phyml] -> RAxML/FastTree -> [nw_reroot]
-   Returns 0 on success. */
-static int run_partition_pipeline(int which, Options opt, int pipeline_threads){
-	int status;
-	char buf[BUFFER_SIZE];
-	char buf2[BUFFER_SIZE];
-	char buf3[BUFFER_SIZE];
-	char famsa_threads_str[BUFFER_SIZE];
+/* ---------------------------------------------------------------------------
+   External tool launching.
 
-	/* Set thread limits for child processes */
-	if (pipeline_threads > 0){
-		char omp_str[32];
-		snprintf(omp_str, sizeof(omp_str), "%d", pipeline_threads);
-		setenv("OMP_NUM_THREADS", omp_str, 1);
+   These used to be fork()+execvp(). On this workload a lane process holds a
+   ~16 GB resident address space (the input cluster's MSA + tree arrays), and
+   fork() must copy its page tables: measured 839 ms per fork at 16 GB RSS,
+   scaling linearly at ~52 ms/GB. Worse, the pthread_atfork prepare handler
+   above takes spscore_mutex + mastermap_mutex around every fork(), so all
+   lanes serialize on it. Measured on a real CO1 build: 3 pipeline forks per
+   split x 24,694 splits x 839 ms = 17.2 h against 16.1 h wall clock -- i.e.
+   serialized forking accounted for essentially the entire runtime.
+
+   posix_spawn() uses CLONE_VM|CLONE_VFORK, so it copies no page tables
+   (measured flat 0.73 ms whether RSS is 1 GB or 16 GB), and it does not run
+   pthread_atfork handlers, so it also takes no global lock.
+   --------------------------------------------------------------------------- */
+
+extern char **environ;
+
+/* environ + OMP_NUM_THREADS=n, with any inherited OMP_NUM_THREADS removed.
+   We must not use setenv() here: the lane process now runs its own OpenMP
+   regions (SP scoring), so mutating our own environment would resize those
+   teams as a side effect. */
+static char **build_tool_env(int threads){
+	int n = 0, i, j = 0;
+	while (environ[n]) n++;
+	char **e = malloc(sizeof(char *) * (n + 2));
+	if (!e) return NULL;
+	for (i = 0; i < n; i++){
+		if (strncmp(environ[i], "OMP_NUM_THREADS=", 16) == 0) continue;
+		e[j++] = environ[i];
+	}
+	char *omp = malloc(32);
+	if (!omp){ free(e); return NULL; }
+	snprintf(omp, 32, "OMP_NUM_THREADS=%d", threads > 0 ? threads : 1);
+	e[j++] = omp;
+	e[j] = NULL;
+	return e;
+}
+static void free_tool_env(char **e){
+	int i;
+	if (!e) return;
+	for (i = 0; e[i]; i++){
+		if (strncmp(e[i], "OMP_NUM_THREADS=", 16) == 0){ free(e[i]); break; }
+	}
+	free(e);
+}
+
+/* Spawn one tool. stdout_path != NULL redirects stdout to it; stderr always
+   goes to /dev/null, matching the previous fork/dup2 behaviour.
+   Returns pid, or -1 on failure. */
+static pid_t spawn_tool(const char *file, char *const argv[], char *const envp[],
+                        const char *stdout_path, int stdout_flags){
+	posix_spawn_file_actions_t fa;
+	pid_t pid = -1;
+	int rc;
+	posix_spawn_file_actions_init(&fa);
+	if (stdout_path)
+		posix_spawn_file_actions_addopen(&fa, STDOUT_FILENO, stdout_path, stdout_flags, 0666);
+	posix_spawn_file_actions_addopen(&fa, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+	rc = posix_spawnp(&pid, file, &fa, NULL, argv, envp);
+	posix_spawn_file_actions_destroy(&fa);
+	if (rc != 0){
+		fprintf(stderr, "can't spawn %s: %s\n", file, strerror(rc));
+		return -1;
+	}
+	return pid;
+}
+
+/* Path helpers so the three stages cannot disagree about a filename. */
+static void partition_path(char *dst, const Options *opt, const char *suffix, int which){
+	if (opt->prefix[0] == '\0')
+		snprintf(dst, BUFFER_SIZE, "%s/partition%d%s", opt->partitions_directory, which, suffix);
+	else
+		snprintf(dst, BUFFER_SIZE, "%s/%spartition%d%s", opt->partitions_directory, opt->prefix, which, suffix);
+}
+static void tree_out_path(char *dst, const Options *opt, int which){
+	if (opt->prefix[0] == '\0')
+		snprintf(dst, BUFFER_SIZE, "%s/RAxML_bestTree.partition%d.reroot", opt->partitions_directory, which);
+	else
+		snprintf(dst, BUFFER_SIZE, "%s/RAxML_bestTree.%spartition%d.reroot", opt->partitions_directory, opt->prefix, which);
+}
+
+/* Stage 1: alignment. */
+static pid_t spawn_famsa(int which, const Options *opt, int famsa_t, char *const envp[]){
+	char in[BUFFER_SIZE], out[BUFFER_SIZE], tstr[32];
+	partition_path(in,  opt, ".fasta",     which);
+	partition_path(out, opt, "_MSA.fasta", which);
+	snprintf(tstr, sizeof(tstr), "%d", famsa_t > 0 ? famsa_t : 1);
+	char *argv[] = {"famsa", "-t", tstr, in, out, NULL};
+	return spawn_tool("famsa", argv, envp, NULL, 0);
+}
+
+/* Stage 2: in-process, between alignment and tree inference. Cheap file I/O
+   that used to run inside the forked pipeline child. */
+static void partition_midstage(int which, const Options *opt){
+	char msa[BUFFER_SIZE];
+	partition_path(msa, opt, "_MSA.fasta", which);
+	unwrap_fasta_inplace(msa);
+	if (opt->tree_tool == TREE_RAXML) fasta_to_phylip(msa);
+}
+
+/* Stage 3: tree inference. RAxML still goes through system() -- it is not the
+   configured tool for this build and converting it buys nothing here. */
+static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const envp[]){
+	char in[BUFFER_SIZE], out[BUFFER_SIZE], tstr[32], seed_str[32];
+
+	if (opt->tree_tool == TREE_RAXML){
+		/* Spawned, not system(): system() blocks, which would serialize the
+		   three tree builds that previously ran concurrently in the three
+		   pipeline children. It also forks a /bin/sh from a large address
+		   space, which is the cost this whole change exists to remove. */
+		char wdir[BUFFER_SIZE], name[BUFFER_SIZE], aln[BUFFER_SIZE], tt[32];
+		snprintf(wdir, BUFFER_SIZE, "%s/", opt->partitions_directory);
+		if (opt->prefix[0] == '\0'){
+			snprintf(name, BUFFER_SIZE, "partition%d", which);
+			snprintf(aln,  BUFFER_SIZE, "%s/partition%d_MSA.phymlAln", opt->partitions_directory, which);
+		}else{
+			snprintf(name, BUFFER_SIZE, "%spartition%d", opt->prefix, which);
+			snprintf(aln,  BUFFER_SIZE, "%s/%spartition%d_MSA.phymlAln", opt->partitions_directory, opt->prefix, which);
+		}
+		snprintf(tt, sizeof(tt), "%d", tree_t > 0 ? tree_t : 8);
+		char *argv[] = {"raxmlHPC-PTHREADS","--silent","-m","GTRGAMMA","-w",wdir,
+		                "-n",name,"-p","1234","-T",tt,"-s",aln,NULL};
+		return spawn_tool("raxmlHPC-PTHREADS", argv, envp, NULL, 0);
 	}
 
-	/* Step 1: FAMSA alignment */
-	if (opt.prefix[0] == '\0'){
-		snprintf(buf2,BUFFER_SIZE,"%s/partition%d.fasta",opt.partitions_directory,which);
-		snprintf(buf3,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
+	partition_path(in, opt, "_MSA.fasta", which);
+	tree_out_path(out, opt, which);
+	snprintf(tstr, sizeof(tstr), "%d", tree_t > 0 ? tree_t : 1);
+
+	char *argv[16];
+	int ai = 0;
+	if (opt->tree_tool == TREE_VERYFASTTREE){
+		argv[ai++] = "VeryFastTree";
+		argv[ai++] = "-threads"; argv[ai++] = tstr;
 	}else{
-		snprintf(buf2,BUFFER_SIZE,"%s/%spartition%d.fasta",opt.partitions_directory,opt.prefix,which);
-		snprintf(buf3,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
+		argv[ai++] = "FastTree";
 	}
-	int famsa_t = (opt.famsa_threads > 0) ? opt.famsa_threads : pipeline_threads;
-	if (famsa_t <= 0) famsa_t = 1;
-	snprintf(famsa_threads_str,BUFFER_SIZE,"%d",famsa_t);
-	{
-		pid_t pid = fork();
-		if (pid == -1){
-			fprintf(stderr, "can't fork for famsa, error occurred\n");
-			return -1;
-		}else if (pid == 0){
-			int devnull = open("/dev/null", O_WRONLY);
-			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			char *arguments[] = {"famsa","-t",famsa_threads_str,buf2,buf3,NULL};
-			execvp("famsa",arguments);
-			_exit(127);
-		}else{
-			waitpid(pid, &status, 0);
-		}
+	if (opt->tree_seed != 0){
+		snprintf(seed_str, sizeof(seed_str), "%d", opt->tree_seed);
+		argv[ai++] = "-seed"; argv[ai++] = seed_str;
 	}
+	argv[ai++] = "-gtr";
+	if (!opt->no_gamma) argv[ai++] = "-gamma";
+	argv[ai++] = "-nt";
+	argv[ai++] = "-nosupport";
+	argv[ai++] = in;
+	argv[ai]   = NULL;
 
-	/* Step 2: Unwrap FASTA */
-	if (opt.prefix[0] == '\0'){
-		snprintf(buf,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
-	}else{
-		snprintf(buf,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-	}
-	unwrap_fasta_inplace(buf);
+	return spawn_tool(argv[0], argv, envp, out, O_WRONLY | O_CREAT | O_TRUNC);
+}
 
-	/* Step 3: FASTA to PHYLIP conversion (RAxML only) */
-	if (opt.tree_tool == TREE_RAXML){
-		fasta_to_phylip(buf);
-	}
+/* Stage 4: reroot (RAxML only). */
+static pid_t spawn_reroot(int which, const Options *opt, char *const envp[]){
+	char in[BUFFER_SIZE], out[BUFFER_SIZE];
+	if (opt->prefix[0] == '\0')
+		snprintf(in, BUFFER_SIZE, "%s/RAxML_bestTree.partition%d", opt->partitions_directory, which);
+	else
+		snprintf(in, BUFFER_SIZE, "%s/RAxML_bestTree.%spartition%d", opt->partitions_directory, opt->prefix, which);
+	tree_out_path(out, opt, which);
+	char *argv[] = {"nw_reroot", in, NULL};
+	return spawn_tool("nw_reroot", argv, envp, out, O_WRONLY | O_CREAT | O_TRUNC);
+}
 
-	/* Step 4: Tree inference */
-	if (opt.tree_tool == TREE_RAXML){
-		/* RAxML path */
-		if (opt.prefix[0] == '\0'){
-			snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n partition%d -p 1234 -T %d -s %s/partition%d_MSA.phymlAln",
-				opt.partitions_directory,which,pipeline_threads > 0 ? pipeline_threads : 8,opt.partitions_directory,which);
-		}else{
-			snprintf(buf,BUFFER_SIZE,"raxmlHPC-PTHREADS --silent -m GTRGAMMA -w %s/ -n %spartition%d -p 1234 -T %d -s %s/%spartition%d_MSA.phymlAln",
-				opt.partitions_directory,opt.prefix,which,pipeline_threads > 0 ? pipeline_threads : 8,opt.partitions_directory,opt.prefix,which);
-		}
-		status = system(buf);
-	}else{
-		/* FastTree / VeryFastTree path — fork/exec with stdout redirect */
-		char ft_input[BUFFER_SIZE], ft_output[BUFFER_SIZE];
-		if (opt.prefix[0] == '\0'){
-			snprintf(ft_input,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,which);
-			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
-		}else{
-			snprintf(ft_input,BUFFER_SIZE,"%s/%spartition%d_MSA.fasta",opt.partitions_directory,opt.prefix,which);
-			snprintf(ft_output,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
-		}
-		pid_t ft_pid = fork();
-		if (ft_pid == -1){
-			fprintf(stderr, "can't fork for tree inference\n");
-			return -1;
-		}else if (ft_pid == 0){
-			int fd = open(ft_output, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-			if (fd >= 0){ dup2(fd, STDOUT_FILENO); close(fd); }
-			int devnull = open("/dev/null", O_WRONLY);
-			if (devnull >= 0){ dup2(devnull, STDERR_FILENO); close(devnull); }
-			if (opt.tree_tool == TREE_VERYFASTTREE){
-				int t = (opt.famsa_threads > 0) ? opt.famsa_threads : pipeline_threads;
-				if (t <= 0) t = 1;
-				char threads_str[16], seed_str[16];
-				snprintf(threads_str, sizeof(threads_str), "%d", t);
-				const char *vft_args[16];
-				int ai = 0;
-				vft_args[ai++] = "VeryFastTree";
-				vft_args[ai++] = "-threads"; vft_args[ai++] = threads_str;
-				if (opt.tree_seed != 0) {
-					snprintf(seed_str, sizeof(seed_str), "%d", opt.tree_seed);
-					vft_args[ai++] = "-seed"; vft_args[ai++] = seed_str;
-				}
-				vft_args[ai++] = "-gtr";
-				if (!opt.no_gamma) vft_args[ai++] = "-gamma";
-				vft_args[ai++] = "-nt";
-				vft_args[ai++] = "-nosupport";
-				vft_args[ai++] = ft_input;
-				vft_args[ai] = NULL;
-				execvp("VeryFastTree", (char *const *)vft_args);
-				fprintf(stderr, "VeryFastTree not found\n");
-			}else{
-				char seed_str[16];
-				const char *ft_args[12];
-				int ai = 0;
-				ft_args[ai++] = "FastTree";
-				if (opt.tree_seed != 0) {
-					snprintf(seed_str, sizeof(seed_str), "%d", opt.tree_seed);
-					ft_args[ai++] = "-seed"; ft_args[ai++] = seed_str;
-				}
-				ft_args[ai++] = "-gtr";
-				if (!opt.no_gamma) ft_args[ai++] = "-gamma";
-				ft_args[ai++] = "-nt";
-				ft_args[ai++] = "-nosupport";
-				ft_args[ai++] = ft_input;
-				ft_args[ai] = NULL;
-				execvp("FastTree", (char *const *)ft_args);
-				fprintf(stderr, "FastTree not found\n");
-			}
-			_exit(127);
-		}
-		waitpid(ft_pid, &status, 0);
+/* Wait for a batch of spawned pids. 0 and -1 entries are skipped (already
+   done synchronously, or failed to spawn). */
+static void wait_batch(pid_t *pids, int n){
+	int i, status;
+	for (i = 0; i < n; i++){
+		if (pids[i] > 0) waitpid(pids[i], &status, 0);
 	}
-
-	/* Step 5: Reroot tree (RAxML only) */
-	if (opt.tree_tool == TREE_RAXML){
-		char buf4[BUFFER_SIZE];
-		char buf5[BUFFER_SIZE];
-		if (opt.prefix[0] == '\0'){
-			snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d",opt.partitions_directory,which);
-			snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,which);
-		}else{
-			snprintf(buf4,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d",opt.partitions_directory,opt.prefix,which);
-			snprintf(buf5,BUFFER_SIZE,"%s/RAxML_bestTree.%spartition%d.reroot",opt.partitions_directory,opt.prefix,which);
-		}
-		pid_t pid = fork();
-		if (pid == -1){
-			fprintf(stderr, "can't fork for nw_reroot, error occurred\n");
-			return -1;
-		}else if (pid == 0){
-			char *arguments[] = {"nw_reroot",buf4,NULL};
-			int fd = open(buf5, O_WRONLY | O_CREAT, 0777);
-			if (fd == -1){
-				perror(buf5);
-				_exit(-1);
-			}
-			fclose(stdout);
-			dup2(fd, STDOUT_FILENO);
-			close(fd);
-			execvp(arguments[0],arguments);
-			_exit(127);
-		}else{
-			waitpid(pid, &status, 0);
-		}
-	}
-
-	return 0;
 }
 
 /* Remove partition files using unlink (replaces system("rm ...") calls) */
@@ -1177,33 +1220,44 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 	rootCount=partitionCount;
 	int which,status;
 	char buf[BUFFER_SIZE];
-	/* Fork all 3 partition pipelines concurrently */
+	/* Run all 3 partition pipelines concurrently, staged.
+	   This used to fork 3 pipeline children which each forked famsa and the
+	   tree tool -- 9 forks per split, each copying the page tables of a ~16 GB
+	   address space, and the 3 outer ones serialized against every other lane
+	   by the atfork handler. Staging the tools with posix_spawn instead keeps
+	   exactly the same concurrency (3 alignments at once, then 3 tree builds
+	   at once) and the same 3*c thread footprint, with zero fork() calls. */
 	int total_cores = get_num_cores();
 	int active_workers = (opt->parallel_jobs > 1) ? opt->parallel_jobs : 1;
 	int pipeline_threads = total_cores / (3 * active_workers);
 	if (pipeline_threads < 1) pipeline_threads = 1;
+	int tool_t = (opt->famsa_threads > 0) ? opt->famsa_threads : pipeline_threads;
+	if (tool_t < 1) tool_t = 1;
+	/* SP scoring budget: a lane's tool-phase footprint is 3*tool_t, but that
+	   times J overshoots the machine, so cap at this lane's share of cores. */
+	int sp_threads = 3 * tool_t;
+	if (sp_threads > total_cores / active_workers) sp_threads = total_cores / active_workers;
+	if (sp_threads > total_cores) sp_threads = total_cores;
+	if (sp_threads < 1) sp_threads = 1;
 	pid_t pipeline_pids[3];
 	int p;
-	for(p = 0; p < 3; p++){
-		which = rootCount + p;
-		if (rootCount > opt->restart){
-			pipeline_pids[p] = fork();
-			if (pipeline_pids[p] == -1){
-				fprintf(stderr, "can't fork pipeline for partition %d\n", which);
-			}else if (pipeline_pids[p] == 0){
-				/* Child process: run the entire pipeline */
-				int rc = run_partition_pipeline(which, *opt, pipeline_threads);
-				_exit(rc);
-			}
-		}else{
-			pipeline_pids[p] = -1;
+	int do_pipeline = (rootCount > opt->restart);   /* -b resume gate, unchanged */
+	if (do_pipeline){
+		char **tool_env = build_tool_env(tool_t);
+		/* Stage 1: align all 3 */
+		for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_famsa(rootCount + p, opt, tool_t, tool_env);
+		wait_batch(pipeline_pids, 3);
+		/* Stage 2: in-process unwrap (+ phylip for RAxML) */
+		for(p = 0; p < 3; p++) partition_midstage(rootCount + p, opt);
+		/* Stage 3: build all 3 trees */
+		for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_tree(rootCount + p, opt, tool_t, tool_env);
+		wait_batch(pipeline_pids, 3);
+		/* Stage 4: reroot (RAxML only) */
+		if (opt->tree_tool == TREE_RAXML){
+			for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_reroot(rootCount + p, opt, tool_env);
+			wait_batch(pipeline_pids, 3);
 		}
-	}
-	/* Wait for all 3 pipelines to complete */
-	for(p = 0; p < 3; p++){
-		if (pipeline_pids[p] > 0){
-			waitpid(pipeline_pids[p], &status, 0);
-		}
+		free_tool_env(tool_env);
 	}
 	/* Sequential loading/parsing/scoring of the 3 partitions */
 	for(which=rootCount;which<rootCount+3;which++){
@@ -1364,7 +1418,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		pthread_mutex_unlock(&mastermap_mutex);
 		double initialSPscore=-1;
 		if ( opt->use_spscore==1 && opt->use_min_leaves==0){
-				initialSPscore = calculateSPArr(t, opt->legacy_sp);
+				initialSPscore = calculateSPArr(t, opt->legacy_sp, sp_threads);
 				if (initialSPscore < opt->sp_score){
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
@@ -1389,7 +1443,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 			}
 		}
 		if ( opt->use_spscore==1 && opt->use_min_leaves==1 ){
-			initialSPscore = calculateSPArr(t, opt->legacy_sp);
+			initialSPscore = calculateSPArr(t, opt->legacy_sp, sp_threads);
 			if (initialSPscore < opt->sp_score && t->numspec > opt->min_leaves){
 				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{

@@ -4,6 +4,62 @@
 #include "getclade.h"
 #include <string.h>
 
+/* ---- leaf name -> index lookup -------------------------------------------
+   The leaf branch below used to strcmp every entry of m->names for every leaf
+   in the tree, and did not stop at a match -- O(numspec^2 * namelen) per parse,
+   run once per partition at every level of the recursion. For the largest CO1
+   cluster (182,587 leaves) that is 3.3e10 strcmp calls per parse.
+
+   Open-addressed table, built once per parse. Insert is last-wins so a
+   duplicate name resolves to the same index the original scan would have left
+   in `tip` (it kept overwriting rather than breaking).
+
+   __thread because lane worker pthreads parse concurrently -- same reason
+   global.h:39 declares root/tip/comma as __thread. */
+static __thread const char **nm_key;
+static __thread int         *nm_val;
+static __thread int          nm_cap;   /* power of two; 0 = not built */
+
+static unsigned long nm_hash(const char *s){
+	unsigned long h = 1469598103934665603UL;      /* FNV-1a */
+	while (*s){ h ^= (unsigned char)*s++; h *= 1099511628211UL; }
+	return h;
+}
+static void nm_build(struct masterArr *m){
+	int i;
+	nm_cap = 1;
+	while (nm_cap < m->numspec * 2) nm_cap <<= 1;
+	nm_key = calloc(nm_cap, sizeof(char *));
+	nm_val = malloc(nm_cap * sizeof(int));
+	if (!nm_key || !nm_val){            /* fall back to the linear scan */
+		free(nm_key); free(nm_val);
+		nm_key = NULL; nm_val = NULL; nm_cap = 0;
+		return;
+	}
+	for (i = 0; i < m->numspec; i++){
+		unsigned long h = nm_hash(m->names[i]) & (unsigned long)(nm_cap - 1);
+		while (nm_key[h] && strcmp(nm_key[h], m->names[i]) != 0)
+			h = (h + 1) & (unsigned long)(nm_cap - 1);
+		nm_key[h] = m->names[i];
+		nm_val[h] = i;
+	}
+}
+static void nm_free(void){
+	free(nm_key); free(nm_val);
+	nm_key = NULL; nm_val = NULL; nm_cap = 0;
+}
+/* -1 = not found, -2 = table unavailable (caller must scan) */
+static int nm_lookup(const char *s){
+	unsigned long h;
+	if (!nm_cap) return -2;
+	h = nm_hash(s) & (unsigned long)(nm_cap - 1);
+	while (nm_key[h]){
+		if (strcmp(nm_key[h], s) == 0) return nm_val[h];
+		h = (h + 1) & (unsigned long)(nm_cap - 1);
+	}
+	return -1;
+}
+
 /* O(n) in-memory Newick parser — replaces O(n^2) FILE-based getcladeArr.
    Reads binary Newick string from memory buffer using pointer arithmetic.
    No fgetc/fsetpos overhead. */
@@ -62,13 +118,20 @@ int getcladeArr_mem(const char **pp, struct masterArr *m, int max_nodename){
 			p++;
 		}
 		specname[i] = '\0';
-		/* Find matching species in names array */
-		int tmp1, found = 0;
-		for (tmp1 = 0; tmp1 < m->numspec; tmp1++){
-			if (!strcmp(m->names[tmp1], specname)){
-				tip = tmp1 + 1;
-				found = 1;
+		/* Find matching species in names array (hash lookup -- see nm_build) */
+		int found = 0;
+		int idx = nm_lookup(specname);
+		if (idx == -2){                       /* table unavailable: original scan */
+			int tmp1;
+			for (tmp1 = 0; tmp1 < m->numspec; tmp1++){
+				if (!strcmp(m->names[tmp1], specname)){
+					tip = tmp1 + 1;
+					found = 1;
+				}
 			}
+		}else if (idx >= 0){
+			tip = idx + 1;
+			found = 1;
 		}
 		if (!found) fprintf(stderr, "WARNING: leaf '%s' not found in MSA\n", specname);
 		int nodeIdx = tip + m->numspec - 2;
@@ -105,7 +168,9 @@ int getcladeArr_fast(const char *filepath, struct masterArr *m, int max_nodename
 	comma = 0;
 	tip = 0;
 	const char *p = buf;
+	nm_build(m);
 	int root = getcladeArr_mem(&p, m, max_nodename);
+	nm_free();
 	free(buf);
 	return root;
 }

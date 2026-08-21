@@ -536,7 +536,16 @@ void getgradient_Arr(double invec[], double outvec[], double lowbound[], double 
 
 	{
 	int i;
-	static double space[200];
+	/* __thread, not plain static: this is called from inside the
+	   `#pragma omp parallel for` over trees in tronko-build.c, so every OpenMP
+	   thread was sharing this one scratch buffer and stomping on the others'
+	   gradient workspace. Every other mutable global on this path is already
+	   covered by a threadprivate pragma (opt.c:22, opt.h:18-25, global.h:42-181);
+	   this one was the gap, and it made reference_tree.txt differ run to run
+	   even with VeryFastTree pinned to -threads 1.
+	   __thread rather than `#pragma omp threadprivate` so it stays correct in
+	   builds that do not pass -fopenmp, matching global.h:39's root/tip/comma. */
+	static __thread double space[200];
 	double f0, arbitrarysum = 0.0;
 
 	f0 = func(invec,whichRoot);
