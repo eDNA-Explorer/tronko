@@ -1,0 +1,6 @@
+outs:
+- md5: 4c77c824e8b9d72805fef84f556a0018.dir
+  size: 2976380967
+  nfiles: 665
+  hash: md5
+  path: .cache

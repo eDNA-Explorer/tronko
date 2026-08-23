@@ -66,6 +66,79 @@ For partitioning in tronko-build (bundled in `bin/`):
 - `nw_reroot` - Newick utilities
 - `fasta2phyml.pl` - Format conversion (also in `scripts/`)
 
+## tronko-build CLI Options
+
+```
+tronko-build [OPTIONS] -d [OUTPUT DIRECTORY]
+
+Required:
+  -d [DIRECTORY]    Output directory for reference database
+
+Mode (pick one):
+  -l                Single-tree mode (use with -t, -m, -x)
+  -y                Partition mode (multi-cluster, use with -e, -n)
+
+Single-tree mode (-l):
+  -t [FILE]         Rooted phylogenetic tree (Newick)
+  -m [FILE]         Multiple sequence alignment (FASTA, can be gzipped)
+  -x [FILE]         Taxonomy file
+
+Partition mode (-y):
+  -e [DIRECTORY]    Input directory with cluster files
+  -n [INT]          Number of clusters in input directory
+  -b [INT]          Restart from partition number (default: 0)
+  -J [INT]          Process J input clusters concurrently (default: 1 = sequential)
+  --sequential-clusters [INT]
+                    Process cluster indices [0,N) single-threaded before dispatching
+                    [N, count) to the -J worker pool. Required for a safe resume: see
+                    "Resuming an interrupted partition build" below.
+  -s                Use sum-of-pairs score for partitioning
+  -u [FLOAT]        SP-score threshold (default: 0.5)
+  -v                Use minimum leaf node count for partitioning
+  -f [INT]          Minimum leaf nodes threshold (use with -v)
+General:
+  -a                Use FastTree instead of RAxML (shorthand for --tree-tool fasttree)
+  --tree-tool [STR] Tree inference tool: raxml, fasttree, veryfasttree (default: raxml)
+  --tree-seed [INT] Seed for VeryFastTree/FastTree RNG (-seed N); 0 = no seed (default: 0)
+  --no-gamma        Omit -gamma from VeryFastTree/FastTree (default: gamma is always used)
+  -c [INT]          FAMSA threads (0 = auto-detect, default: 0)
+  -g                Don't flag missing data
+  -i [STRING]       Prefix for output partition filenames
+  -p                Two-step build (partition only, then exit)
+  -r                Remove unused trees (use with -p)
+  -E                Export final subtrees to exported_subtrees/ directory
+  -W [FLOAT]        Column gap mask threshold (default: 1.0 = no masking)
+  -L, --legacy-sp   Use legacy SP normalization (divides by numspec, pre-fix behavior)
+  -h                Show help
+```
+
+## build-tronko-db.sh Options
+
+End-to-end pipeline script wrapping AncestralClust + tronko-build + BWA indexing.
+
+```
+build-tronko-db.sh -f <input.fasta> -t <taxonomy.txt> -o <output_dir> [OPTIONS]
+
+Required:
+  -f    Input reference FASTA (unaligned, single-line)
+  -t    Taxonomy file (accession<TAB>lineage)
+  -o    Output directory
+
+Options:
+  -p    Primer/marker name (default: marker)
+  -T    Threads for FAMSA/tree inference (default: 8)
+  -s    SP-score threshold for tronko-build partitioning (default: 0.1)
+  -F    Use FastTree instead of RAxML
+  -E    Export subtrees for ablation studies
+  -C    AncestralClust cutoff — max seqs before clustering (default: 25000)
+  -B    AncestralClust bin size — target seqs per cluster (default: 20000)
+  -P    AncestralClust descendants parameter (default: 75)
+  -J    Parallel jobs for Step 2 cluster processing (default: 1)
+  --tree-seed [INT]  Seed for VeryFastTree/FastTree RNG; 0 = no seed (default: 0)
+```
+
+The `-J` flag runs up to J cluster alignments/trees concurrently in Step 2.
+
 ## Testing
 
 Example datasets are provided for testing builds:
@@ -77,12 +150,109 @@ tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA
   -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot \
   -d tronko-build/example_datasets/single_tree
 
+# Multi-cluster test (sequential)
+tronko-build -y -e tronko-build/example_datasets/multiple_trees/multiple_MSA \
+  -n 5 -d /tmp/test_multi -s -u 0.1
+
 # Test assignment with single-end reads
 tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt \
   -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
   -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
   -o /tmp/test_results.txt -w
 ```
+
+## tronko-assign Accuracy Tuning Options
+
+These flags control how tronko-assign makes taxonomic assignments. All are optional and have safe defaults.
+
+```
+Accuracy Tuning:
+  -c [FLOAT]                  LCA cutoff / Cinterval (default: 5)
+  -u [FLOAT]                  Score constant for Jukes-Cantor correction (default: 0.01)
+  --max-leaf-matches [INT]    Cap on candidate leaf alignments (default: 10)
+  --best-leaf-threshold [FLOAT]   Best-leaf override score threshold (default: 0 = disabled)
+  --best-leaf-max-votes [INT]     Max votes for best-leaf override (default: 0 = disabled)
+  --adaptive-cinterval        Enable adaptive cinterval (default: disabled)
+  --adaptive-gap-scale [FLOAT]    Scaling factor for adaptive cinterval (default: 0.5)
+
+Aligner Selection:
+  --aligner [STR]             'bwa' (default) or 'minimap2'
+  --minimap2-kmer [INT]       minimap2 k-mer size (default: 15)
+  --minimap2-window [INT]     minimap2 window size (default: 5)
+```
+
+## How Adaptive Cinterval Works
+
+tronko-assign places a query by scoring every node in every candidate tree, then voting: all nodes within `Cinterval` log-likelihood units of the best score get a vote. The LCA of voted nodes determines the taxonomic assignment. A fixed `Cinterval` applies the same tolerance to every query, but different queries have fundamentally different score profiles:
+
+- **Clear matches** (e.g. a haplotype that's in the database): the best leaf score is much higher than the second-best. A wide voting window adds irrelevant nodes and pushes the LCA up, losing species-level resolution.
+- **Novel species** (not in the database): scores are spread across multiple distant leaves with no clear winner. A narrow window would pick one arbitrarily; a wider window correctly generalizes to genus level.
+
+`--adaptive-cinterval` analyzes the gap between the top-1 and top-2 leaf scores before voting. When the gap is large (clear match), it shrinks the effective voting window for a more specific call. When scores are ambiguous, it keeps the window near the original `Cinterval` for a conservative call. The `--adaptive-gap-scale` parameter (0.0-1.0) controls how aggressively it shrinks: 0.0 = no adaptation, 1.0 = maximum shrinkage on clear matches.
+
+This is opt-in and disabled by default. Without `--adaptive-cinterval`, behavior is identical to before.
+
+## How Column Gap Masking Works
+
+tronko-build computes posterior probabilities for every node at every alignment column. In diverse partitions (many species in one tree), alignments can have 60-80% gap fraction. Most of this comes from columns where the majority of sequences have gaps — these columns contribute noise to the likelihood calculation without carrying useful phylogenetic signal.
+
+`-W <threshold>` masks columns where the gap fraction exceeds the threshold. Masked columns:
+- Are skipped in the likelihood optimization (so model parameters are estimated from informative columns only)
+- Get uniform posteriors (0.25, 0.25, 0.25, 0.25) in the output, which tronko-assign treats as uninformative
+
+This preserves the tree's broad phylogenetic context (the tree topology and branch lengths are unchanged) while cleaning up the per-node posterior signal. The hypothesis is that this helps haplotype-level discrimination in diverse partitions without hurting species holdout performance.
+
+Default `-W 1.0` means no masking (gap fraction can never exceed 100%). Useful values: `-W 0.5` masks columns with >50% gaps, `-W 0.7` masks only heavily gapped columns.
+
+## Resuming an interrupted partition build
+
+`-b N` skips partitions at or below N. Its skip logic is a pure integer comparison at
+two sites (`tronko-build.c:1124` gates the disk write, `:1160` gates the fork/compute) —
+it never stats or validates what is already on disk. Setting `-b` at or above a partition
+whose triplet is incomplete (e.g. VeryFastTree was mid-write when the process died)
+**silently drops that partition**: exit code 0, one stderr line, a database with one
+fewer tree. Use `verify-resume-boundary.sh <db-dir>` to compute a safe `-b`.
+
+Partition slot numbers come from a global lowest-free-index scan over `SPscoreArr`
+(`tronko-build.c:1107-1122`), so the slot a cluster receives depends on the cumulative
+history of every prior split. A resume must therefore replay the already-completed
+clusters *in their original order* rather than jumping ahead — that is what
+`--sequential-clusters N` is for. Pair the two flags:
+
+```bash
+tronko-build -y -e <clusters> -n <count> -d <out> -s -u 0.10 \
+  --tree-tool veryfasttree -E --legacy-sp -c 4 \
+  -b $(verify-resume-boundary.sh <out> | grep -oP '(?<=-b )\d+') \
+  --sequential-clusters <clusters started> -J 16
+```
+
+`<clusters started>` = `grep -c '^m->numspec:' build.log`. **Round this up.**
+Undercounting is the dangerous direction: an already-started cluster would be dispatched
+to the worker pool and could be assigned slots that already hold another cluster's data.
+Overcounting only costs a few clusters replayed single-threaded. The log is block-buffered
+when redirected to a file, so a killed process loses its last few KB of output — assume
+the count is low by one or two.
+
+Below the boundary no alignment or tree inference re-runs, so replaying a completed
+prefix is cheap (bookkeeping only).
+
+## Output determinism
+
+With VeryFastTree at more than ~2 threads, tronko-build is **not** reproducible run to
+run, even single-threaded (`-J 1`): VeryFastTree's multithreaded floating-point reduction
+order varies, changing tree topology and therefore where the min-variance split lands.
+Two sequential runs on the same input can yield a different number of leaf partitions.
+This is pre-existing and unrelated to `-J`.
+
+Consequently, "output differs from a `-J 1` rerun" is **not** a bug signal. Validate with
+invariants instead — `check-db-integrity.sh <db-dir> [expected-seqs] [sample-n]` checks
+that every partition's MSA count == taxonomy lines == tree leaf count, that no partition
+is under 4 sequences, and that every input sequence appears exactly once. It supports
+sampling the most recent N partitions for periodic checks during a long build.
+
+Polytomy resolution itself *is* deterministic: `resolvePolytomy` uses `rand_r` seeded by
+a hash of the input Newick (`polytomy_seed`), so identical input trees resolve identically
+across runs, thread counts, and `-b` replays.
 
 ## File Naming Conventions
 

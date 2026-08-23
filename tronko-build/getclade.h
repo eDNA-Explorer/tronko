@@ -17,6 +17,8 @@ int specsearch();
 int getnodenumb();
 int getclade();
 int getcladeArr(FILE *tre, struct masterArr *m, int max_nodename);
+int getcladeArr_fast(const char *filepath, struct masterArr *m, int max_nodename);
+int getcladeArr_mem(const char **pp, struct masterArr *m, int max_nodename);
 int getcladeArr_UsePartitions(FILE *tre, int whichPartitions, char*** nodeIDsArr_heap);
 void linknodesArr(int i, int j, int node, struct masterArr *m);
 int getnodenumbArr(FILE *tre);

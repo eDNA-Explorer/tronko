@@ -1,0 +1,92 @@
+# ── Stage 1: Build tronko-build ──
+FROM --platform=linux/amd64 gcc:12 AS tronko-builder
+
+WORKDIR /build
+RUN apt-get update && apt-get install -y zlib1g-dev && rm -rf /var/lib/apt/lists/*
+
+COPY tronko-build/ /build/tronko-build/
+RUN cd /build/tronko-build && make clean && make
+
+# ── Stage 2: Build AncestralClust ──
+FROM --platform=linux/amd64 gcc:12 AS ac-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    make zlib1g-dev && rm -rf /var/lib/apt/lists/*
+
+COPY ancestralclust/ /build/ancestralclust/
+WORKDIR /build/ancestralclust
+RUN make clean 2>/dev/null; make && mv ancestralclust /usr/local/bin/ancestralclust
+
+# ── Stage 3: Build VeryFastTree from source ──
+FROM --platform=linux/amd64 gcc:12 AS vft-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake git && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/citiususc/veryfasttree.git /build/vft && \
+    cd /build/vft && mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DUSE_SEE=ON -DUSE_AVX=ON -DUSE_AVX2=ON .. && \
+    make -j$(nproc) && \
+    cp VeryFastTree /usr/local/bin/VeryFastTree
+
+# ── Stage 4: Runtime with all database-building dependencies ──
+FROM --platform=linux/amd64 python:3.12-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl build-essential cmake wget \
+    zlib1g-dev time \
+    autoconf automake libtool flex bison \
+    && rm -rf /var/lib/apt/lists/*
+
+# Micromamba for bioinformatics tools
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then MAMBA_ARCH="aarch64"; else MAMBA_ARCH="64"; fi && \
+    curl -L https://micro.mamba.pm/api/micromamba/linux-${MAMBA_ARCH}/latest | tar -xvj -C /usr/local bin/micromamba && \
+    chmod +x /usr/local/bin/micromamba
+
+ENV MAMBA_ROOT_PREFIX=/opt/conda
+
+# bwa, famsa, RAxML
+RUN micromamba create -y -n tools -c conda-forge -c bioconda \
+        bwa famsa raxml && \
+    ln -s /opt/conda/envs/tools/bin/bwa /usr/local/bin/bwa && \
+    ln -s /opt/conda/envs/tools/bin/famsa /usr/local/bin/famsa && \
+    for f in /opt/conda/envs/tools/bin/raxml*; do \
+        ln -sf "$f" "/usr/local/bin/$(basename $f)"; \
+    done && \
+    micromamba clean -a -y
+
+# newick-utils (nw_reroot)
+RUN git clone https://github.com/tjunier/newick_utils.git /tmp/newick_utils && \
+    cd /tmp/newick_utils && \
+    autoreconf -fi && \
+    CFLAGS="-fcommon" ./configure --prefix=/usr/local && \
+    make -j$(nproc) && make install && \
+    cd / && rm -rf /tmp/newick_utils && \
+    apt-get purge -y autoconf automake libtool flex bison && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# fasta2phyml.pl
+RUN printf '#!/usr/bin/perl\nuse strict;\nuse warnings;\nmy $file = $ARGV[0];\nopen(my $fh, "<", $file) or die "Cannot open $file: $!";\nmy $outfile = $file;\n$outfile =~ s/\\.fasta$/.phymlAln/;\nopen(my $out, ">", $outfile) or die "Cannot open $outfile: $!";\nmy %%seqs;\nmy @order;\nmy $id = "";\nwhile(<$fh>) {\n    chomp;\n    if (/^>(.*)/) { $id = $1; push @order, $id; $seqs{$id} = ""; }\n    else { $seqs{$id} .= $_; }\n}\nclose($fh);\nmy $nseq = scalar @order;\nmy $len = length($seqs{$order[0]});\nprint $out "$nseq $len\\n";\nfor my $s (@order) {\n    printf $out "%%-30s %%s\\n", $s, $seqs{$s};\n}\nclose($out);\n' > /usr/local/bin/fasta2phyml.pl && \
+    chmod +x /usr/local/bin/fasta2phyml.pl
+
+# OpenMP runtime (for tronko-build and VeryFastTree)
+RUN apt-get update && apt-get install -y libgomp1 && rm -rf /var/lib/apt/lists/*
+
+# Binaries from builder stages
+COPY --from=tronko-builder /build/tronko-build/tronko-build /usr/local/bin/tronko-build
+COPY --from=ac-builder /usr/local/bin/ancestralclust /usr/local/bin/ancestralclust
+COPY --from=vft-builder /usr/local/bin/VeryFastTree /usr/local/bin/VeryFastTree
+
+# FastTree wrapper — tronko-build internally calls "FastTree" for partition trees.
+# Route it through VeryFastTree with -nosupport (bootstrap labels crash tronko-build's parser).
+RUN printf '#!/bin/sh\nexec VeryFastTree -nosupport "$@"\n' > /usr/local/bin/FastTree && \
+    chmod +x /usr/local/bin/FastTree
+
+# Build script
+COPY build-tronko-db.sh /usr/local/bin/build-tronko-db.sh
+RUN chmod +x /usr/local/bin/build-tronko-db.sh
+
+WORKDIR /data
+
+ENTRYPOINT ["/usr/local/bin/build-tronko-db.sh"]

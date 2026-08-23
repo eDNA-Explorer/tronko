@@ -1,0 +1,6 @@
+outs:
+- md5: 11c8541e12611af12078a32355f29eb8.dir
+  size: 15521079628
+  nfiles: 5475
+  hash: md5
+  path: maxsize1000

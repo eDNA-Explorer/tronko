@@ -1,0 +1,6 @@
+outs:
+- md5: 476bdde1dbd76c8593fabb22509e1a94.dir
+  size: 4703831976
+  nfiles: 29
+  hash: md5
+  path: tree

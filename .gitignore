@@ -11,13 +11,29 @@ debug.log
 # Build artifacts
 tronko-assign/tronko-assign
 tronko-build/tronko-build
+ancestralclust/ancestralclust
 *.o
 *.so
+*.a
+
+# Debug symbols
+*.dSYM/
+
+# Optimization-variant binaries
+ancestralclust/ancestralclust_O2
+ancestralclust/ancestralclust_O3
+ancestralclust/ancestralclust_baseline
+tronko-build/tronko-build-baseline
+
+# Experimental/unused libraries
+tronko-assign/carquet
+tronko-assign/carquet/
 
 # Temporary files
 *.tmp
 *~
 .DS_Store
+nohup.out
 
 # BWA index files
 *.amb
@@ -26,6 +42,33 @@ tronko-build/tronko-build
 *.pac
 *.sa
 
+# Example dataset generated outputs
+**/example_datasets/**/reference_tree.txt*
+**/example_datasets/**/_progress.txt
+**/example_datasets/**/final_partitions.txt
+**/example_datasets/**/tree_list.txt
+**/example_datasets/**/.cache/
+**/example_datasets/**/partition*
+**/example_datasets/**/RAxML_bestTree.partition*
+**/example_datasets/**/pasta_output/
+**/example_datasets/**/pasta_partitions/
+**/example_datasets/**/pasta_sp_partitions/
+**/example_datasets/**/pasta_tronko_db/
+**/example_datasets/**/pasta_sp_tronko_db/
+**/example_datasets/**/output_fasttree/
+**/example_datasets/**/12sv5_unfiltered/
+**/tronko-build/example_datasets/**
+
+# One-off analysis scripts
+analyze_sweep.py
+analyze_trace.py
+confidence_analysis.py
+confidence_analysis2.py
+sweep_report.py
+sweep_tronko_assign.py
+branch_report.html
+
 # Example/test data outputs
 test_results_*.txt
-missingreads_*_results.txttests/unity/
+missingreads_*_results.txt
+tests/unity/

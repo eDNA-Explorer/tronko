@@ -40,7 +40,7 @@
 #define MAX_NUMBEROFROOTS 20000
 #define MAXRESULTSNAME 2000
 #define MAXREADNAME 300
-#define MAX_NUM_BWA_MATCHES 10
+#define MAX_NUM_LEAF_MATCHES 10
 #define SP_SCORE_MIN 0.8
 #define FASTA_MAXLINE 40000
 #define MAXTAXLENGTHNAME 256
@@ -118,7 +118,7 @@ typedef struct resultsStruct{
 	alignment_t *aln;
 	scoring_t *scoring;
 	type_of_PP ***nodeScores;
-	int **voteRoot;
+	double **voteRoot;
 	int *positions;
 	char *locQuery;
 	char **taxonPath;
@@ -179,6 +179,19 @@ typedef struct mystruct{
 	int max_strikes;
 	int enable_pruning;
 	type_of_PP pruning_factor;
+	// Accuracy tuning settings
+	int max_leaf_matches;
+	// Best-leaf override settings
+	type_of_PP best_leaf_threshold;
+	int best_leaf_max_votes;
+	// Adaptive cinterval settings
+	int adaptive_cinterval;
+	double adaptive_gap_scale;
+	char trace_read[200];
+	// Aligner selection
+	char aligner[16];
+	int minimap2_kmer;
+	int minimap2_window;
 #ifdef ENABLE_PARQUET
 	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
 	int thread_id;         // Thread index for filename
@@ -209,20 +222,20 @@ typedef struct scoresStruct{
 }scoresStruct;
 
 typedef struct Options{
-	char msa_file[200];
-	char tree_file[200];
-	char taxonomy_file[200];
+	char msa_file[BUFFER_SIZE];
+	char tree_file[BUFFER_SIZE];
+	char taxonomy_file[BUFFER_SIZE];
 	int number_of_trees;
 	int reference_mode;
 	int use_partitions;
-	char reference_file[200];
+	char reference_file[BUFFER_SIZE];
 	char paired_or_single[7];
 	char read1_file[2000];
 	char read2_file[2000];
-	char partitions_directory[200];
-	char results_file[200];
+	char partitions_directory[BUFFER_SIZE];
+	char results_file[BUFFER_SIZE];
 	double sp_score;
-	char fasta_file[200];
+	char fasta_file[BUFFER_SIZE];
 	double cinterval;
 	char readdir[2000];
 	char print_trees_dir[2000];
@@ -246,7 +259,7 @@ typedef struct Options{
 	double score_constant;
 	int print_all_nodes;
 	int verbose_level;
-	char log_file[200];
+	char log_file[BUFFER_SIZE];
 	int enable_resource_monitoring;
 	int enable_timing;
 	char tsv_log_file[BUFFER_SIZE];  // TSV memory log output file (empty = disabled)
@@ -256,6 +269,20 @@ typedef struct Options{
 	int max_strikes;            // Maximum strikes before termination (default: 6)
 	int enable_pruning;         // Enable subtree pruning (default: 0)
 	double pruning_factor;      // Pruning threshold = pruning_factor * Cinterval (default: 2.0)
+	// Accuracy tuning parameters
+	int max_leaf_matches;       // Max leaf matches per read (default: MAX_NUM_LEAF_MATCHES)
+	// Best-leaf override: when enabled, if the best-scoring leaf exceeds threshold
+	// and total votes are below max, override LCA with best leaf's taxonomy
+	double best_leaf_threshold; // Score threshold (default: 0 = disabled)
+	int best_leaf_max_votes;    // Max total votes for override (default: 0 = disabled)
+	// Adaptive cinterval: shrink voting window when best leaf is clearly dominant
+	int adaptive_cinterval;     // Enable adaptive cinterval (default: 0 = disabled)
+	double adaptive_gap_scale;  // Scaling factor for gap-based shrinkage (default: 0.5)
+	char trace_read[BUFFER_SIZE];       // Read name to trace for diagnostics (default: empty = off)
+	// Aligner selection
+	char aligner[16];           // "bwa" (default) or "minimap2"
+	int minimap2_kmer;          // minimap2 k-mer size (default: 15)
+	int minimap2_window;        // minimap2 window size (default: 5)
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled
@@ -265,6 +292,7 @@ typedef struct Options{
 //extern node *tree;
 //extern node *treeArr[MAX_NUMBEROFROOTS];
 extern node **treeArr;
+extern char g_trace_read[BUFFER_SIZE];
 //extern struct hashmap_base *map;
 /*#define HASHMAP(key_type, data_type)                                    \
     struct {                                                            \
