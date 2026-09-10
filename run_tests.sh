@@ -100,6 +100,17 @@ fi
 
 cd ..
 
+echo "Building tronko-build..."
+cd tronko-build
+if make clean && make; then
+    print_success "tronko-build built successfully"
+else
+    print_error "Failed to build tronko-build"
+    exit 1
+fi
+
+cd ..
+
 # Run unit tests
 if [[ $RUN_UNIT -eq 1 ]]; then
     print_header "Running Unit Tests"
@@ -107,7 +118,7 @@ if [[ $RUN_UNIT -eq 1 ]]; then
     cd tests
     
     # Setup Unity if needed
-    if [[ ! -d "unity" ]]; then
+    if [[ ! -f "unity/src/unity.c" ]]; then
         echo "Setting up Unity testing framework..."
         make setup
     fi

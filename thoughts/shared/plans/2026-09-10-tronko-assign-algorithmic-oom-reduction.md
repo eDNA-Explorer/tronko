@@ -6,6 +6,28 @@ Reduce `tronko-assign` peak memory on the `high-perf` branch without changing as
 
 The work is intentionally incremental. Each phase must preserve assignment output and produce a measurable memory reduction before the next phase begins. After the simple exact changes are measured, production suitability will be evaluated separately against the deployed Kubernetes resources. Larger reference-format and lazy-loading changes will be planned only if the simple changes do not resolve the operational OOM problem.
 
+### Implementation status (2026-09-10)
+
+The simple algorithmic changes in Phases 2-4 are implemented on
+`fix/tronko-assign-algorithmic-oom`. The frozen `high-perf` executable at
+`71f6ec3eed6ca7c0e11de256deb7d19e10d174fc` and the optimized executable are
+byte-identical for the checked-in single-end Needleman-Wunsch, single-end WFA,
+and paired-end WFA fixtures at `-C 1`, across all seven output columns.
+
+On the available small 8-core fixture, four baseline runs peaked at
+70.7-70.9 MB RSS and four optimized runs peaked at 60.0-60.2 MB RSS, an
+approximately 15% reduction. A 17-batch optimized run created and destroyed
+one BWA context/map and reached a stable 55.4 MB post-batch RSS after workspace
+warm-up. These measurements validate the ownership change, but do not replace
+the still-pending production-like FWH stop gate.
+
+The ordinary unit/integration suite and the focused UBSan workspace tests pass.
+Apple's AddressSanitizer runtime hangs before `main()` even for an empty smoke
+binary on this host, so ASan/LSan/TSan remain CI/Linux gates rather than locally
+verified results. Multicore candidate selection is variable in both the frozen
+baseline and optimized build because embedded BWA calls `lrand48()` from
+workers; no reproducibility change is included in this memory-only series.
+
 ## Current State Analysis
 
 `tronko-assign` already shares the loaded Tronko tree database across assignment workers, but it does not share all of the other reference-sized state:
@@ -171,13 +193,13 @@ Create a reliable safety net before changing BWA ownership or placement represen
 
 #### Automated Verification
 
-- [ ] `make -C tronko-assign clean && make -C tronko-assign` succeeds on the unmodified algorithm.
-- [ ] `./run_tests.sh --unit-only` passes.
-- [ ] `./run_tests.sh --integration-only` passes.
-- [ ] The new parity test checks all output columns at `-C 1`.
+- [x] `make -C tronko-assign clean && make -C tronko-assign` succeeds on the unmodified algorithm.
+- [x] `./run_tests.sh --unit-only` passes.
+- [x] `./run_tests.sh --integration-only` passes.
+- [x] The new parity test checks all output columns at `-C 1`.
 - [ ] Text, binary, and zstd fixtures each match their own Phase 1 golden output, and the existing cross-format critical-column comparison passes.
-- [ ] ASan/UBSan/LSan failures fail the test command.
-- [ ] Valgrind findings fail CI rather than being ignored.
+- [x] ASan/UBSan/LSan failures fail the test command.
+- [x] Valgrind findings fail CI rather than being ignored.
 - [ ] The baseline candidate fingerprints and output goldens are recorded with the baseline commit SHA.
 
 #### Manual Verification
@@ -301,19 +323,19 @@ void tronko_bwa_context_destroy(tronko_bwa_context *context);
 
 #### Automated Verification
 
-- [ ] All Phase 1 golden outputs remain byte-identical at `-C 1`.
+- [x] All Phase 1 golden outputs remain byte-identical at `-C 1`.
 - [ ] Candidate fingerprints remain identical to the Phase 1 baseline.
 - [ ] Single-end, paired-end, duplicate-accession, and multi-batch fixtures pass.
-- [ ] Instrumentation reports exactly one BWA index construction and one destruction per process.
-- [ ] Instrumentation reports exactly one leaf-map construction and one destruction per process.
+- [x] Instrumentation reports exactly one BWA index construction and one destruction per process.
+- [x] Instrumentation reports exactly one leaf-map construction and one destruction per process.
 - [ ] ASan/UBSan/LSan report no index, duplicate-map, failure-path, or teardown leaks.
 - [ ] TSAN reports no index, leaf-map, `global_bns`, or verbosity races.
-- [ ] Existing unit and integration tests pass.
+- [x] Existing unit and integration tests pass.
 
 #### Manual Verification
 
-- [ ] Peak and post-batch RSS are compared against the Phase 1 baseline using identical inputs and parameters.
-- [ ] RSS no longer steps upward when a new batch starts because another set of BWA indexes/maps was created.
+- [x] Peak and post-batch RSS are compared against the Phase 1 baseline using identical inputs and parameters.
+- [x] RSS no longer steps upward when a new batch starts because another set of BWA indexes/maps was created.
 - [ ] The production-like FWH run completes and its outputs match the baseline.
 
 ---
@@ -443,18 +465,18 @@ void assignScores_Arr_paired(
 
 #### Automated Verification
 
-- [ ] All Phase 1 golden outputs remain byte-identical at `-C 1`.
+- [x] All Phase 1 golden outputs remain byte-identical at `-C 1`.
 - [ ] Candidate fingerprints remain identical.
-- [ ] Candidate-workspace unit tests cover zero, one, exactly `M`, and more than `M` input hits.
-- [ ] Duplicate-tree tests prove the current first-retained-hit policy.
+- [x] Candidate-workspace unit tests cover zero, one, exactly `M`, and more than `M` input hits.
+- [x] Duplicate-tree tests prove the current first-retained-hit policy.
 - [ ] Allocation-overflow and failed-growth paths return errors without corrupting the previous arena.
-- [ ] A test-only allocation counter proves score payload equals the sum of active candidate-tree nodes, not `M × total_reference_nodes`.
+- [x] A test-only allocation counter proves score payload equals the sum of active candidate-tree nodes, not `M × total_reference_nodes`.
 - [ ] ASan/UBSan/LSan are clean at candidate counts `0`, `1`, `M - 1`, and `M`.
-- [ ] Existing unit and integration tests pass.
+- [x] Existing unit and integration tests pass.
 
 #### Manual Verification
 
-- [ ] Phase 3 peak RSS is compared with the Phase 1 and Phase 2 measurements using identical inputs and parameters.
+- [x] Phase 3 peak RSS is compared with the Phase 1 and Phase 2 measurements using identical inputs and parameters.
 - [ ] Repeated small-tree and single-large-tree candidate cases confirm the expected high-water behavior.
 - [ ] No post-warm-up RSS growth occurs across repeated batches.
 
@@ -567,14 +589,14 @@ score <= maximum + Cinterval
 
 #### Automated Verification
 
-- [ ] All Phase 1 golden outputs remain byte-identical at `-C 1`.
+- [x] All Phase 1 golden outputs remain byte-identical at `-C 1`.
 - [ ] Generated-tree LCA equivalence tests pass for the fixed random seed.
-- [ ] No references to `voteRoot`, `minNodes`, or `LCAnames` remain in production code.
-- [ ] No per-ASV VLA or heap allocation is sized by total tree or node count.
+- [x] No references to `voteRoot`, `minNodes`, or `LCAnames` remain in production code.
+- [x] No per-ASV VLA or heap allocation is sized by total tree or node count.
 - [ ] ASan/UBSan/LSan report no multi-tree output leak.
 - [ ] TSAN remains clean with the shared BWA context.
-- [ ] `./run_tests.sh --unit-only` passes.
-- [ ] `./run_tests.sh --integration-only` passes.
+- [x] `./run_tests.sh --unit-only` passes.
+- [x] `./run_tests.sh --integration-only` passes.
 - [ ] `./run_tests.sh --valgrind` passes and returns a nonzero status on injected leak failures.
 
 #### Manual Verification

@@ -4,14 +4,21 @@
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 CC = $(if $(wildcard /opt/homebrew/bin/gcc-15),/opt/homebrew/bin/gcc-15,gcc)
+SANITIZER_CC = /usr/bin/clang
+LSAN_FLAGS = -fsanitize=address
 RT_LIB =
 PLATFORM_FLAGS = -D_XOPEN_SOURCE=700 -D_DARWIN_C_SOURCE
 else
 CC = gcc
+SANITIZER_CC = gcc
+LSAN_FLAGS = -fsanitize=leak
 RT_LIB = -lrt
 PLATFORM_FLAGS =
 endif
-CFLAGS = -std=gnu99 -Wall -Wextra -g -O0 -D_GNU_SOURCE $(PLATFORM_FLAGS)
+BASE_CFLAGS = -std=gnu99 -Wall -Wextra -g -O0 -D_GNU_SOURCE $(PLATFORM_FLAGS)
+CFLAGS ?=
+CPPFLAGS ?=
+LDFLAGS ?=
 INCLUDES = -I../tronko-assign -Iunity/src
 LIBS = -lm -pthread $(RT_LIB)
 
@@ -30,28 +37,51 @@ CRASH_DEBUG_OBJECTS = $(CRASH_DEBUG_SOURCES:.c=.o)
 # Test executables
 TEST_TARGETS = test_crash_debug_simple test_simple_workflows test_candidate_workspace
 
-.PHONY: all clean test smoke
+.PHONY: all clean test smoke asan lsan tsan
 
 all: $(TEST_TARGETS)
 
 # Unity framework
 $(UNITY_OBJ): $(UNITY_SRC)
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Crash debug test (minimal dependencies)
 test_crash_debug_simple: unit/test_crash_debug_simple.c $(UNITY_OBJ) $(CRASH_DEBUG_OBJECTS)
-	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LDFLAGS) $(LIBS)
 
 # Simple integration test (no source dependencies)
 test_simple_workflows: integration/test_simple_workflows.c $(UNITY_OBJ)
-	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LDFLAGS) $(LIBS)
 
 test_candidate_workspace: unit/test_candidate_workspace.c $(UNITY_OBJ) ../tronko-assign/candidate_workspace.c
-	$(CC) $(CFLAGS) -DTRONKO_TESTING $(INCLUDES) $^ -o $@ $(LIBS)
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(CFLAGS) -DTRONKO_TESTING $(INCLUDES) $^ -o $@ $(LDFLAGS) $(LIBS)
 
 # Compile source files with minimal flags
 %.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(BASE_CFLAGS) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+asan: clean
+	$(MAKE) -f Makefile.simple CC=$(SANITIZER_CC) \
+		CFLAGS="$(CFLAGS) -fno-omit-frame-pointer -fsanitize=address,undefined" \
+		LDFLAGS="$(LDFLAGS) -fsanitize=address,undefined" test_candidate_workspace
+	ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+		UBSAN_OPTIONS=halt_on_error=1 ./test_candidate_workspace
+
+lsan: clean
+	@if [ "$(UNAME_S)" = "Darwin" ]; then \
+		echo "LeakSanitizer is not supported by the Apple Clang runtime"; \
+		exit 2; \
+	fi
+	$(MAKE) -f Makefile.simple CC=$(SANITIZER_CC) \
+		CFLAGS="$(CFLAGS) -fno-omit-frame-pointer $(LSAN_FLAGS)" \
+		LDFLAGS="$(LDFLAGS) $(LSAN_FLAGS)" test_candidate_workspace
+	LSAN_OPTIONS=exitcode=1 ./test_candidate_workspace
+
+tsan: clean
+	$(MAKE) -f Makefile.simple CC=$(SANITIZER_CC) \
+		CFLAGS="$(CFLAGS) -fno-omit-frame-pointer -fsanitize=thread" \
+		LDFLAGS="$(LDFLAGS) -fsanitize=thread" test_candidate_workspace
+	TSAN_OPTIONS=halt_on_error=1 ./test_candidate_workspace
 
 # Run simple tests
 test: $(TEST_TARGETS)
@@ -75,6 +105,6 @@ clean:
 
 # Install test dependencies (Unity framework)
 setup:
-	@if [ ! -d "unity" ]; then \
+	@if [ ! -f "unity/src/unity.c" ]; then \
 		git clone https://github.com/ThrowTheSwitch/Unity.git unity; \
 	fi

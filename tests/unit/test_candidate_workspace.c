@@ -128,6 +128,28 @@ static void test_score_arena_uses_candidate_node_sum_and_reuses_capacity(void)
 	TEST_ASSERT_TRUE(workspace.score_arena[0] == (type_of_PP)0);
 }
 
+static void test_score_arena_handles_candidate_count_boundaries(void)
+{
+	int species_counts[MAX_NUM_BWA_MATCHES];
+	size_t counts[] = {0, 1, MAX_NUM_BWA_MATCHES - 1, MAX_NUM_BWA_MATCHES};
+	size_t case_index;
+	size_t tree_id;
+
+	for (tree_id = 0; tree_id < MAX_NUM_BWA_MATCHES; ++tree_id)
+		species_counts[tree_id] = 1;
+	for (case_index = 0; case_index < sizeof(counts) / sizeof(counts[0]);
+		++case_index) {
+		candidate_workspace_reset(&workspace);
+		for (tree_id = 0; tree_id < counts[case_index]; ++tree_id) {
+			TEST_ASSERT_EQUAL_INT(0, candidate_workspace_add(&workspace,
+				(int)tree_id, 0, -1, NULL, -1, NULL));
+		}
+		TEST_ASSERT_EQUAL_INT(0, candidate_workspace_prepare_scores(&workspace,
+			species_counts, MAX_NUM_BWA_MATCHES));
+		TEST_ASSERT_EQUAL_UINT64(counts[case_index], workspace.score_length);
+	}
+}
+
 static void test_winner_summary_includes_interval_endpoints_and_sorts_trees(void)
 {
 	int species_counts[] = {2, 2, 2};
@@ -196,6 +218,7 @@ int main(void)
 	RUN_TEST(test_candidate_cap_is_bounded);
 	RUN_TEST(test_duplicate_tree_keeps_first_hit);
 	RUN_TEST(test_score_arena_uses_candidate_node_sum_and_reuses_capacity);
+	RUN_TEST(test_score_arena_handles_candidate_count_boundaries);
 	RUN_TEST(test_winner_summary_includes_interval_endpoints_and_sorts_trees);
 	RUN_TEST(test_failed_growth_preserves_previous_arena);
 	return UNITY_END();
