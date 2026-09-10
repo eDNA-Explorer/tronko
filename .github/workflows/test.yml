@@ -222,6 +222,7 @@ jobs:
         cd tests
         if [ ! -f "unity/src/unity.c" ]; then
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
+        fi
 
     - name: Build Docker image
       run: docker build -t tronko:test .
