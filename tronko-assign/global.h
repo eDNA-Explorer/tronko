@@ -117,20 +117,12 @@ typedef struct resultsStruct{
 	nw_aligner_t *nw;
 	alignment_t *aln;
 	scoring_t *scoring;
-	type_of_PP ***nodeScores;
-	int **voteRoot;
+	struct CandidateWorkspace *workspace;
 	int *positions;
 	char *locQuery;
 	char **taxonPath;
-	char **LCAnames;
-	int *minNodes;
-	int **leaf_coordinates;
 	type_of_PP *minimum;
 	int print_alignments;
-	int *starts_forward;
-	int *starts_reverse;
-	char **cigars_forward;
-	char **cigars_reverse;
 }resultsStruct;
 
 #ifdef ENABLE_PARQUET
@@ -149,12 +141,16 @@ typedef struct assignmentResult {
 } assignmentResult;
 #endif
 
+struct tronko_bwa_context;
+
 typedef struct mystruct{
 	char **rootSeqs;
 	int ntree;
 	int start;
 	int end;
 	int paired;
+	const struct tronko_bwa_context *bwa_context;
+	int status;
 	resultsStruct *str;
 	int concordant;
 	char* databasefile;
@@ -191,6 +187,7 @@ typedef struct bwaMatches{
 	int *concordant_matches_nodes;
 	int *discordant_matches_roots;
 	int *discordant_matches_nodes;
+	size_t dropped_matches;
 	//char **concordant_leaf_matches;
 	//char **discordant_leaf_matches;
 	int n_matches;

@@ -28,4 +28,7 @@ tronko-build/tronko-build
 
 # Example/test data outputs
 test_results_*.txt
-missingreads_*_results.txttests/unity/
+missingreads_*_results.txt
+
+# Unity test framework (cloned at runtime by CI and `make setup`)
+tests/unity/

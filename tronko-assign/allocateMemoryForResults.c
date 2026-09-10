@@ -1,57 +1,45 @@
 #include "allocateMemoryForResults.h"
+#include "candidate_workspace.h"
 
-void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes){
-	int i,j, k;
+#include <stdint.h>
+#include <string.h>
+
+int allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes){
+	size_t scratch_length;
+	(void)sizeOfChunk;
+	(void)num_threads;
+	(void)numberOfTrees;
+	(void)maxNumSpec;
+	(void)paired;
+	(void)max_lineTaxonomy;
+	(void)max_name_length;
+	(void)number_of_total_nodes;
+	if (results == NULL || max_query_length < 0 || max_numbase < 0 ||
+		padding_size < 0) return -1;
+	memset(results, 0, sizeof(*results));
 	if (use_portion==1){
-		results->positions = malloc((max_query_length+max_query_length+2*padding_size+1)*(sizeof(int)));
-		results->locQuery = malloc((max_query_length+max_query_length+2*padding_size+1)*(sizeof(char)));
+		scratch_length = (size_t)max_query_length * 2 +
+			(size_t)padding_size * 2 + 1;
 	}else{
-		results->positions = malloc((max_query_length+max_numbase+1)*(sizeof(int)));
-		results->locQuery = malloc((max_query_length+max_numbase+1)*(sizeof(char)));
+		scratch_length = (size_t)max_query_length + (size_t)max_numbase + 1;
 	}
-	results->nodeScores = (type_of_PP ***)malloc(MAX_NUM_BWA_MATCHES*(sizeof(type_of_PP **)));
-	for (i=0; i<MAX_NUM_BWA_MATCHES; i++){
-		results->nodeScores[i] = (type_of_PP **)malloc(numberOfTrees*(sizeof(type_of_PP *)));
-		for (j=0; j<numberOfTrees; j++){
-			results->nodeScores[i][j] = (type_of_PP *)malloc((2*numspecArr[j]-1)*(sizeof(type_of_PP)));
-			for(k=0; k<2*numspecArr[j]-1; k++){
-				results->nodeScores[i][j][k] = 0;
-			}
-		}
-	}
-	results->voteRoot = (int **)malloc(numberOfTrees*sizeof(int *));
-	for (i=0; i<numberOfTrees; i++){
-		results->voteRoot[i]=(int *)malloc((2*numspecArr[i]-1)*sizeof(int));
-		for (j=0; j<2*numspecArr[i]-1; j++){
-			results->voteRoot[i][j]=0;
-		}
-	}
-	if ( use_portion==1){
-		results->starts_forward = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
-		if (paired == 1 ){
-			results->starts_reverse = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
-		}
-		results->cigars_forward = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
-		if (paired == 1){
-			results->cigars_reverse = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
-		}
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
-			results->starts_forward[i] = -1;
-			results->cigars_forward[i] = (char *)malloc(MAX_CIGAR*sizeof(char));
-			memset(results->cigars_forward[i],'\0',MAX_CIGAR);
-			if ( paired==1){
-				results->starts_reverse[i] = -1;
-				results->cigars_reverse[i] = (char *)malloc(MAX_CIGAR*sizeof(char));
-				memset(results->cigars_reverse[i],'\0',MAX_CIGAR);
-			}
-		}
-	}
+	if (scratch_length > SIZE_MAX / sizeof(int)) return -1;
+	results->positions = malloc(scratch_length * sizeof(*results->positions));
+	results->locQuery = malloc(scratch_length * sizeof(*results->locQuery));
+	results->workspace = malloc(sizeof(*results->workspace));
+	if (results->positions == NULL || results->locQuery == NULL ||
+		results->workspace == NULL) goto allocation_failed;
+	candidate_workspace_init(results->workspace);
+	candidate_workspace_reset(results->workspace);
 	if ( use_nw == 1 ){
 		results->nw=needleman_wunsch_new();
 		results->aln=alignment_create(max_query_length+max_numbase+1);
 		results->scoring=malloc(sizeof(scoring_t));
+		if (results->nw == NULL || results->aln == NULL ||
+			results->scoring == NULL) goto allocation_failed;
 	}
 	results->minimum=(type_of_PP *)malloc(3*sizeof(type_of_PP));
+	if (results->minimum == NULL) goto allocation_failed;
 	if ( print_alignments == 1){
 		results->print_alignments=1;
 	}else{
@@ -72,63 +60,40 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		bool case_sensitive=false;
 		scoring_init(results->scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
 	}
-	results->minNodes = (int *)malloc(number_of_total_nodes*sizeof(int));
-	results->LCAnames = (char **)malloc(number_of_total_nodes*sizeof(char *));
-	for(i=0;i<number_of_total_nodes;i++){
-		results->LCAnames[i]=(char *)malloc(max_lineTaxonomy*sizeof(char));
-		for(j=0; j<max_lineTaxonomy; j++){
-			results->LCAnames[i][j] = '\0';
-		}
-	}
-	results->leaf_coordinates = (int **)malloc(numberOfTrees*sizeof(int *));
-	for(i=0; i<numberOfTrees; i++){
-		results->leaf_coordinates[i] = (int *)malloc(2*sizeof(int));
-		results->leaf_coordinates[i][0]=-1;
-		results->leaf_coordinates[i][1]=-1;
-	}
-}
-void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int paired, int use_nw, int use_portion, int maxNumSpec, int number_of_total_nodes){
-	int i, j, k;
+	return 0;
+
+allocation_failed:
 	free(results->positions);
 	free(results->locQuery);
-	for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
-		for(j=0; j<numberOfTrees; j++){
-			free(results->nodeScores[i][j]);
-		}
-		free(results->nodeScores[i]);
+	if (results->workspace != NULL) {
+		candidate_workspace_destroy(results->workspace);
+		free(results->workspace);
 	}
-	free(results->nodeScores);
-	for(i=0; i<numberOfTrees; i++){
-		free(results->voteRoot[i]);
-		free(results->leaf_coordinates[i]);
-	}
-	free(results->voteRoot);
-	for(i=0; i<number_of_total_nodes; i++){
-		free(results->LCAnames[i]);
-	}
-	if (use_portion == 1){
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
-			free(results->cigars_forward[i]);
-			if (paired==1){
-				free(results->cigars_reverse[i]);
-			}
-		}
-		free(results->starts_forward);
-		if (paired==1){
-			free(results->starts_reverse);
-		}
-		free(results->cigars_forward);
-		if (paired==1){
-			free(results->cigars_reverse);
-		}
-	}
+	if (results->nw != NULL) needleman_wunsch_free(results->nw);
+	if (results->aln != NULL) alignment_free(results->aln);
+	free(results->scoring);
 	free(results->minimum);
-	free(results->minNodes);
-	free(results->LCAnames);
-	free(results->leaf_coordinates);
+	memset(results, 0, sizeof(*results));
+	return -1;
+}
+void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int paired, int use_nw, int use_portion, int maxNumSpec, int number_of_total_nodes){
+	(void)sizeOfChunk;
+	(void)num_threads;
+	(void)numberOfTrees;
+	(void)paired;
+	(void)use_portion;
+	(void)maxNumSpec;
+	(void)number_of_total_nodes;
+	if (results == NULL) return;
+	free(results->positions);
+	free(results->locQuery);
+	if (results->workspace != NULL)
+		candidate_workspace_destroy(results->workspace);
+	free(results->workspace);
+	free(results->minimum);
 	if (use_nw==1){
-		needleman_wunsch_free(results->nw);
-		alignment_free(results->aln);
+		if (results->nw != NULL) needleman_wunsch_free(results->nw);
+		if (results->aln != NULL) alignment_free(results->aln);
 		free(results->scoring);
 	}
 	free(results);

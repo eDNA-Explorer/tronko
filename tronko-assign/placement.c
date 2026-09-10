@@ -57,8 +57,16 @@ int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,cha
 	return alignment_length;
 }
 
-void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired(char *query_1, char *query_2, char **rootSeqs,
+	int *positions, char *locQuery, CandidateWorkspace *workspace, int paired,
+	type_of_PP *minimum_score, char *alignments_dir, char *forward_name,
+	char *reverse_name, int print_alignments, char *leaf_sequence,
+	int *positionsInRoot, int print_alignments_to_file, int use_leaf_portion,
+	int padding, int max_query_length, int max_numbase, int print_all_nodes,
+	int early_termination, type_of_PP strike_box, int max_strikes,
+	int enable_pruning, type_of_PP pruning_threshold){
 	int i, j, k, node, match;
+	int number_of_matches = (int)workspace->candidate_count;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
 	reverse_mismatch=0;
@@ -95,15 +103,15 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		}
 		int query_length = strlen(query_1);
 		if (use_leaf_portion==1){
-			if ( cigars_forward[match][0] == '*'){ break; }
-			if ( cigars_forward[match][0] == '\0'){ break; }
+			if ( workspace->candidates[match].forward_cigar[0] == '*'){ break; }
+			if ( workspace->candidates[match].forward_cigar[0] == '\0'){ break; }
 		}
-		if (use_leaf_portion == 1 && starts_forward[match] != -1){
-			int start_position = getStartPosition(starts_forward[match],leaf_coordinates[match][0],leaf_coordinates[match][1],padding);
-			int end_position = getEndPosition(cigars_forward[match],leaf_coordinates[match][0],leaf_coordinates[match][1],start_position+padding,padding);
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,start_position,end_position);
+		if (use_leaf_portion == 1 && workspace->candidates[match].forward_start != -1){
+			int start_position = getStartPosition(workspace->candidates[match].forward_start,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,padding);
+			int end_position = getEndPosition(workspace->candidates[match].forward_cigar,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,start_position+padding,padding);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,start_position,end_position);
 		}else{
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,0,numbaseArr[leaf_coordinates[match][0]]);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,0,numbaseArr[workspace->candidates[match].tree_id]);
 		}
 		int leaf_length = strlen(leaf_sequence);
 		if (leaf_length > 0){
@@ -224,15 +232,15 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			}
 		locQuery[alength]='\0';
 		//if (access(alignmentFileName, F_OK ) != -1 && match==0){
-		//	printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name);
+		//	printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name);
 		//}else if (match==0){
-		//	createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name);
+		//	createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name);
 		//}
 		if (match==0 && print_alignments_to_file==1){
 			char alignmentFileName[BUFFER_SIZE];
-			snprintf(alignmentFileName,BUFFER_SIZE,"%s/%s.fasta",alignments_dir,treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			snprintf(alignmentFileName,BUFFER_SIZE,"%s/%s.fasta",alignments_dir,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			snprintf(alignmentFileName,BUFFER_SIZE,"%s",alignments_dir);
-			printToFile_WFA(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, pattern_alg, text_alg, forward_name, query_length, positionsInRoot);
+			printToFile_WFA(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, pattern_alg, text_alg, forward_name, query_length, positionsInRoot);
 		}
 		if (print_alignments==1){
 			int breaks = 100;
@@ -245,7 +253,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 				  if (pattern_alg[i]=='\0'){ break; }
 					printf("%c",text_alg[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=breaks-100; i<breaks; i++){
 				  if (pattern_alg[i]=='\0'){ break;}
 					  printf("%c",pattern_alg[i]);
@@ -268,7 +276,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=101;i<200;i++){
 					printf("%c",text_alg[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=101;i<200;i++){
 					printf("%c",pattern_alg[i]);
 			  }
@@ -287,7 +295,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=201; i<300; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=201;i<300;i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -306,7 +314,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=301; i<400 ; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=301;i<400; i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -325,7 +333,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=401; i<500 ; i++){
 				printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=401; i<500 ; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -344,7 +352,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=501; i<600; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=501;i<600; i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -363,7 +371,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=601; i<700; i++){
 				  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=601;i<700; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -382,7 +390,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=701; i<800; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -401,7 +409,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -420,7 +428,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=901; aln->result_b[i] != '\0'; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=901;aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -436,7 +444,6 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			}
 			printf("\n\n");*/
 		}
-		//assignScores_Arr_paired(topRoots[rootNum],rootArr[topRoots[rootNum]],locQuery, positions, nodeScores, alength);
 		//clock_gettime(CLOCK_MONOTONIC, &tstart);
 		//printf("assignScores_Arr_paired...\n");
 		FILE* site_scores_file;
@@ -455,7 +462,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		type_of_PP strike_box_threshold = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match,print_all_nodes,site_scores_file,forward_name,
+		assignScores_Arr_paired(workspace->candidates[match].tree_id,rootArr[workspace->candidates[match].tree_id],locQuery, positions, candidate_workspace_scores(workspace, (size_t)match), alength, print_all_nodes,site_scores_file,forward_name,
 		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
 		    enable_pruning, pruning_threshold_calc);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -488,22 +495,21 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		}
 		int query_length = strlen(query_2);
 		if (use_leaf_portion==1){
-			if ( cigars_reverse[match][0] == '*'){
+			if ( workspace->candidates[match].reverse_cigar[0] == '*'){
 				break;
 			}
-			if ( cigars_reverse[match][0] == '\0'){ break; }
+			if ( workspace->candidates[match].reverse_cigar[0] == '\0'){ break; }
 		}
 		if (use_leaf_portion==1){
-			if (starts_reverse[match]!=1){
+			if (workspace->candidates[match].reverse_start!=1){
 		//needleman_wunsch_align(rootSeqs[topRoots[rootNum]], query_2, scoring, nw, aln);
-		//char *leaf_sequence = (char *)malloc(numbaseArr[leaf_coordinates[rootNum][0]]*sizeof(char));
-		//getSequenceInNode(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence);
-				int start_position = getStartPosition(starts_reverse[match],leaf_coordinates[match][0],leaf_coordinates[match][1],padding);
-				int end_position = getEndPosition(cigars_reverse[match],leaf_coordinates[match][0],leaf_coordinates[match][1],start_position+padding,padding);
-				getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,start_position,end_position);
+		//getSequenceInNode(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence);
+				int start_position = getStartPosition(workspace->candidates[match].reverse_start,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,padding);
+				int end_position = getEndPosition(workspace->candidates[match].reverse_cigar,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,start_position+padding,padding);
+				getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,start_position,end_position);
 			}
 		}else{
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,0,numbaseArr[leaf_coordinates[match][0]]);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,0,numbaseArr[workspace->candidates[match].tree_id]);
 		}
 		int leaf_length = strlen(leaf_sequence);
 		if (leaf_length > 0){
@@ -633,14 +639,14 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			}
 		locQuery[alength]='\0';
 		//if (access(alignmentFileName, F_OK ) != -1 && match==0){
-		//	printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, reverse);
+		//	printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, reverse);
 		//}else if (match==0){
-		//	createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, readname);
+		//	createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, readname);
 		//}
 		if (match==0 && print_alignments_to_file==1){
 			char alignmentFileName[1000];
-			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
-			printToFile_WFA(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, pattern_alg, text_alg, reverse_name, query_length, positionsInRoot);
+			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
+			printToFile_WFA(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, pattern_alg, text_alg, reverse_name, query_length, positionsInRoot);
 		}
 		if (print_alignments==1){
 			int breaks = 100;
@@ -653,7 +659,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 				if (text_alg[i]=='\0'){ break; }
 					printf("%c",text_alg[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=breaks-100; i<breaks; i++){
 				if (pattern_alg[i]=='\0'){ break; }
 					printf("%c",pattern_alg[i]);
@@ -677,7 +683,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=101;i<200;i++){
 			  printf("%c",text_alg[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=101;i<200;i++){
 			  printf("%c",pattern_alg[i]);
 			}
@@ -696,7 +702,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=201; i<300; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=201;i<300;i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -715,7 +721,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=301; i<400; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=301;i<400; i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -734,7 +740,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			  for(i=401; i<500; i++){
 				  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=401; i<500; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -753,7 +759,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=501;i<600; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=501;i<600; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -772,7 +778,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=601;i<700; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=601;i<700; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -791,7 +797,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -810,7 +816,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -829,7 +835,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 			for(i=901; aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=901;aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -859,7 +865,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		assignScores_Arr_paired(workspace->candidates[match].tree_id,rootArr[workspace->candidates[match].tree_id],locQuery,positions,candidate_workspace_scores(workspace, (size_t)match),alength,print_all_nodes,site_scores_file,reverse_name,
 		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
 		    enable_pruning, pruning_threshold_calc2);
 		//clock_gettime(CLOCK_MONOTONIC, &tend);
@@ -876,9 +882,6 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		}
 	}
 	type_of_PP maximum=-9999999999999999;
-	int minRoot=0;
-	int minNode=0;
-	int match_number=0;
 	//clock_gettime(CLOCK_MONOTONIC, &tstart);
 	//printf("finding minimum score...\n");
 	FILE* node_scores_file;
@@ -887,20 +890,16 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		fprintf(node_scores_file,"Tree_Number\tNode_Number\tScore\n");
 	}
 	for (i=0; i<number_of_matches;i++){
-		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[j]-1; k++){
-				//printf("Tree %d Node %d Taxonomy (%s) Score: %lf\n",j,k,taxonomyArr[j][treeArr[j][k].taxIndex[0]][treeArr[j][k].taxIndex[1]],nodeScores[i][j][k]);
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
-					match_number=i;
-					minRoot=j;
-					minNode=k;
+		const type_of_PP *candidate_scores = candidate_workspace_scores_const(workspace, (size_t)i);
+		j = workspace->candidates[i].tree_id;
+			for(k=0; k<(int)workspace->candidates[i].node_count; k++){
+				if ( maximum < candidate_scores[k]){
+					maximum=candidate_scores[k];
 				}
 				if ( print_all_nodes == 1){
-					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
+					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,candidate_scores[k]);
 				}
 			}
-		}
 	}
 	if (print_all_nodes == 1){
 		fclose(node_scores_file);
@@ -913,28 +912,8 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//printf("minimum node: %d\n",minNode);
 	//printf("C interval: %lf\n",Cinterval);
 	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("clearing voteroot...\n");
-	/*for(i=0; i<numberOfTotalRoots; i++){
-		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
-		}
-	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
-	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
-					index++;
-				}
-			}
-		//}
-	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 	minimum_score[0] = maximum;
@@ -944,8 +923,17 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired_with_nw(char *query_1, char *query_2, char **rootSeqs,
+	int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln,
+	scoring_t *scoring, CandidateWorkspace *workspace, int paired,
+	type_of_PP *minimum_score, char *alignments_dir, char *forward_name,
+	char *reverse_name, int print_alignments, char *leaf_sequence,
+	int *positionsInRoot, int print_alignments_to_file, int use_leaf_portion,
+	int padding, int max_query_length, int max_numbase, int print_all_nodes,
+	int early_termination, type_of_PP strike_box, int max_strikes,
+	int enable_pruning, type_of_PP pruning_threshold){
 	int i, j, k, node, match;
+	int number_of_matches = (int)workspace->candidate_count;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
 	reverse_mismatch=0;
@@ -967,15 +955,15 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		}
 		int query_length = strlen(query_1);
 		if (use_leaf_portion==1){
-			if ( cigars_forward[match][0] == '*'){ break; }
-			if ( cigars_forward[match][0] == '\0'){ break; }
+			if ( workspace->candidates[match].forward_cigar[0] == '*'){ break; }
+			if ( workspace->candidates[match].forward_cigar[0] == '\0'){ break; }
 		}
-		if (use_leaf_portion == 1 && starts_forward[match] != -1){
-			int start_position = getStartPosition(starts_forward[match],leaf_coordinates[match][0],leaf_coordinates[match][1],padding);
-			int end_position = getEndPosition(cigars_forward[match],leaf_coordinates[match][0],leaf_coordinates[match][1],start_position+padding,padding);
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,start_position,end_position);
+		if (use_leaf_portion == 1 && workspace->candidates[match].forward_start != -1){
+			int start_position = getStartPosition(workspace->candidates[match].forward_start,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,padding);
+			int end_position = getEndPosition(workspace->candidates[match].forward_cigar,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,start_position+padding,padding);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,start_position,end_position);
 		}else{
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,0,numbaseArr[leaf_coordinates[match][0]]);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,0,numbaseArr[workspace->candidates[match].tree_id]);
 		}
 		int leaf_length = strlen(leaf_sequence);
 		if (leaf_length > 0){
@@ -1088,18 +1076,18 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			}
 		locQuery[alength]='\0';
 		//if (access(alignmentFileName, F_OK ) != -1 && match==0){
-		//	printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name);
+		//	printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name);
 		//}else if (match==0){
-		//	createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name);
+		//	createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name);
 		//}
 		if (match==0 && print_alignments_to_file==1){
 			char alignmentFileName[1000];
-			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			//snprintf(alignmentFileName,1000,"%s",alignments_dir);
 			if ( access(alignmentFileName, F_OK ) != -1 ){
-				printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name, query_length, positionsInRoot);
+				printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name, query_length, positionsInRoot);
 			}else{
-				createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, forward_name, query_length, positionsInRoot);
+				createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, forward_name, query_length, positionsInRoot);
 			}
 		}
 		if (print_alignments==1){
@@ -1110,7 +1098,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=0; i<100; i++){
 			  		printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=0; i<100; i++){
 					printf("%c",aln->result_a[i]);
 			  }
@@ -1130,7 +1118,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=100;i<200;i++){
 				  	printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=100;i<200;i++){
 					printf("%c",aln->result_a[i]);
 			  }
@@ -1151,7 +1139,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=200;i<300;i++){
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_a[i]);
@@ -1174,7 +1162,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=300;i<400; i++){
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_a[i]);
@@ -1196,7 +1184,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=401; i<500 ; i++){
 				printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=401; i<500 ; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -1215,7 +1203,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=501; i<600; i++){
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=501;i<600; i++){
 			  printf("%c",aln->result_a[i]);
 			  }
@@ -1234,7 +1222,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=601; i<700; i++){
 				  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=601;i<700; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -1253,7 +1241,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=701; i<800; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1272,7 +1260,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1291,7 +1279,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=901; aln->result_b[i] != '\0'; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=901;aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1307,7 +1295,6 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			}
 			printf("\n\n");*/
 		}
-		//assignScores_Arr_paired(topRoots[rootNum],rootArr[topRoots[rootNum]],locQuery, positions, nodeScores, alength);
 		//clock_gettime(CLOCK_MONOTONIC, &tstart);
 		//printf("assignScores_Arr_paired...\n");
 		FILE* site_scores_file;
@@ -1325,7 +1312,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match, print_all_nodes, site_scores_file,forward_name,
+		assignScores_Arr_paired(workspace->candidates[match].tree_id,rootArr[workspace->candidates[match].tree_id],locQuery, positions, candidate_workspace_scores(workspace, (size_t)match), alength, print_all_nodes, site_scores_file,forward_name,
 		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
 		    enable_pruning, pruning_threshold_calc);
 		if ( print_all_nodes == 1){
@@ -1354,22 +1341,21 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		}
 		int query_length = strlen(query_2);
 		//needleman_wunsch_align(rootSeqs[topRoots[rootNum]], query_2, scoring, nw, aln);
-		//char *leaf_sequence = (char *)malloc(numbaseArr[leaf_coordinates[rootNum][0]]*sizeof(char));
-		//getSequenceInNode(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence);
+		//getSequenceInNode(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence);
 		if (use_leaf_portion==1){
-			if ( cigars_reverse[match][0] == '*'){
+			if ( workspace->candidates[match].reverse_cigar[0] == '*'){
 				break;
 			}
-			if ( cigars_forward[match][0] == '\0'){ break; }
+			if ( workspace->candidates[match].forward_cigar[0] == '\0'){ break; }
 		}
 		if (use_leaf_portion == 1 ){
-			if ( starts_reverse[match]!=1){
-				int start_position = getStartPosition(starts_reverse[match],leaf_coordinates[match][0],leaf_coordinates[match][1],padding);
-				int end_position = getEndPosition(cigars_reverse[match],leaf_coordinates[match][0],leaf_coordinates[match][1],start_position+padding,padding);
-				getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,start_position,end_position);
+			if ( workspace->candidates[match].reverse_start!=1){
+				int start_position = getStartPosition(workspace->candidates[match].reverse_start,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,padding);
+				int end_position = getEndPosition(workspace->candidates[match].reverse_cigar,workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,start_position+padding,padding);
+				getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,start_position,end_position);
 			}
 		}else{
-			getSequenceInNodeWithoutNs(leaf_coordinates[match][0],leaf_coordinates[match][1],leaf_sequence,positionsInRoot,0,numbaseArr[leaf_coordinates[match][0]]);
+			getSequenceInNodeWithoutNs(workspace->candidates[match].tree_id,workspace->candidates[match].leaf_node,leaf_sequence,positionsInRoot,0,numbaseArr[workspace->candidates[match].tree_id]);
 		}
 		int leaf_length = strlen(leaf_sequence);
 		if(leaf_length > 0){
@@ -1486,17 +1472,17 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			}
 		locQuery[alength]='\0';
 		//if (access(alignmentFileName, F_OK ) != -1 && match==0){
-		//	printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, reverse);
+		//	printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, reverse);
 		//}else if (match==0){
-		//	createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, readname);
+		//	createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, readname);
 		//}
 		if (match==0 && print_alignments_to_file==1){
 			char alignmentFileName[1000];
-			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			snprintf(alignmentFileName,1000,"%s/%s.fasta",alignments_dir,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			if ( access(alignmentFileName, F_OK ) != -1 ){
-				printToFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, reverse_name, query_length, positionsInRoot);
+				printToFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, reverse_name, query_length, positionsInRoot);
 			}else{
-				createNewFile2(treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name, alignments_dir, aln, reverse_name, query_length, positionsInRoot);
+				createNewFile2(treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name, alignments_dir, aln, reverse_name, query_length, positionsInRoot);
 			}
 		}
 		if (print_alignments==1){
@@ -1506,7 +1492,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=0; i<100; i++){
 					printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=0; i<100; i++){
 					printf("%c",aln->result_a[i]);
 			}
@@ -1527,7 +1513,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=101;i<200;i++){
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_a[i]);
@@ -1550,7 +1536,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=201;i<300;i++){
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_a[i]);
@@ -1573,7 +1559,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=301;i<400; i++){
 				  if (aln->result_a[i]=='\0'){ break; }
 			  printf("%c",aln->result_a[i]);
@@ -1595,7 +1581,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			  for(i=401; i<500; i++){
 				  printf("%c",aln->result_b[i]);
 			  }
-			  printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			  printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			  for(i=401; i<500; i++){
 				  printf("%c",aln->result_a[i]);
 			  }
@@ -1614,7 +1600,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=501;i<600; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=501;i<600; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1633,7 +1619,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=601;i<700; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=601;i<700; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1652,7 +1638,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=701;i<800; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1671,7 +1657,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=801;i<900; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1690,7 +1676,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 			for(i=901; aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_b[i]);
 			}
-			printf("\nmatch(%d) root(%d) %s\t\t",match,leaf_coordinates[match][0],treeArr[leaf_coordinates[match][0]][leaf_coordinates[match][1]].name);
+			printf("\nmatch(%d) root(%d) %s\t\t",match,workspace->candidates[match].tree_id,treeArr[workspace->candidates[match].tree_id][workspace->candidates[match].leaf_node].name);
 			for(i=901;aln->result_b[i]!='\0'; i++){
 				printf("%c",aln->result_a[i]);
 			}
@@ -1720,7 +1706,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
 
-		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
+		assignScores_Arr_paired(workspace->candidates[match].tree_id,rootArr[workspace->candidates[match].tree_id],locQuery,positions,candidate_workspace_scores(workspace, (size_t)match),alength,print_all_nodes,site_scores_file,reverse_name,
 		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
 		    enable_pruning, pruning_threshold_calc2);
 		if ( print_all_nodes == 1){
@@ -1733,9 +1719,6 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		}
 	}
 	type_of_PP maximum=-9999999999999999;
-	int minRoot=0;
-	int minNode=0;
-	int match_number=0;
 	//clock_gettime(CLOCK_MONOTONIC, &tstart);
 	//printf("finding minimum score...\n");
 	FILE* node_scores_file;
@@ -1744,19 +1727,16 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		fprintf(node_scores_file,"Tree_Number\tNode_Number\tScore\n");
 	}
 	for (i=0; i<number_of_matches;i++){
-		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[j]-1; k++){
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
-					match_number=i;
-					minRoot=j;
-					minNode=k;
+		const type_of_PP *candidate_scores = candidate_workspace_scores_const(workspace, (size_t)i);
+		j = workspace->candidates[i].tree_id;
+			for(k=0; k<(int)workspace->candidates[i].node_count; k++){
+				if ( maximum < candidate_scores[k]){
+					maximum=candidate_scores[k];
 				}
 				if ( print_all_nodes == 1){
-					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
+					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,candidate_scores[k]);
 				}
 			}
-		}
 	}
 	if (print_all_nodes == 1){
 		fclose(node_scores_file);
@@ -1769,28 +1749,8 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 	//printf("minimum node: %d\n",minNode);
 	//printf("C interval: %lf\n",Cinterval);
 	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("clearing voteroot...\n");
-	/*for(i=0; i<numberOfTotalRoots; i++){
-		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
-		}
-	}*/
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
-	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
-					index++;
-				}
-			}
-		//}
-	}
 	//clock_gettime(CLOCK_MONOTONIC, &tend);
 	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 	minimum_score[0] = maximum;

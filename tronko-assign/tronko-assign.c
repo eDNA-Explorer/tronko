@@ -7,6 +7,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <assert.h>
+#include <stdarg.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -109,6 +110,7 @@ static int g_overflow_read_count = 0;        // Reads that hit the cap
 static int g_total_dropped_matches = 0;      // Total matches dropped across all reads
 static int g_max_potential_matches = 0;      // Highest potential match count seen
 static pthread_mutex_t g_overflow_stats_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_candidate_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //int numspec, numbase, root/***seq, numundspec[MAXNUMBEROFINDINSPECIES+1]*/;
 // Global TSV log file for use by readreference.c
@@ -122,6 +124,29 @@ type_of_PP Cinterval;
 //struct map;
 int *numspecArr, *numbaseArr, *rootArr;
 struct timespec tstart={0,0}, tend={0.0};
+
+static void log_candidate_fingerprint(const char *read_name,
+	const CandidateWorkspace *workspace, size_t dropped_count)
+{
+	size_t i;
+	if (g_tsv_log_file == NULL || read_name == NULL || workspace == NULL) return;
+	pthread_mutex_lock(&g_candidate_log_mutex);
+	for (i = 0; i < workspace->candidate_count; ++i) {
+		const CandidatePlacement *candidate = &workspace->candidates[i];
+		fprintf(g_tsv_log_file,
+			"# candidate\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\tretained\n",
+			read_name, candidate->concordant ? "concordant" : "discordant",
+			candidate->tree_id, candidate->leaf_node,
+			candidate->forward_start, candidate->reverse_start,
+			candidate->forward_cigar, candidate->reverse_cigar);
+	}
+	if (dropped_count != 0) {
+		fprintf(g_tsv_log_file, "# candidate_drop\t%s\t%zu\tcap\n",
+			read_name, dropped_count);
+	}
+	fflush(g_tsv_log_file);
+	pthread_mutex_unlock(&g_candidate_log_mutex);
+}
 
 char* strupr(char* s){
 	unsigned char* t = (unsigned char*) s;
@@ -170,14 +195,21 @@ void printTreeInfo(int whichPartition, int node, FILE* file){
 		printTreeInfo(whichPartition,treeArr[whichPartition][node].up[1],file);
 	}
 }
-void run_bwa(int start, int end, bwaMatches* bwa_results, int concordant, int numberOfTrees, char *databasefile, int paired, int max_query_length, int max_readname_length, int max_acc_name){
-	int i,j;
-	int number_of_threads=1;
-	if (paired != 0){
-		main_mem(databasefile,end-start,number_of_threads, bwa_results, concordant, numberOfTrees, start, paired, start, end, max_query_length, max_readname_length, max_acc_name);
-	}else{
-		main_mem(databasefile,end-start,number_of_threads, bwa_results, concordant, numberOfTrees, start, paired, start, end, max_query_length, max_readname_length, max_acc_name);
-	}
+int run_bwa(const tronko_bwa_context *context, int start, int end,
+	bwaMatches *bwa_results, int concordant, int paired,
+	int max_query_length, int max_readname_length, int max_acc_name){
+	tronko_bwa_chunk_options options = {
+		.number_of_seqs = end - start,
+		.concordant = concordant,
+		.startline = start,
+		.paired = paired,
+		.start = start,
+		.end = end,
+		.max_query_length = max_query_length,
+		.max_readname_length = max_readname_length,
+		.max_acc_name = max_acc_name,
+	};
+	return tronko_bwa_align_chunk(context, bwa_results, &options);
 }
 int getLCA_Arr(int node1, int node2, int whichRoot){
 	if (node1 == node2){ return node1; }
@@ -189,104 +221,79 @@ int getLCA_Arr(int node1, int node2, int whichRoot){
 	node2 = treeArr[whichRoot][node2].down;
 	return getLCA_Arr(node1,node2,whichRoot);
 }
-int getKeysCount(int whichRoot, int node, int* minNodes, int matching_nodes, int* ancestors, int numMinNodes){
-	int child0 = treeArr[whichRoot][node].up[0];
-	int child1 = treeArr[whichRoot][node].up[1];
-	if ( child0 != -1 && child1 != -1 ){
-		matching_nodes += getKeysCount(whichRoot,child0,minNodes,matching_nodes,ancestors,numMinNodes) + getKeysCount(whichRoot,child1,minNodes,matching_nodes,ancestors,numMinNodes);
-	}
-	int i;
-	for(i=0; i<numMinNodes; i++){
-		if ( minNodes[i] == node ){
-			matching_nodes++;
-		}
-	}
-	if ( matching_nodes == numMinNodes ){
-		for(i=0; i<2*numspecArr[whichRoot]-1; i++){
-			if ( ancestors[i] == -1 ){
-				break;
+static int append_result(char *buffer, size_t capacity, size_t *length,
+	const char *format, ...)
+{
+	va_list arguments;
+	int written;
+	if (*length >= capacity) return -1;
+	va_start(arguments, format);
+	written = vsnprintf(buffer + *length, capacity - *length, format, arguments);
+	va_end(arguments);
+	if (written < 0 || (size_t)written >= capacity - *length) return -1;
+	*length += (size_t)written;
+	return 0;
+}
+
+static int build_result_row(char *buffer, size_t capacity, const char *read_name,
+	int positive_tree_count, int max_root, int lca, int unassigned,
+	int minimum_taxonomy_level, int taxonomy_root, int taxonomy_node,
+	const type_of_PP minimum[3])
+{
+	size_t length = 0;
+	int level;
+	if (append_result(buffer, capacity, &length, "%s\t", read_name) != 0)
+		return -1;
+	if (positive_tree_count == 0)
+		return append_result(buffer, capacity, &length, "unassigned");
+
+	if (positive_tree_count == 1) {
+		int tax_level = treeArr[max_root][lca].taxIndex[1];
+		if (tax_level == -1) {
+			if (append_result(buffer, capacity, &length,
+				"unassigned Euk or Bac") != 0) return -1;
+		} else {
+			for (level = 6; level >= tax_level; --level) {
+				if (append_result(buffer, capacity, &length, "%s%s",
+					taxonomyArr[max_root][treeArr[max_root][lca].taxIndex[0]][level],
+					level == tax_level ? "" : ";") != 0) return -1;
 			}
 		}
-		ancestors[i] = node;
-	}
-	return matching_nodes;
-}
-int LCA_of_nodes(int whichRoot, int root_node, int* minNodes, int numMinNodes){
-	int* ancestors = (int*)malloc((2*numspecArr[whichRoot]-1)*sizeof(int));
-	int i;
-	for(i=0; i<2*numspecArr[whichRoot]-1; i++){
-		ancestors[i] = -1;
-	}
-	int matching_nodes = 0;
-	getKeysCount(whichRoot, root_node, minNodes, matching_nodes, ancestors, numMinNodes);
-	int LCA = ancestors[0];
-	free(ancestors);
-	return LCA;
-}
-int getLCAofArray_Arr(int *minNodes,int whichRoot,int maxNumSpec, int number_of_total_nodes){
-	int LCA = minNodes[0];
-	int maxDepth = 1000000000;
-	int i;
-	for( i=1; i<number_of_total_nodes; i++){
-		if ( minNodes[i] == -1 ){ return LCA; }
-		if (treeArr[whichRoot][minNodes[i]].depth < maxDepth){
-			LCA = getLCA_Arr(LCA, minNodes[i], whichRoot);
+	} else if (unassigned) {
+		if (append_result(buffer, capacity, &length,
+			"unassigned Eukaryote or Bacteria") != 0) return -1;
+	} else {
+		for (level = 6; level >= minimum_taxonomy_level; --level) {
+			if (append_result(buffer, capacity, &length, "%s%s",
+				taxonomyArr[taxonomy_root]
+					[treeArr[taxonomy_root][taxonomy_node].taxIndex[0]][level],
+				level == minimum_taxonomy_level ? "" : ";") != 0) return -1;
 		}
 	}
-	return LCA;
+
+	return append_result(buffer, capacity, &length,
+		"\t%lf\t%lf\t%lf\t%d\t%d", (double)minimum[0],
+		(double)minimum[1], (double)minimum[2], max_root, lca);
 }
-int getLCAofArray_Arr_Multiple(int *voteroot,int whichRoot, int maxNumSpec, int number_of_total_nodes){
-	/*int LCA = minNodes[0];
-	int maxDepth = 1000000000;
-	int i;
-	for( i=1; i<number_of_total_nodes; i++){
-		if ( minNodes[i] == 0 ){ return LCA; }
-		if (treeArr[whichRoot][minNodes[i]].depth < maxDepth){
-			LCA = getLCA_Arr(LCA, minNodes[i], whichRoot);
-		}
-	}
-	return LCA;*/
-	int i;
-	int* minNodes = (int*)malloc((2*numspecArr[whichRoot]-1)*sizeof(int));
-	for(i=0; i<2*numspecArr[whichRoot]-1; i++){
-		minNodes[i]=-1;
-	}
-	int count=0;
-	for(i=0; i<2*numspecArr[whichRoot]-1; i++){
-		if ( voteroot[i] == 1 ){
-			minNodes[count]=i;
-			count++;
-		}
-	}
-	int LCA = LCA_of_nodes(whichRoot,rootArr[whichRoot],minNodes,count);
-	free(minNodes);
-	return LCA;
-}
+
 void *runAssignmentOnChunk_WithBWA(void *ptr){
 	struct mystruct *mstr = (mystruct *) ptr;
 	resultsStruct *results=mstr->str;
 	char **rootSeqs=mstr->rootSeqs;
-	int numberOfTrees = mstr->ntree;
-	char query_1[mstr->max_query_length];
-	char query_2[mstr->max_query_length];
-	int maxNumSpec = mstr->maxNumSpec;
 	int iter = 0;
 	int i,j,k,lineNumber;
 	int end=mstr->end;
-	int *minNodes=results->minNodes;
-	char **LCAnames = results->LCAnames;
+	CandidateWorkspace *workspace = results->workspace;
 	int paired = mstr->paired;
 	int print_alignments = results->print_alignments;
 	int use_nw = mstr->use_nw;
 	int print_alignments_to_file = mstr->print_alignments_to_file;
-	int print_unassigned = mstr->print_unassigned;
 	int use_leaf_portion = mstr->use_leaf_portion;
 	int padding = mstr->padding;
 	int max_query_length = mstr->max_query_length;
 	int max_readname_length = mstr->max_readname_length;
 	int max_acc_name = mstr->max_acc_name;
 	int max_numbase = mstr->max_numbase;
-	int number_of_total_nodes = mstr->number_of_total_nodes;
 	int print_all_nodes = mstr->print_all_nodes;
 	// Tier 1 optimization settings
 	int early_termination = mstr->early_termination;
@@ -352,9 +359,8 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}
 		bwa_results[i].n_matches = 0;
+		bwa_results[i].dropped_matches = 0;
 	}
-	int trees_search[mstr->ntree];
-	int *leaf_coord_arr;
 	char *leaf_sequence;
 	int *positionsInRoot;
 	if (use_leaf_portion == 1){
@@ -364,8 +370,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		leaf_sequence = (char *)malloc((max_query_length+mstr->max_numbase+1)*sizeof(char));
 		positionsInRoot = (int *)malloc((max_query_length+mstr->max_numbase+1)*sizeof(int));
 	}
-	struct leafMap *leaf_map;	
-	run_bwa(mstr->start, end, bwa_results, mstr->concordant, mstr->ntree, mstr->databasefile, paired, max_query_length, max_readname_length, max_acc_name);
+	mstr->status = run_bwa(mstr->bwa_context, mstr->start, end, bwa_results,
+		mstr->concordant, paired, max_query_length, max_readname_length,
+		max_acc_name);
 	for ( lineNumber=mstr->start; lineNumber<end; lineNumber++){
 		// Set crash context for current read processing
 		char read_info[64];
@@ -373,196 +380,24 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		crash_set_current_read(read_info, 1, lineNumber);
 		crash_set_processing_stage("BWA alignment and tree search");
 		
-		for(i=0; i<mstr->ntree; i++){
-			trees_search[i]=-1;
+		int leaf_iter = 0;
+		size_t dropped_count = 0;
+		if (candidate_workspace_select(workspace, &bwa_results[iter],
+			mstr->concordant, paired, use_leaf_portion, &dropped_count) != 0 ||
+			candidate_workspace_prepare_scores(workspace, numspecArr,
+				(size_t)mstr->ntree) != 0) {
+			mstr->status = 1;
+			candidate_workspace_reset(workspace);
 		}
-		j=0;
-		int hashValue;
-		int no_add=0;
-		int leaf_iter=0;
-		dropped_matches_count = 0;  // Reset dropped counter for this read
-		if (bwa_results[iter].concordant_matches_roots[0]==-1 && mstr->concordant==1){
-			for (i=0; i<mstr->ntree; i++){
-				if (bwa_results[iter].discordant_matches_roots[0] < 0 ){
-					//for(j=0; j<mstr->ntree;j++){
-					//	results->leaf_coordinates[j][0]=j;
-					//	results->leaf_coordinates[j][1]=rootArr[j];
-					//}
-					//leaf_iter=mstr->ntree;
-					//i=mstr->ntree;
-					break;
-				}else if ( bwa_results[iter].discordant_matches_roots[i]==-1){
-					break;
-				}else{
-					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
-						if (use_leaf_portion==1){
-							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-							if ( paired==1){
-								results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
-							}
-						}
-					}
-				}
-				int index1=mstr->ntree-1;
-				for(k=mstr->ntree-1; k>=0; k--){
-					if (trees_search[k]==-1){
-						index1=k;
-					}
-				}
-				int found=0;
-				for(k=0; k<index1; k++){
-					if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
-						found=1;
-					}
-				}
-				if (found==0){
-					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-						trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-						leaf_iter++;
-					} else {
-						dropped_matches_count++;
-					}
-				}
-			}
-		}else if (mstr->concordant==1){
-			for(i=0; i<mstr->ntree; i++){
-				if (bwa_results[iter].concordant_matches_roots[i]==-1){
-				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
-					break;
-				}else{
-					if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-						results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].concordant_matches_roots[i];
-						results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].concordant_matches_nodes[i];
-						if (use_leaf_portion==1){
-							results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-							strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-							if ( paired==1){
-								results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-								strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
-							}
-						}
-					}
-					int index1=mstr->ntree-1;
-					for(k=mstr->ntree-1; k>=0; k--){
-						if (trees_search[k]==-1){
-							index1=k;
-						}
-					}
-					int found=0;
-					for(k=0; k<index1; k++){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
-							found=1;
-						}
-					}
-					if (found==0){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-							trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-							leaf_iter++;
-						} else {
-							dropped_matches_count++;
-						}
-					}
-				}
-			}
-		}else{
-			j=0;
-			for(i=0; i<mstr->ntree; i++){
-				//if(strlen(bwa_results[iter].discordant_leaf_matches[i])<=3){
-				if(bwa_results[iter].discordant_matches_roots[i]==-1){
-					break;
-				}else{
-					if (no_add==0){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-							results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-							results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
-							if (use_leaf_portion==1){
-								results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-								strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-								if (paired==1){
-									results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-									strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
-								}
-							}
-						}
-						int index1=mstr->ntree-1;
-						for(k=mstr->ntree-1; k>=0; k--){
-							if (trees_search[k]==-1){
-								index1=k;
-							}
-						}
-						int found=0;
-						for(k=0; k<index1; k++){
-							if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
-								found=1;
-							}
-						}
-						if (found==0){
-							if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-								trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-								leaf_iter++;
-							} else {
-								dropped_matches_count++;
-							}
-						}
-						j++;
-					}
-					no_add=0;
-				}
-			}
-			for(i=0; i<mstr->ntree; i++){
-				if (bwa_results[iter].concordant_matches_roots[i]==-1){
-				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
-					break;
-				}else{
-					if (no_add==0){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-							results->leaf_coordinates[leaf_iter][0]=bwa_results[iter].discordant_matches_roots[i];
-							results->leaf_coordinates[leaf_iter][1]=bwa_results[iter].discordant_matches_nodes[i];
-							if (use_leaf_portion == 1){
-								results->starts_forward[leaf_iter] = bwa_results[iter].starts_forward[i];
-								strcpy(results->cigars_forward[leaf_iter],bwa_results[iter].cigars_forward[i]);
-								if (paired==1){
-									results->starts_reverse[leaf_iter] = bwa_results[iter].starts_reverse[i];
-									strcpy(results->cigars_reverse[leaf_iter],bwa_results[iter].cigars_reverse[i]);
-								}
-							}
-						}
-					int index1=mstr->ntree-1;
-					for(k=mstr->ntree-1; k>=0; k--){
-						if (trees_search[k]==-1){
-							index1=k;
-						}
-					}
-					int found=0;
-					for(k=0; k<index1; k++){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES && trees_search[k] == results->leaf_coordinates[leaf_iter][0]){
-							found=1;
-						}
-					}
-					if (found==0){
-						if (leaf_iter < MAX_NUM_BWA_MATCHES) {
-							trees_search[index1]=results->leaf_coordinates[leaf_iter][0];
-							leaf_iter++;
-						} else {
-							dropped_matches_count++;
-						}
-					}
-						j++;
-					}
-					no_add=0;
-				}
-			}
-		}
+		leaf_iter = (int)workspace->candidate_count;
+		dropped_matches_count = (int)dropped_count;
+		const char *read_name = paired ? pairedQueryMat->forward_name[lineNumber] :
+			singleQueryMat->name[lineNumber];
+		log_candidate_fingerprint(read_name, workspace, dropped_count);
 
 		// Update crash context and log if matches were dropped
 		if (dropped_matches_count > 0) {
 			int potential_matches = leaf_iter + dropped_matches_count;
-			const char *read_name = paired ? pairedQueryMat->forward_name[lineNumber] : singleQueryMat->name[lineNumber];
-
 			// Update global statistics (thread-safe)
 			pthread_mutex_lock(&g_overflow_stats_mutex);
 			g_overflow_read_count++;
@@ -588,94 +423,53 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			//strcmp(results->cigars_forward[0],"*")!=0 && strcmp(results->cigars_forward[0]," ")!=0){
 		if (paired != 0){
 			if ( use_nw==0 ){
-				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,results->positions,results->locQuery,workspace,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}else{
-				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],rootSeqs,results->positions,results->locQuery,results->nw,results->aln,results->scoring,workspace,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],print_alignments,leaf_sequence,positionsInRoot,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}
 		}else{
 			if (use_nw==0){
-				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,results->positions,results->locQuery,workspace,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}else{
-				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot,leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
+				place_paired_with_nw(singleQueryMat->queryMat[lineNumber],NULL,rootSeqs,results->positions,results->locQuery,results->nw,results->aln,results->scoring,workspace,paired,results->minimum,mstr->alignmentsdir,singleQueryMat->name[lineNumber],NULL,print_alignments,leaf_sequence,positionsInRoot,print_alignments_to_file,use_leaf_portion,padding,max_query_length,max_numbase,print_all_nodes,early_termination,strike_box,max_strikes,enable_pruning,pruning_factor);
 			}
 		}
-		numberOfTrees = leaf_iter;
-		for(i=0;i<number_of_total_nodes;i++){
-			minNodes[i]=-1;
 		}
-		for(i=0; i<leaf_iter; i++){
-			for(j=0; j<2*numspecArr[trees_search[i]]-1; j++){
-				results->nodeScores[i][trees_search[i]][j]=0;
-			}
-			results->leaf_coordinates[i][0]=-1;
-			results->leaf_coordinates[i][1]=-1;
+		if (candidate_workspace_summarize_winners(workspace,
+			results->minimum[0], Cinterval, getLCA_Arr) != 0) {
+			mstr->status = 1;
 		}
-			if (use_leaf_portion==1){
-				results->starts_forward[leaf_iter] = -1;
-				for(j=0; j<MAX_CIGAR; j++){
-					results->cigars_forward[leaf_iter][j]='\0';
-				}
-				if(paired==1){
-					results->starts_reverse[leaf_iter]=-1;
-					for(j=0; j<MAX_CIGAR; j++){
-						results->cigars_reverse[leaf_iter][j]='\0';
-					}
-				}
-			}
-		}
-		int countVotes[mstr->ntree];
-		int count=0;
-		for(i=0; i<mstr->ntree; i++){
-			countVotes[i]=0;
-			for(j=0;j<2*numspecArr[i]-1;j++){
-				if (results->voteRoot[i][j]==1){
-					countVotes[i]++;
-					minNodes[count]=j;
-					count++;
-				}
-			}
-		}
-		int numMinNodes=count;
-		int max=0;
-		int maxRoot=-1;
-		count=0;
-		for(i=0;i<mstr->ntree;i++){
-			if (countVotes[i]>max){
-				max=countVotes[i];
-				maxRoot=i;
-			}
-			if (countVotes[i]>0){
-				count++;
-			}
-		}
-		int LCA, LCAs[count], maxRoots[count];
-		int count2=0;
-		for(i=0;i<mstr->ntree;i++){
-			if ( countVotes[i]>0){
-				maxRoots[count2]=i;
-				count2++;
+		size_t positive_candidates[MAX_NUM_BWA_MATCHES];
+		int count = (int)candidate_workspace_collect_positive(workspace,
+			positive_candidates);
+		int max = 0;
+		int maxRoot = -1;
+		int LCA = -1;
+		int LCAs[MAX_NUM_BWA_MATCHES];
+		int maxRoots[MAX_NUM_BWA_MATCHES];
+		for (i = 0; i < count; ++i) {
+			CandidatePlacement *candidate =
+				&workspace->candidates[positive_candidates[i]];
+			maxRoots[i] = candidate->tree_id;
+			LCAs[i] = candidate->lca_node;
+			if (candidate->winning_count > max) {
+				max = candidate->winning_count;
+				maxRoot = candidate->tree_id;
+				LCA = candidate->lca_node;
 			}
 		}
 		int unassigned=0;
 		int minLevel=0;
-		int taxRoot,taxIndex0,taxIndex1,taxNode;
+		int taxRoot,taxNode;
 		if ( count == 1 ){
 			// Set context for tree processing
 			crash_set_current_tree(maxRoot);
 			crash_set_processing_stage("LCA calculation and taxonomic assignment");
 			clock_gettime(CLOCK_MONOTONIC, &tstart);
-			//LCA=getLCAofArray_Arr(minNodes,maxRoot,maxNumSpec,number_of_total_nodes);
-			LCA = LCA_of_nodes(maxRoot,rootArr[maxRoot],minNodes,numMinNodes);
+			/* LCA was folded in ascending node order while winners were scanned. */
 		}else if (count != 0){
 			for(i=0;i<count;i++){
-				for(j=0; j<mstr->max_lineTaxonomy; j++){
-					LCAnames[i][j]='\0';
-				}
-			}
-			for(i=0;i<count;i++){
-				LCAs[i]=getLCAofArray_Arr_Multiple(results->voteRoot[maxRoots[i]],maxRoots[i],maxNumSpec,number_of_total_nodes);
 				if ( treeArr[maxRoots[i]][LCAs[i]].taxIndex[1]!=-1){ 
-					strcpy(LCAnames[i],taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[1]]);
 					if ( treeArr[maxRoots[i]][LCAs[i]].taxIndex[1] > minLevel ){
 						minLevel=treeArr[maxRoots[i]][LCAs[i]].taxIndex[1];
 					}
@@ -702,143 +496,19 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				stop=1;
 				taxRoot=maxRoots[0];
 				taxNode=LCAs[0];
-				taxIndex0=treeArr[maxRoots[0]][LCAs[0]].taxIndex[0];
-				taxIndex1=minLevel;
 			}else{
 				minLevel++;
 			}
 			}
 			if (minLevel>6){ unassigned=1;}
 		}
-		for(i=0; i<max_readname_length+mstr->max_lineTaxonomy+120;i++){
-			resultsPath[i] = '\0';
+		size_t result_capacity = (size_t)max_readname_length + (size_t)mstr->max_lineTaxonomy + 120;
+		if (build_result_row(resultsPath, result_capacity, read_name, count, maxRoot, LCA,
+			unassigned, minLevel, taxRoot, taxNode, results->minimum) != 0) {
+			mstr->status = 1;
+			resultsPath[0] = '\0';
 		}
-		int print_un=1;
-		if (count==1){
-			if ( paired != 0 ){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\t");
-			int taxIndex1 = treeArr[maxRoot][LCA].taxIndex[1];
-			if ( taxIndex1 == -1 ){
-				strcat(resultsPath,"unassigned Euk or Bac");
-				//if (print_unassigned==0){
-				//	print_un = 0;
-				//}
-			}else{
-			for(i=6;i>=taxIndex1;i--){
-				if (i==taxIndex1){
-					strcat(resultsPath,taxonomyArr[maxRoot][treeArr[maxRoot][LCA].taxIndex[0]][i]);
-				}else{
-					strcat(resultsPath,taxonomyArr[maxRoot][treeArr[maxRoot][LCA].taxIndex[0]][i]);
-					strcat(resultsPath,";");
-				}
-			}
-			}
-			strcat(resultsPath,"\t");
-			char *num = NULL;
-			asprintf(&num,"%lf",results->minimum[0]);
-			strcat(resultsPath,num);
-			strcat(resultsPath,"\t");
-			//free(num);
-			char *num2 = NULL;
-			asprintf(&num2,"%lf",results->minimum[1]);
-			strcat(resultsPath,num2);
-			strcat(resultsPath,"\t");
-			//free(num2);
-			char *num3 = NULL;
-			asprintf(&num3,"%lf",results->minimum[2]);
-			strcat(resultsPath,num3);
-			strcat(resultsPath,"\t");
-			//free(num3);
-			char *num4 = NULL;
-			asprintf(&num4,"%d",maxRoot);
-			strcat(resultsPath,num4);
-			strcat(resultsPath,"\t");
-			//free(num4);
-			char *num5 = NULL;
-			asprintf(&num5,"%d",LCA);
-			strcat(resultsPath,num5);
-			//free(num5);
-			//char* appendScores = (char*)malloc(30*sizeof(char));
-			//sprintf(appendScores,"%lf\t%lf\t%lf\t%d\t%d",results->minimum[0],results->minimum[1],results->minimum[2],maxRoot,LCA);
-			//strcat(resultsPath,appendScores);
-			//free(appendScores);
-			//printf("%s\n",resultsPath);
-			//if ( print_un == 1){
-				strcpy(results->taxonPath[iter], resultsPath);
-			//}
-			free(num);
-			free(num2);
-			free(num3);
-			free(num4);
-			free(num5);
-		}else if (count==0 /*&& print_unassigned==1*/){
-			if (paired != 0){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\tunassigned");
-			strcpy(results->taxonPath[iter],resultsPath);
-		}else{
-			if (paired != 0){
-				strcpy(resultsPath,pairedQueryMat->forward_name[lineNumber]);
-			}else{
-				strcpy(resultsPath,singleQueryMat->name[lineNumber]);
-			}
-			strcat(resultsPath,"\t");
-			if (unassigned==1 ){
-				strcat(resultsPath, "unassigned Eukaryote or Bacteria");
-				//if (print_unassigned==0){
-				//	print_un=0;
-				//}
-			}else{
-			int taxIndex1=minLevel;
-			for(i=6;i>=taxIndex1;i--){
-				if (i==taxIndex1){
-					strcat(resultsPath,taxonomyArr[taxRoot][treeArr[taxRoot][taxNode].taxIndex[0]][i]);
-				}else{
-					strcat(resultsPath,taxonomyArr[taxRoot][treeArr[taxRoot][taxNode].taxIndex[0]][i]);
-					strcat(resultsPath,";");
-				}
-			}
-			}
-			strcat(resultsPath,"\t");
-			//char* appendScores = (char*)malloc(18*sizeof(char));
-			//char *appendScores = NULL;
-			//asprintf(&appendScores,"%lf\t%d\t%d\t%d\t%d",results->minimum[0],results->minimum[1],results->minimum[2],maxRoot,LCA);
-			char *num = NULL;
-			asprintf(&num,"%lf",results->minimum[0]);
-			strcat(resultsPath,num);
-			strcat(resultsPath,"\t");
-			//free(num);
-			char *num2 = NULL;
-			asprintf(&num2,"%lf",results->minimum[1]);
-			strcat(resultsPath,num2);
-			strcat(resultsPath,"\t");
-			//free(num2);
-			char *num3 = NULL;
-			asprintf(&num3,"%lf",results->minimum[2]);
-			strcat(resultsPath,num3);
-			strcat(resultsPath,"\t");
-			//free(num3);
-			char *num4 = NULL;
-			asprintf(&num4,"%d",maxRoot);
-			strcat(resultsPath,num4);
-			strcat(resultsPath,"\t");
-			//free(num4);
-			char *num5 = NULL;
-			asprintf(&num5,"%d",LCA);
-			strcat(resultsPath,num5);
-			//strcat(resultsPath,appendScores);
-			//if (print_un==1){
-				strcpy(results->taxonPath[iter],resultsPath);
-			//}
-			//free(appendScores);
-		}
+		strcpy(results->taxonPath[iter], resultsPath);
 		//free(bwa_results[iter].concordant_matches);
 		//free(bwa_results[iter].discordant_matches);
 		if (use_leaf_portion == 1){
@@ -876,13 +546,6 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		results->minimum[1] = -1;
 		results->minimum[2] = -1;
 		LCA = -1;
-		if (leaf_iter > 0){
-			for(i=0; i<mstr->ntree; i++){
-				for (j=0; j<2*numspecArr[i]-1; j++){
-					results->voteRoot[i][j]=0;
-				}
-			}
-		}
 	}
 	/*if (use_nw == 0){
 		affine_wavefronts_delete(affine_wavefronts);
@@ -1189,21 +852,28 @@ int main(int argc, char **argv){
 	int max_query_length = 0;
 	int numberOfLinesToRead=opt.number_of_lines_to_read;
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
-	if ( strcmp("single",opt.paired_or_single)==0){
-		if (opt.skip_build==0){
-			if (opt.verbose_level >= 0) {
-				LOG_INFO("Building BWA index for: %s", opt.fasta_file);
-			}
-			bwa_index(2,opt.fasta_file);
-			if (opt.verbose_level >= 0) {
-				LOG_MILESTONE_TIMED(MILESTONE_BWA_INDEX_BUILT);
-			}
-			TSV_LOG_SIMPLE(tsv_log, "BWA_INDEX");
-		} else {
-			if (opt.verbose_level >= 0) {
-				LOG_INFO("Skipping BWA index build");
-			}
+	tronko_bwa_context *bwa_context = NULL;
+	if (opt.skip_build==0){
+		if (opt.verbose_level >= 0) {
+			LOG_INFO("Building BWA index for: %s", opt.fasta_file);
 		}
+		bwa_index(2,opt.fasta_file);
+		if (opt.verbose_level >= 0) {
+			LOG_MILESTONE_TIMED(MILESTONE_BWA_INDEX_BUILT);
+		}
+		TSV_LOG_SIMPLE(tsv_log, "BWA_INDEX");
+	} else if (opt.verbose_level >= 0) {
+		LOG_INFO("Skipping BWA index build");
+	}
+	if (tronko_bwa_context_create(opt.fasta_file, numberOfTrees, &bwa_context) != 0) {
+		fprintf(stderr, "Error: failed to load BWA index or accession map for %s\n", opt.fasta_file);
+		exit(1);
+	}
+	TSV_LOG(tsv_log, "BWA_CONTEXT_LOADED", "indexes=1");
+	TSV_LOG(tsv_log, "LEAF_MAP_READY", "entries=%zu,duplicates=%zu",
+		tronko_bwa_context_leaf_count(bwa_context),
+		tronko_bwa_context_duplicate_count(bwa_context));
+	if ( strcmp("single",opt.paired_or_single)==0){
 		CompressedFile* reads_file = cf_open(opt.read1_file, "r");
 		if ( reads_file == NULL ){
 			printf("**reads file could not be opened.\n");
@@ -1271,10 +941,22 @@ int main(int argc, char **argv){
 		int first_iter=1;
 		for(i=0; i<opt.number_of_cores; i++){
 			mstr[i].str = malloc(sizeof(struct resultsStruct));
+			if (mstr[i].str == NULL) {
+				fprintf(stderr, "Error: unable to allocate worker %d results\n", i);
+				exit(1);
+			}
+			mstr[i].bwa_context = bwa_context;
+			mstr[i].status = 0;
 			if ( opt.fastq == 0){
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+				mstr[i].status = allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
 			}else{
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+				mstr[i].status = allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,0,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+			}
+			if (mstr[i].status != 0) {
+				free(mstr[i].str);
+				mstr[i].str = NULL;
+				fprintf(stderr, "Error: unable to allocate worker %d workspace\n", i);
+				exit(1);
 			}
 			mstr[i].concordant=0;
 			mstr[i].maxNumSpec=maxNumSpec;
@@ -1366,11 +1048,19 @@ int main(int argc, char **argv){
 			}
 			
 			for(i=0; i<opt.number_of_cores;i++){
+				mstr[i].status = 0;
 				pthread_create(&threads[i], NULL, runAssignmentOnChunk_WithBWA, &mstr[i]);
 			}
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
 			}
+			for (i=0; i<opt.number_of_cores; i++) {
+				if (mstr[i].status != 0) {
+					fprintf(stderr, "Error: BWA alignment failed for worker %d\n", i);
+					exit(1);
+				}
+			}
+			TSV_LOG(tsv_log, "BATCH_ALIGNED_PLACED", "batch=%d", batch_count);
 			
 			if (opt.verbose_level >= 0) {
 				LOG_MILESTONE_TIMED(MILESTONE_PLACEMENT_COMPLETE);
@@ -1427,6 +1117,7 @@ int main(int argc, char **argv){
 				}
 				free(mstr[i].str->taxonPath);
 			}
+			TSV_LOG(tsv_log, "BATCH_FREED", "batch=%d", batch_count);
 		}
 		
 		if (opt.verbose_level >= 0) {
@@ -1511,9 +1202,6 @@ int main(int argc, char **argv){
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
-		if (opt.skip_build==0){
-			bwa_index(2,opt.fasta_file);
-		}
 		pairedQueryMat = malloc(sizeof(struct queryMatPaired));
 		if (opt.fastq==0){
 			pairedQueryMat->query1Mat = (char **)malloc(sizeof(char *)*numberOfLinesToRead/2);
@@ -1594,10 +1282,22 @@ int main(int argc, char **argv){
 		int first_iter=1;
 		for(i=0;i<opt.number_of_cores;i++){
 			mstr[i].str = malloc(sizeof(struct resultsStruct));
+			if (mstr[i].str == NULL) {
+				fprintf(stderr, "Error: unable to allocate worker %d results\n", i);
+				exit(1);
+			}
+			mstr[i].bwa_context = bwa_context;
+			mstr[i].status = 0;
 			if ( opt.fastq == 0){
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+				mstr[i].status = allocateMemForResults(mstr[i].str, numberOfLinesToRead/2, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
 			}else{
-				allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+				mstr[i].status = allocateMemForResults(mstr[i].str, numberOfLinesToRead/4, opt.number_of_cores, numberOfTrees, opt.print_alignments,maxNumSpec,1,opt.use_nw,max_lineTaxonomy,max_name_length,max_query_length,maxNumBase,opt.use_leaf_portion,opt.padding,number_of_total_nodes);
+			}
+			if (mstr[i].status != 0) {
+				free(mstr[i].str);
+				mstr[i].str = NULL;
+				fprintf(stderr, "Error: unable to allocate worker %d workspace\n", i);
+				exit(1);
 			}
 			mstr[i].concordant=concordant;
 			mstr[i].maxNumSpec=maxNumSpec;
@@ -1620,9 +1320,13 @@ int main(int argc, char **argv){
 			mstr[i].strike_box = opt.strike_box;
 			mstr[i].max_strikes = opt.max_strikes;
 			mstr[i].enable_pruning = opt.enable_pruning;
-			mstr[i].pruning_factor = opt.pruning_factor;
-		}
-		while (1){
+				mstr[i].pruning_factor = opt.pruning_factor;
+			}
+			TSV_LOG(tsv_log, "THREADS_ALLOCATED", "threads=%d", opt.number_of_cores);
+			int batch_count = 0;
+			while (1){
+				batch_count++;
+				TSV_LOG(tsv_log, "BATCH_START", "batch=%d", batch_count);
 			crash_set_processing_stage("Reading paired-end input files");
 			crash_set_current_file(opt.read1_file);
 			if (opt.fastq==0){
@@ -1638,7 +1342,9 @@ int main(int argc, char **argv){
 			}else{
 				returnLineNumber2 = readInXNumberOfLines_fastq_cf(numberOfLinesToRead/4,seqinfile_2, 2, opt,max_query_length,max_name_length,first_iter);
 			}
-			returnLineNumber = returnLineNumber2;
+				returnLineNumber = returnLineNumber2;
+				TSV_LOG(tsv_log, "BATCH_LOADED", "batch=%d,reads=%d",
+					batch_count, returnLineNumber);
 			first_iter=0;
 			divideFile= returnLineNumber/opt.number_of_cores;
 			j=0;
@@ -1659,10 +1365,17 @@ int main(int argc, char **argv){
 				}
 			}
 			for (i=0; i<opt.number_of_cores;i++){
+				mstr[i].status = 0;
 				pthread_create(&threads[i], NULL, runAssignmentOnChunk_WithBWA, &mstr[i]);
 			}
 			for ( i=0; i<opt.number_of_cores;i++){
 				pthread_join(threads[i], NULL);
+			}
+				for (i=0; i<opt.number_of_cores; i++) {
+				if (mstr[i].status != 0) {
+					fprintf(stderr, "Error: BWA alignment failed for worker %d\n", i);
+					exit(1);
+				}
 			}
 #ifdef ENABLE_PARQUET
 			if (opt.parquet_enabled) {
@@ -1693,6 +1406,7 @@ int main(int argc, char **argv){
 						fprintf(results,"%s\n",mstr[i].str->taxonPath[j]);
 					}
 				}
+				TSV_LOG(tsv_log, "BATCH_ALIGNED_PLACED", "batch=%d", batch_count);
 #ifdef ENABLE_PARQUET
 			}
 #endif
@@ -1700,9 +1414,10 @@ int main(int argc, char **argv){
 				for(j=0; j<mstr[i].end-mstr[i].start; j++){
 					free(mstr[i].str->taxonPath[j]);
 				}
-				free(mstr[i].str->taxonPath);
+					free(mstr[i].str->taxonPath);
+				}
+				TSV_LOG(tsv_log, "BATCH_FREED", "batch=%d", batch_count);
 			}
-		}
 
 		// Log BWA overflow statistics summary for paired-end
 		if (g_overflow_read_count > 0) {
@@ -1768,6 +1483,8 @@ int main(int argc, char **argv){
 			}
 		}
 	}
+	tronko_bwa_context_destroy(bwa_context);
+	TSV_LOG(tsv_log, "BWA_CONTEXT_DESTROYED", "indexes=1,maps=1");
 	
 	if (opt.verbose_level >= 0) {
 		log_current_resource_usage("After freeing thread structures");

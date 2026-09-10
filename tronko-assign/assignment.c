@@ -22,7 +22,7 @@
 	}*/
 /*}*/
 void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positions,
-    type_of_PP ***scores, int alength, int search_number, int print_all_nodes,
+    type_of_PP *scores, int alength, int print_all_nodes,
     FILE* site_scores_file, char* readname,
     int early_termination, type_of_PP *best_score, int *strikes,
     type_of_PP strike_box, int max_strikes,
@@ -37,7 +37,7 @@ void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positio
 
 	if (child0 == -1 && child1 == -1) {
 		// Leaf node
-		scores[search_number][rootNum][node] += node_score;
+		scores[node] += node_score;
 
 		// Update best score tracking
 		if (early_termination && node_score > *best_score) {
@@ -46,7 +46,7 @@ void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positio
 		}
 	} else if (child0 != -1 && child1 != -1) {
 		// Internal node
-		scores[search_number][rootNum][node] += node_score;
+		scores[node] += node_score;
 
 		// Subtree pruning check (only if enabled)
 		// If this node is too bad, skip entire subtree
@@ -83,11 +83,11 @@ void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positio
 
 		// Recurse to children
 		assignScores_Arr_paired(rootNum, child0, locQuery, positions, scores, alength,
-		    search_number, print_all_nodes, site_scores_file, readname,
+		    print_all_nodes, site_scores_file, readname,
 		    early_termination, best_score, strikes, strike_box, max_strikes,
 		    enable_pruning, pruning_threshold);
 		assignScores_Arr_paired(rootNum, child1, locQuery, positions, scores, alength,
-		    search_number, print_all_nodes, site_scores_file, readname,
+		    print_all_nodes, site_scores_file, readname,
 		    early_termination, best_score, strikes, strike_box, max_strikes,
 		    enable_pruning, pruning_threshold);
 	}

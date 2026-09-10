@@ -89,21 +89,23 @@ print_header "Tronko Test Suite"
 # Build the binaries first
 print_header "Building Binaries"
 
+echo "Building tronko-assign..."
+cd tronko-assign
+if make clean && make; then
+    print_success "tronko-assign built successfully"
+else
+    print_error "Failed to build tronko-assign"
+    exit 1
+fi
+
+cd ..
+
 echo "Building tronko-build..."
 cd tronko-build
 if make clean && make; then
     print_success "tronko-build built successfully"
 else
     print_error "Failed to build tronko-build"
-    exit 1
-fi
-
-echo "Building tronko-assign..."
-cd ../tronko-assign
-if make clean && make; then
-    print_success "tronko-assign built successfully"
-else
-    print_error "Failed to build tronko-assign"
     exit 1
 fi
 
@@ -116,14 +118,14 @@ if [[ $RUN_UNIT -eq 1 ]]; then
     cd tests
     
     # Setup Unity if needed
-    if [[ ! -d "unity" ]]; then
+    if [[ ! -f "unity/src/unity.c" ]]; then
         echo "Setting up Unity testing framework..."
         make setup
     fi
     
     if [[ $RUN_COVERAGE -eq 1 ]]; then
         echo "Running tests with coverage..."
-        if make coverage; then
+        if make -f Makefile.simple coverage; then
             print_success "Unit tests passed with coverage"
             echo "Coverage report available in tests/coverage_html/"
         else
@@ -132,7 +134,7 @@ if [[ $RUN_UNIT -eq 1 ]]; then
         fi
     else
         echo "Running unit tests..."
-        if make test; then
+        if make -f Makefile.simple clean test; then
             print_success "Unit tests passed"
         else
             print_error "Unit tests failed"
@@ -147,11 +149,12 @@ fi
 if [[ $RUN_INTEGRATION -eq 1 ]]; then
     print_header "Running Integration Tests"
     
-    echo "Running example dataset tests..."
-    if ./test_with_example_data.sh; then
+    echo "Running deterministic assignment parity tests..."
+    if ./tests/integration/test_assignment_parity.sh; then
         print_success "Integration tests passed"
     else
-        print_warning "Some integration tests failed (may be expected for crash tests)"
+        print_error "Integration tests failed"
+        exit 1
     fi
 fi
 
@@ -164,19 +167,20 @@ if [[ $RUN_VALGRIND -eq 1 ]]; then
     else
         cd tronko-assign
         echo "Running memory leak detection..."
-        valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes \
+        valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all --track-origins=yes \
             ./tronko-assign -r \
             -f ../tronko-build/example_datasets/single_tree/reference_tree.txt \
             -a ../tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
-            -s \
-            -g ../example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
+            -6 -C 1 -c 5 -s \
+            -g ../tests/data/assignment/single.fasta \
             -o valgrind_test_results.txt \
-            -w > valgrind_output.txt 2>&1 || true
+            -w > valgrind_output.txt 2>&1
         
         if grep -q "ERROR SUMMARY: 0 errors" valgrind_output.txt; then
             print_success "No memory errors detected"
         else
-            print_warning "Memory issues detected. Check valgrind_output.txt"
+            print_error "Memory issues detected. Check valgrind_output.txt"
+            exit 1
         fi
         cd ..
     fi
