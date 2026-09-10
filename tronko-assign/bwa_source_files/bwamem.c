@@ -42,7 +42,6 @@
  * When there are gaps, l should be the length of alignment matches (i.e. the M operator in CIGAR)
  */
 
-static const bntseq_t *global_bns = 0; // for debugging only
 
 mem_opt_t *mem_opt_init()
 {
@@ -1294,7 +1293,6 @@ void mem_process_seqs(const mem_opt_t *opt, const bwt_t *bwt, const bntseq_t *bn
 	int i;
 
 	ctime = cputime(); rtime = realtime();
-	global_bns = bns;
 	w.regs = malloc(n * sizeof(mem_alnreg_v));
 	w.opt = opt; w.bwt = bwt; w.bns = bns; w.pac = pac;
 	w.seqs = seqs; w.n_processed = n_processed;

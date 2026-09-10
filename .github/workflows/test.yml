@@ -22,6 +22,7 @@ jobs:
           build-essential \
           cmake \
           zlib1g-dev \
+          libzstd-dev \
           lcov \
           valgrind
     
@@ -82,6 +83,7 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind
     
     - name: Setup Unity testing framework
@@ -109,20 +111,20 @@ jobs:
     
     - name: Run example dataset tests
       run: |
-        chmod +x test_with_example_data.sh
-        timeout 300 ./test_with_example_data.sh || echo "Test completed (may include expected crashes)"
+        chmod +x tests/integration/test_assignment_parity.sh
+        timeout 300 ./tests/integration/test_assignment_parity.sh
     
     - name: Memory leak check with Valgrind
       run: |
         cd tronko-assign
-        valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes \
+        valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all --track-origins=yes \
           ./tronko-assign -r \
           -f ../tronko-build/example_datasets/single_tree/reference_tree.txt \
           -a ../tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
-          -s \
-          -g ../example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta \
+          -6 -C 1 -c 5 -s \
+          -g ../tests/data/assignment/single.fasta \
           -o valgrind_test_results.txt \
-          -w || true
+          -w
   
   comprehensive-tests:
     runs-on: ubuntu-latest
@@ -139,6 +141,7 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind \
           lcov
     
@@ -209,7 +212,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential zlib1g-dev time valgrind
+        sudo apt-get install -y build-essential zlib1g-dev libzstd-dev time valgrind
     
     - name: Build optimized binaries
       run: |

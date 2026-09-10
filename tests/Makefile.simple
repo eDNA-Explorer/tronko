@@ -1,10 +1,19 @@
 # Simple Makefile for Tronko Tests
 # Focuses on testable components without complex dependencies
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+CC = $(if $(wildcard /opt/homebrew/bin/gcc-15),/opt/homebrew/bin/gcc-15,gcc)
+RT_LIB =
+PLATFORM_FLAGS = -D_XOPEN_SOURCE=700 -D_DARWIN_C_SOURCE
+else
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -Wextra -g -O0 -D_GNU_SOURCE
+RT_LIB = -lrt
+PLATFORM_FLAGS =
+endif
+CFLAGS = -std=gnu99 -Wall -Wextra -g -O0 -D_GNU_SOURCE $(PLATFORM_FLAGS)
 INCLUDES = -I../tronko-assign -Iunity/src
-LIBS = -lm -pthread -lrt
+LIBS = -lm -pthread $(RT_LIB)
 
 # Unity framework
 UNITY_SRC = unity/src/unity.c
@@ -19,7 +28,7 @@ CRASH_DEBUG_SOURCES = ../tronko-assign/crash_debug.c \
 CRASH_DEBUG_OBJECTS = $(CRASH_DEBUG_SOURCES:.c=.o)
 
 # Test executables
-TEST_TARGETS = test_crash_debug_simple test_simple_workflows
+TEST_TARGETS = test_crash_debug_simple test_simple_workflows test_candidate_workspace
 
 .PHONY: all clean test smoke
 
@@ -36,6 +45,9 @@ test_crash_debug_simple: unit/test_crash_debug_simple.c $(UNITY_OBJ) $(CRASH_DEB
 # Simple integration test (no source dependencies)
 test_simple_workflows: integration/test_simple_workflows.c $(UNITY_OBJ)
 	$(CC) $(CFLAGS) $(INCLUDES) $^ -o $@ $(LIBS)
+
+test_candidate_workspace: unit/test_candidate_workspace.c $(UNITY_OBJ) ../tronko-assign/candidate_workspace.c
+	$(CC) $(CFLAGS) -DTRONKO_TESTING $(INCLUDES) $^ -o $@ $(LIBS)
 
 # Compile source files with minimal flags
 %.o: %.c

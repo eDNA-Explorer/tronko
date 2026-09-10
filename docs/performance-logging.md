@@ -122,6 +122,22 @@ tronko-assign -V2 -T [options...]
 - **RESULTS_WRITTEN**: Output written to file
 - **BATCH_COMPLETE**: Batch processing finished
 
+The machine-readable `--tsv-log` stream also records ownership-sensitive
+memory phases used for OOM comparisons:
+
+- **BWA_CONTEXT_LOADED** and **LEAF_MAP_READY**: the single process-owned BWA
+  index and accession map are resident.
+- **THREADS_ALLOCATED**: worker-private candidate workspaces exist.
+- **BATCH_ALIGNED_PLACED**: alignment and candidate-local placement completed.
+- **BATCH_FREED**: per-batch result buffers were released; this is the
+  post-batch RSS used to detect growth across batches.
+- **BWA_CONTEXT_DESTROYED** and **FINAL**: shared reference helpers and all
+  process-owned data were torn down.
+
+`tronko-assign/scripts/compare_memlogs.sh` reports the larger of the operating
+system peak-RSS counter and the highest sampled current RSS. This fallback is
+needed on platforms where the peak counter is unavailable.
+
 #### Cleanup Milestones
 - **CLEANUP_START**: Beginning cleanup process
 - **CLEANUP_COMPLETE**: Cleanup finished
