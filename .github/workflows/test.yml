@@ -22,6 +22,7 @@ jobs:
           build-essential \
           cmake \
           zlib1g-dev \
+          libzstd-dev \
           lcov \
           valgrind
     
@@ -82,6 +83,7 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind
     
     - name: Setup Unity testing framework
@@ -109,8 +111,8 @@ jobs:
     
     - name: Run example dataset tests
       run: |
-        chmod +x test_with_example_data.sh
-        timeout 300 ./test_with_example_data.sh || echo "Test completed (may include expected crashes)"
+        chmod +x tests/integration/test_assignment_parity.sh
+        timeout 300 ./tests/integration/test_assignment_parity.sh
     
     - name: Memory leak check with Valgrind
       run: |
@@ -139,6 +141,7 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind \
           lcov
     
@@ -209,7 +212,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential zlib1g-dev time valgrind
+        sudo apt-get install -y build-essential zlib1g-dev libzstd-dev time valgrind
     
     - name: Build optimized binaries
       run: |
