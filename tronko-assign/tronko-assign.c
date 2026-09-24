@@ -428,7 +428,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int leaf_iter=0;
 		dropped_matches_count = 0;  // Reset dropped counter for this read
 		if (bwa_results[iter].concordant_matches_roots[0]==-1 && mstr->concordant==1){
-			for (i=0; i<mstr->ntree; i++){
+			for (i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].discordant_matches_roots[0] < 0 ){
 					//for(j=0; j<mstr->ntree;j++){
 					//	results->leaf_coordinates[j][0]=j;
@@ -475,7 +475,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 			}
 		}else if (mstr->concordant==1){
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
@@ -516,7 +516,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}else{
 			j=0;
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				//if(strlen(bwa_results[iter].discordant_leaf_matches[i])<=3){
 				if(bwa_results[iter].discordant_matches_roots[i]==-1){
 					break;
@@ -559,7 +559,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					no_add=0;
 				}
 			}
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
