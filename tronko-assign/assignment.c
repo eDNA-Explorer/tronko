@@ -169,6 +169,14 @@ int checkPolyA(int rootNum, int node, int position){
 	}
 	return isPolyA;
 }
+/* The two constants getscore_Arr adds, from this translation unit, for the node store
+ * (nodestore.c), which also checks at start-up that they equal what getscore_Arr returns. */
+type_of_PP tronko_log001(void){
+	return log(0.01);
+}
+type_of_PP tronko_log025(void){
+	return log(0.25);
+}
 type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int *positions, int print_all_nodes, FILE* site_scores_file, char* readname){
 	type_of_PP score;
 	int pos, i;
