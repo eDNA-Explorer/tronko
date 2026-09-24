@@ -91,7 +91,13 @@ TEST_MATE_RESCUE = tests/unit/test_mate_rescue
 $(TEST_MATE_RESCUE): tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) global.h
 	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_MATE_RESCUE) tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) -lm -pthread -lz
 
-test: $(TEST_SAM_SEQ) $(TEST_MATE_RESCUE)
+# The unit test of the node-store scoring path, with the same optimisation and architecture flags
+# as the binary.
+TEST_NODESTORE = tests/unit/test_nodestore
+$(TEST_NODESTORE): tests/unit/test_nodestore.c nodestore.c nodestore.h assignment.c getSequenceinRoot.c global.h
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_NODESTORE) tests/unit/test_nodestore.c nodestore.c assignment.c getSequenceinRoot.c -lm -pthread
+
+test: $(TEST_NODESTORE) $(TEST_SAM_SEQ) $(TEST_MATE_RESCUE)
 	bash tests/run_tests.sh
 
 .PHONY: test
