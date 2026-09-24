@@ -376,6 +376,10 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	int max_strikes = mstr->max_strikes;
 	int enable_pruning = mstr->enable_pruning;
 	type_of_PP pruning_factor = mstr->pruning_factor;
+	/* This thread's own copy: the per-read code below writes tstart (and nothing reads it); on the
+	 * global of the same name, every placement thread wrote it without synchronisation, a data
+	 * race that ThreadSanitizer reports. */
+	struct timespec tstart;
 	/*affine_penalties_t affine_penalties = {
 		.match = 0,
 		.mismatch = 4,
