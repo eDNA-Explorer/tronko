@@ -122,7 +122,7 @@ jobs:
         chmod +x tests/integration/test_assignment_parity.sh
         timeout 300 ./tests/integration/test_assignment_parity.sh
 
-    - name: Golden tests (tronko-assign/tests, one thread)
+    - name: Golden tests (tronko-assign/tests)
       env:
         # Outputs that depend on bytes BWA reads out of bounds (tronko-assign/tests/README.md):
         # Ubuntu x86-64 builds cut the SAM text of the three-tree single-end reads, and mate
