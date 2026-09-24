@@ -80,7 +80,13 @@ debug: carquet_lib $(TARGET).c
 
 # Tests (tests/run_tests.sh, described in tests/README.md). The integration tests run the binary
 # this Makefile builds and the BWA-MEM3 binary beside it, so build both first.
-test: $(TARGET) bwa-mem3
+# The unit test of the node-store scoring path is built with the same optimisation and
+# architecture flags as the binary.
+TEST_NODESTORE = tests/unit/test_nodestore
+$(TEST_NODESTORE): tests/unit/test_nodestore.c nodestore.c nodestore.h assignment.c getSequenceinRoot.c global.h
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_NODESTORE) tests/unit/test_nodestore.c nodestore.c assignment.c getSequenceinRoot.c -lm -pthread
+
+test: $(TARGET) bwa-mem3 $(TEST_NODESTORE)
 	bash tests/run_tests.sh
 
 # BWA-MEM3, the aligner tronko-assign runs (a separate program, never linked in): the pinned
