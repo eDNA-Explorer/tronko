@@ -107,6 +107,18 @@ extern "C" {
 	int ksw_extend(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int gapo, int gape, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off);
 	int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off);
 
+	/**
+	 * The kernels ksw_extend2() chooses from at run time (AVX2 if ksw_simd_has_avx2(), else
+	 * SSE2). Each returns what ksw_extend2_scalar(), BWA's original code, returns for the same
+	 * input, and runs the scalar code for inputs outside the 16-bit range. ksw_extend2_avx2()
+	 * may be called only when ksw_simd_has_avx2() is true. Exported for the unit test,
+	 * tronko-assign/tests/unit/test_ksw_extend.c.
+	 */
+	int ksw_extend2_scalar(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off);
+	int ksw_extend2_sse2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off);
+	int ksw_extend2_avx2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off);
+	int ksw_simd_has_avx2(void);
+
 #ifdef __cplusplus
 }
 #endif
