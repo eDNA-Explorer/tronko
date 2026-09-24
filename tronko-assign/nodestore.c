@@ -55,9 +55,13 @@
 #include <pthread.h>
 #include <malloc.h>
 #include <sys/mman.h>
+#include <time.h>
 #include "nodestore.h"
 #include "assignment.h"
 #include "getSequenceinRoot.h"
+#if defined(__x86_64__)
+#include <immintrin.h>
+#endif
 
 #define NS_BIG 9999999999.0            /* getscore_Arr: score=9999999999 when positions[0] == -1 */
 #define NS_ROUND_BYTES (1UL << 30)     /* per-node bytes transposed per round before release */
@@ -68,6 +72,7 @@
 
 ns_tree_t *ns_trees = NULL;
 int ns_max_npad = 0;
+ns_kernel_fn ns_kernel = NULL;
 static double ns_log001, ns_log025;    /* getscore_Arr's log(0.01) and log(0.25) */
 
 int ns_options_eligible(int use_nw, int use_leaf_portion, int print_all_nodes, int enable_pruning,
@@ -224,11 +229,12 @@ static int ns_check_constants(int ntrees)
 
 /* ---------------------------------------------------------------- relayout */
 
-typedef struct { int t, p0, p1; } ns_item_t;
+typedef struct { int t, p0, p1; } ns_item_t;   /* a tree and a range of positions (or of nodes) */
 typedef struct {
 	const ns_item_t *items;
 	int nitems;
 	int next;       /* shared counter, atomic */
+	void (*fn)(const ns_item_t *);
 } ns_work_t;
 
 static size_t ns_old_bytes(int t)
@@ -280,9 +286,30 @@ static void *ns_relayout_worker(void *arg)
 	for (;;) {
 		int i = __atomic_fetch_add(&w->next, 1, __ATOMIC_RELAXED);
 		if (i >= w->nitems) break;
-		ns_transpose_item(&w->items[i]);
+		w->fn(&w->items[i]);
 	}
 	return NULL;
+}
+
+/* Run fn over items with up to nthreads threads (the caller is one of them), then join. */
+static void ns_parallel(void (*fn)(const ns_item_t *), const ns_item_t *items, int nitems, int nthreads, pthread_t *th)
+{
+	ns_work_t w = { items, nitems, 0, fn };
+	int nt = nthreads < nitems ? nthreads : nitems;
+	int started = 0;
+	for (int i = 1; i < nt; i++) {
+		if (pthread_create(&th[i], NULL, ns_relayout_worker, &w) != 0) break;
+		started = i;
+	}
+	ns_relayout_worker(&w);
+	for (int i = 1; i <= started; i++) pthread_join(th[i], NULL);
+}
+
+static double ns_now(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (double)ts.tv_sec + 1e-9 * (double)ts.tv_nsec;
 }
 
 static int ns_sbit(const ns_tree_t *s, int p, int n)
@@ -387,6 +414,15 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 		size_t bytes = 0;
 		for (tb = ta; tb < ntrees && (tb == ta || bytes + ns_old_bytes(tb) <= NS_ROUND_BYTES); tb++)
 			bytes += ns_old_bytes(tb);
+		if (!keep_old && since_trim > 0 && bytes >= NS_ROUND_BYTES) {
+			/* a large tree comes next: return what is already released before its copy is made */
+			double tt = ns_now();
+			malloc_trim(0);
+			st->trims++;
+			st->t_trim += ns_now() - tt;
+			since_trim = 0;
+		}
+		double t0 = ns_now();
 		int nitems = 0;
 		for (int t = ta; t < tb; t++) {
 			ns_tree_t *s = &ns_trees[t];
@@ -412,21 +448,17 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 				nitems++;
 			}
 		}
-		ns_work_t w = { items, nitems, 0 };
-		int nt = nthreads < nitems ? nthreads : nitems;
-		int started = 0;
-		for (int i = 1; i < nt; i++) {
-			if (pthread_create(&th[i], NULL, ns_relayout_worker, &w) != 0) break;
-			started = i;
-		}
-		ns_relayout_worker(&w);
-		for (int i = 1; i <= started; i++) pthread_join(th[i], NULL);
+		ns_parallel(ns_transpose_item, items, nitems, nthreads, th);
+		double t1 = ns_now();
+		st->t_transpose += t1 - t0;
 
 		if (check) {
 			for (int t = ta; t < tb; t++) ns_check_tree(t, st, seq_a, pos_a, seq_b, pos_b);
 			st->checked = 1;
 		}
 		if (!keep_old) {
+			/* every thread that read these arrays has been joined */
+			double t2 = ns_now();
 			for (int t = ta; t < tb; t++) {
 				int N = 2 * numspecArr[t] - 1;
 				for (int n = 0; n < N; n++) {
@@ -436,21 +468,27 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 				since_trim += ns_old_bytes(t);
 				st->freed_gib += (double)ns_old_bytes(t) / (1024.0 * 1024.0 * 1024.0);
 			}
+			double t3 = ns_now();
+			st->t_free += t3 - t2;
 			if (since_trim >= NS_TRIM_BYTES) {
 				malloc_trim(0);
 				st->trims++;
+				st->t_trim += ns_now() - t3;
 				since_trim = 0;
 			}
 		}
 		st->rounds++;
 	}
 	if (!keep_old && since_trim > 0) {
+		double t4 = ns_now();
 		malloc_trim(0);
 		st->trims++;
+		st->t_trim += ns_now() - t4;
 	}
 	free(th);
 	free(items);
 	free(seq_a); free(seq_b); free(pos_a); free(pos_b);
+	st->maps = ns_nmaps;
 	st->built = 1;
 	st->reason = "";
 	return 1;
@@ -480,4 +518,440 @@ void ns_leaf_sequence(int t, int node, char *seq, int *posr, int start_position,
 		count++;
 	}
 	seq[count] = '\0';
+}
+
+/* ---------------------------------------------------------------- kernels */
+
+/*
+ * Row codes, one int32 per row (compiled in ns_sink_add_job):
+ *   c >= 0             nucleotide row: add T[c*Npad + n], c = p*4 + b
+ *   c == -1            positions[i] == -1: add log(0.01)
+ *   c = -2 - p         '-' at column p: add 0 where S(p,n), else log(0.25)
+ *   c = -2 - L - p     any other character at column p: add log(0.01) where S(p,n), else nothing
+ */
+
+/* The two rare rows, lane by lane, written as getscore_Arr writes them. */
+static void ns_special(const ns_tree_t *t, int32_t c, size_t t0, int w, double *acc)
+{
+	int s = -2 - c;
+	if (s < t->L) {
+		const uint8_t *row = t->S + (size_t)s * t->SW;
+		for (int x = 0; x < w; x++) {
+			size_t n = t0 + (size_t)x;
+			if ((row[n >> 3] >> (n & 7)) & 1) acc[x] = acc[x] + 0;
+			else acc[x] = acc[x] + ns_log025;
+		}
+	} else {
+		const uint8_t *row = t->S + (size_t)(s - t->L) * t->SW;
+		for (int x = 0; x < w; x++) {
+			size_t n = t0 + (size_t)x;
+			if ((row[n >> 3] >> (n & 7)) & 1) acc[x] = acc[x] + ns_log001;
+		}
+	}
+}
+
+/* One slot, one tile of W nodes at t0, plain C (the compiler vectorises across lanes). */
+#define NS_DEF_PLAIN_TILE(W)                                                                     \
+static void ns_slot_tile_plain##W(const ns_tree_t *t, const ns_slot_t *sl, const int32_t *codes, \
+                                  double *arena, size_t t0)                                      \
+{                                                                                                \
+	const size_t Np = (size_t)t->Npad;                                                           \
+	const double k01 = ns_log001;                                                                \
+	double *out = arena + sl->out + t0;                                                          \
+	for (int j = 0; j < sl->njob; j++) {                                                         \
+		double acc[W] __attribute__((aligned(64)));                                              \
+		if (sl->big[j]) {                                                                        \
+			for (int x = 0; x < W; x++) acc[x] = NS_BIG;                                         \
+		} else {                                                                                 \
+			const int32_t *code = codes + sl->code_off[j];                                       \
+			const int nc = sl->ncode[j];                                                         \
+			for (int x = 0; x < W; x++) acc[x] = 0.0;                                            \
+			for (int k = 0; k < nc; k++) {                                                       \
+				const int32_t c = code[k];                                                       \
+				if (c >= 0) {                                                                    \
+					const double *row = t->T + (size_t)c * Np + t0;                              \
+					for (int x = 0; x < W; x++) acc[x] = acc[x] + row[x];                        \
+				} else if (c == -1) {                                                            \
+					for (int x = 0; x < W; x++) acc[x] = acc[x] + k01;                           \
+				} else {                                                                         \
+					ns_special(t, c, t0, W, acc);                                                \
+				}                                                                                \
+			}                                                                                    \
+		}                                                                                        \
+		for (int x = 0; x < W; x++) out[x] = out[x] + acc[x];                                    \
+	}                                                                                            \
+}
+NS_DEF_PLAIN_TILE(8)
+NS_DEF_PLAIN_TILE(32)
+
+static void ns_kernel_plain(const ns_tree_t *t, ns_slot_t *const *slots, int nslots,
+                            const int32_t *codes, double *arena)
+{
+	const size_t Np = (size_t)t->Npad;
+	size_t t0 = 0;
+	for (; t0 + 32 <= Np; t0 += 32)
+		for (int i = 0; i < nslots; i++) ns_slot_tile_plain32(t, slots[i], codes, arena, t0);
+	for (; t0 < Np; t0 += 8)
+		for (int i = 0; i < nslots; i++) ns_slot_tile_plain8(t, slots[i], codes, arena, t0);
+}
+
+#if defined(__x86_64__)
+/* AVX2: tiles of 32 nodes in eight 4-lane accumulators. Rows start on 64-byte boundaries (T is
+ * 64-byte aligned and Npad is a multiple of 8), t0 is a multiple of 32, slots are multiples of 8
+ * doubles into a 64-byte aligned arena: every load and store below is aligned. */
+#define NS_V2_ROW(i) a##i = _mm256_add_pd(a##i, _mm256_load_pd(row + 4 * (i)))
+#define NS_V2_CST(i) a##i = _mm256_add_pd(a##i, k01)
+#define NS_V2_SPILL(i) _mm256_store_pd(tmp + 4 * (i), a##i)
+#define NS_V2_FILL(i) a##i = _mm256_load_pd(tmp + 4 * (i))
+#define NS_V2_OUT(i) _mm256_store_pd(out + 4 * (i), _mm256_add_pd(_mm256_load_pd(out + 4 * (i)), a##i))
+#define NS_V2_ALL(M) M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7)
+
+__attribute__((target("avx2")))
+static void ns_kernel_avx2(const ns_tree_t *t, ns_slot_t *const *slots, int nslots,
+                           const int32_t *codes, double *arena)
+{
+	const size_t Np = (size_t)t->Npad;
+	const __m256d k01 = _mm256_set1_pd(ns_log001);
+	const __m256d big = _mm256_set1_pd(NS_BIG);
+	double tmp[32] __attribute__((aligned(64)));
+	size_t t0 = 0;
+	for (; t0 + 32 <= Np; t0 += 32) {
+		for (int i = 0; i < nslots; i++) {
+			const ns_slot_t *sl = slots[i];
+			double *out = arena + sl->out + t0;
+			for (int j = 0; j < sl->njob; j++) {
+				__m256d a0, a1, a2, a3, a4, a5, a6, a7;
+				if (sl->big[j]) {
+					a0 = a1 = a2 = a3 = a4 = a5 = a6 = a7 = big;
+				} else {
+					a0 = a1 = a2 = a3 = a4 = a5 = a6 = a7 = _mm256_setzero_pd();
+					const int32_t *code = codes + sl->code_off[j];
+					const int nc = sl->ncode[j];
+					for (int k = 0; k < nc; k++) {
+						const int32_t c = code[k];
+						if (c >= 0) {
+							const double *row = t->T + (size_t)c * Np + t0;
+							NS_V2_ALL(NS_V2_ROW);
+						} else if (c == -1) {
+							NS_V2_ALL(NS_V2_CST);
+						} else {
+							NS_V2_ALL(NS_V2_SPILL);
+							ns_special(t, c, t0, 32, tmp);
+							NS_V2_ALL(NS_V2_FILL);
+						}
+					}
+				}
+				NS_V2_ALL(NS_V2_OUT);
+			}
+		}
+	}
+	for (; t0 < Np; t0 += 8)
+		for (int i = 0; i < nslots; i++) ns_slot_tile_plain8(t, slots[i], codes, arena, t0);
+}
+
+/* AVX-512F: tiles of 64 nodes in eight 8-lane accumulators; alignment as above. */
+#define NS_V5_ROW(i) a##i = _mm512_add_pd(a##i, _mm512_load_pd(row + 8 * (i)))
+#define NS_V5_CST(i) a##i = _mm512_add_pd(a##i, k01)
+#define NS_V5_SPILL(i) _mm512_store_pd(tmp + 8 * (i), a##i)
+#define NS_V5_FILL(i) a##i = _mm512_load_pd(tmp + 8 * (i))
+#define NS_V5_OUT(i) _mm512_store_pd(out + 8 * (i), _mm512_add_pd(_mm512_load_pd(out + 8 * (i)), a##i))
+
+__attribute__((target("avx512f")))
+static void ns_kernel_avx512(const ns_tree_t *t, ns_slot_t *const *slots, int nslots,
+                             const int32_t *codes, double *arena)
+{
+	const size_t Np = (size_t)t->Npad;
+	const __m512d k01 = _mm512_set1_pd(ns_log001);
+	const __m512d big = _mm512_set1_pd(NS_BIG);
+	double tmp[64] __attribute__((aligned(64)));
+	size_t t0 = 0;
+	for (; t0 + 64 <= Np; t0 += 64) {
+		for (int i = 0; i < nslots; i++) {
+			const ns_slot_t *sl = slots[i];
+			double *out = arena + sl->out + t0;
+			for (int j = 0; j < sl->njob; j++) {
+				__m512d a0, a1, a2, a3, a4, a5, a6, a7;
+				if (sl->big[j]) {
+					a0 = a1 = a2 = a3 = a4 = a5 = a6 = a7 = big;
+				} else {
+					a0 = a1 = a2 = a3 = a4 = a5 = a6 = a7 = _mm512_setzero_pd();
+					const int32_t *code = codes + sl->code_off[j];
+					const int nc = sl->ncode[j];
+					for (int k = 0; k < nc; k++) {
+						const int32_t c = code[k];
+						if (c >= 0) {
+							const double *row = t->T + (size_t)c * Np + t0;
+							NS_V2_ALL(NS_V5_ROW);
+						} else if (c == -1) {
+							NS_V2_ALL(NS_V5_CST);
+						} else {
+							NS_V2_ALL(NS_V5_SPILL);
+							ns_special(t, c, t0, 64, tmp);
+							NS_V2_ALL(NS_V5_FILL);
+						}
+					}
+				}
+				NS_V2_ALL(NS_V5_OUT);
+			}
+		}
+	}
+	for (; t0 < Np; t0 += 8)
+		for (int i = 0; i < nslots; i++) ns_slot_tile_plain8(t, slots[i], codes, arena, t0);
+}
+#endif
+
+const char *ns_select_kernel(const char *name)
+{
+#if defined(__x86_64__)
+	__builtin_cpu_init();
+	int has_avx2 = __builtin_cpu_supports("avx2");
+	int has_avx512 = __builtin_cpu_supports("avx512f");
+	if (name == NULL || name[0] == '\0') {
+		if (has_avx512) { ns_kernel = ns_kernel_avx512; return "avx512"; }
+		if (has_avx2) { ns_kernel = ns_kernel_avx2; return "avx2"; }
+		ns_kernel = ns_kernel_plain;
+		return "plain";
+	}
+	if (strcmp(name, "avx512") == 0) {
+		if (!has_avx512) return NULL;
+		ns_kernel = ns_kernel_avx512;
+		return "avx512";
+	}
+	if (strcmp(name, "avx2") == 0) {
+		if (!has_avx2) return NULL;
+		ns_kernel = ns_kernel_avx2;
+		return "avx2";
+	}
+#endif
+	if (name == NULL || name[0] == '\0' || strcmp(name, "plain") == 0) {
+		ns_kernel = ns_kernel_plain;
+		return "plain";
+	}
+	return NULL;
+}
+
+/* ---------------------------------------------------------------- blocks */
+
+struct ns_block {
+	int max_reads;
+	size_t budget;              /* doubles of slots per block, before the admission of a read */
+	double *arena;              /* 64-byte aligned, budget + one read's worst case */
+	size_t cap, used;           /* doubles */
+	ns_slot_t *slots;
+	ns_slot_t **order;
+	int nslots, cap_slots;
+	int32_t *codes;
+	size_t ncodes, cap_codes;
+	ns_read_t *reads;
+	int nreads;
+	ns_counters_t cnt;
+};
+
+static void *ns_xmalloc(size_t bytes)
+{
+	void *p = malloc(bytes ? bytes : 1);
+	if (!p) { fprintf(stderr, "tronko-assign: out of memory (%zu bytes)\n", bytes); exit(1); }
+	return p;
+}
+
+ns_block_t *ns_block_new(int max_reads, size_t budget_bytes)
+{
+	ns_block_t *B = calloc(1, sizeof(ns_block_t));
+	if (!B) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	if (max_reads < 1) max_reads = 1;
+	B->max_reads = max_reads;
+	B->budget = budget_bytes / sizeof(double);
+	B->cap = B->budget + (size_t)MAX_NUM_BWA_MATCHES * (size_t)ns_max_npad;
+	void *a = NULL;
+	if (posix_memalign(&a, 64, B->cap * sizeof(double) + 64) != 0) {
+		fprintf(stderr, "tronko-assign: out of memory for the scoring arena\n");
+		exit(1);
+	}
+	B->arena = a;
+	B->cap_slots = max_reads * MAX_NUM_BWA_MATCHES;
+	B->slots = ns_xmalloc((size_t)B->cap_slots * sizeof(ns_slot_t));
+	B->order = ns_xmalloc((size_t)B->cap_slots * sizeof(ns_slot_t *));
+	B->reads = ns_xmalloc((size_t)max_reads * sizeof(ns_read_t));
+	B->cap_codes = 1 << 16;
+	B->codes = ns_xmalloc(B->cap_codes * sizeof(int32_t));
+	return B;
+}
+
+void ns_block_free(ns_block_t *B)
+{
+	if (!B) return;
+	free(B->arena);
+	free(B->slots);
+	free(B->order);
+	free(B->reads);
+	free(B->codes);
+	free(B);
+}
+
+void ns_block_reset(ns_block_t *B)
+{
+	B->nreads = 0;
+	B->nslots = 0;
+	B->used = 0;
+	B->ncodes = 0;
+}
+
+int ns_block_nreads(const ns_block_t *B) { return B->nreads; }
+ns_read_t *ns_block_read(ns_block_t *B, int i) { return &B->reads[i]; }
+const ns_counters_t *ns_block_counters(const ns_block_t *B) { return &B->cnt; }
+
+int ns_block_fits(ns_block_t *B, int **leaf_coordinates, int leaf_iter)
+{
+	if (B->nreads == 0) return 1;
+	if (B->nreads >= B->max_reads) return 0;
+	size_t need = 0;
+	for (int k = 0; k < leaf_iter; k++) need += (size_t)ns_trees[leaf_coordinates[k][0]].Npad;
+	if (B->used + need > B->budget) {
+		B->cnt.budget_closes++;
+		return 0;
+	}
+	return 1;
+}
+
+ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf_coordinates, int leaf_iter)
+{
+	if (B->nreads >= B->max_reads || leaf_iter > MAX_NUM_BWA_MATCHES) {
+		fprintf(stderr, "tronko-assign: scoring block overflow\n");
+		abort();
+	}
+	ns_read_t *r = &B->reads[B->nreads++];
+	r->lineNumber = lineNumber;
+	r->iter = iter;
+	r->leaf_iter = leaf_iter;
+	r->fwd_mm = 0;
+	r->rev_mm = 0;
+	for (int k = 0; k < leaf_iter; k++) {
+		int t = leaf_coordinates[k][0];
+		size_t np = (size_t)ns_trees[t].Npad;
+		if (B->used + np > B->cap || B->nslots >= B->cap_slots) {
+			fprintf(stderr, "tronko-assign: scoring arena overflow\n");
+			abort();
+		}
+		r->coords[k][0] = t;
+		r->coords[k][1] = leaf_coordinates[k][1];
+		ns_slot_t *sl = &B->slots[B->nslots];
+		sl->out = B->used;
+		sl->tree = t;
+		sl->njob = 0;
+		/* +0.0 in every lane: what nodeScores holds when a read starts */
+		memset(B->arena + B->used, 0, np * sizeof(double));
+		B->used += np;
+		r->slot[k] = B->nslots++;
+	}
+	B->cnt.reads++;
+	B->cnt.slots += leaf_iter;
+	return r;
+}
+
+void ns_sink_add_job(ns_block_t *B, int match, const int *positions, const char *locQuery, int alength)
+{
+	ns_read_t *r = &B->reads[B->nreads - 1];
+	ns_slot_t *sl = &B->slots[r->slot[match]];
+	if (sl->njob >= 2) {
+		fprintf(stderr, "tronko-assign: more than two scoring jobs for one candidate\n");
+		abort();
+	}
+	int j = sl->njob++;
+	const int L = ns_trees[sl->tree].L;
+	sl->code_off[j] = (int32_t)B->ncodes;
+	sl->ncode[j] = 0;
+	sl->big[j] = positions[0] == -1;
+	B->cnt.jobs++;
+	if (sl->big[j]) return;
+	if (B->ncodes + (size_t)alength > B->cap_codes) {
+		while (B->ncodes + (size_t)alength > B->cap_codes) B->cap_codes *= 2;
+		B->codes = realloc(B->codes, B->cap_codes * sizeof(int32_t));   /* jobs hold offsets */
+		if (!B->codes) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	}
+	int32_t *code = B->codes + B->ncodes;
+	for (int i = 0; i < alength; i++) {
+		const int p = positions[i];
+		const char q = locQuery[i];
+		int32_t c;
+		if (p == -1) {                         /* tested first, as getscore_Arr does */
+			c = -1;
+		} else if (p < 0 || p >= L) {
+			fprintf(stderr, "tronko-assign: alignment column %d outside tree of %d columns\n", p, L);
+			abort();
+		} else if (q == 'a' || q == 'A') {
+			c = p * 4 + 0;
+		} else if (q == 'c' || q == 'C') {
+			c = p * 4 + 1;
+		} else if (q == 'g' || q == 'G') {
+			c = p * 4 + 2;
+		} else if (q == 't' || q == 'T') {
+			c = p * 4 + 3;
+		} else if (q == '-') {
+			c = -2 - p;
+		} else {
+			c = -2 - L - p;
+		}
+		code[i] = c;
+	}
+	sl->ncode[j] = alength;
+	B->ncodes += (size_t)alength;
+	B->cnt.rows += alength;
+}
+
+static int ns_slot_cmp(const void *a, const void *b)
+{
+	const ns_slot_t *x = *(ns_slot_t *const *)a, *y = *(ns_slot_t *const *)b;
+	if (x->tree != y->tree) return x->tree < y->tree ? -1 : 1;
+	return x < y ? -1 : (x > y);
+}
+
+void ns_block_score(ns_block_t *B)
+{
+	int n = 0;
+	for (int i = 0; i < B->nslots; i++)
+		if (B->slots[i].njob > 0) B->order[n++] = &B->slots[i];
+	qsort(B->order, (size_t)n, sizeof(ns_slot_t *), ns_slot_cmp);
+	for (int i = 0; i < n;) {
+		int j = i + 1;
+		while (j < n && B->order[j]->tree == B->order[i]->tree) j++;
+		ns_kernel(&ns_trees[B->order[i]->tree], B->order + i, j - i, B->codes, B->arena);
+		B->cnt.kernel_calls++;
+		i = j;
+	}
+	B->cnt.blocks++;
+}
+
+const double *ns_read_scores(const ns_block_t *B, const ns_read_t *r, int i)
+{
+	return B->arena + B->slots[r->slot[i]].out;
+}
+
+/* The reduction at the end of place_paired_with_nw (placement.c), reading the read's slots where
+ * it reads nodeScores[i][leaf_coordinates[i][0]]: the same loops, literals and comparisons. The
+ * print_all_nodes output is not reproduced; that option keeps the legacy path. */
+void ns_reduce(const ns_block_t *B, const ns_read_t *r, int **voteRoot, type_of_PP *minimum_score)
+{
+	int i, k;
+	int number_of_matches = r->leaf_iter;
+	type_of_PP maximum=-9999999999999999;
+	for (i=0; i<number_of_matches;i++){
+		const double *sc = ns_read_scores(B, r, i);
+		int j = r->coords[i][0];
+		for(k=0; k<2*numspecArr[j]-1; k++){
+			if ( maximum < sc[k]){
+				maximum=sc[k];
+			}
+		}
+	}
+	for(i=0; i<number_of_matches; i++){
+		const double *sc = ns_read_scores(B, r, i);
+		for(k=0; k<2*numspecArr[r->coords[i][0]]-1; k++){
+			if ( sc[k] >= (maximum-Cinterval) && sc[k] <= (maximum+Cinterval) ){
+				voteRoot[r->coords[i][0]][k]=1;
+			}
+		}
+	}
+	minimum_score[0] = maximum;
+	minimum_score[1] = r->fwd_mm;
+	minimum_score[2] = r->rev_mm;
 }
