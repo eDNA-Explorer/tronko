@@ -353,8 +353,8 @@ int bwa_mem2idx(int64_t l_mem, uint8_t *mem, bwaidx_t *idx)
 	int64_t k = 0, x;
 	int i;
 
-	// generate idx->bwt
-	x = sizeof(bwt_t); idx->bwt = malloc(x); memcpy(idx->bwt, mem + k, x); k += x;
+	// generate idx->bwt; a segment holds bwt_t up to the fields tronko appends (sa32), as upstream bwa writes it
+	x = offsetof(bwt_t, sa32); idx->bwt = calloc(1, sizeof(bwt_t)); memcpy(idx->bwt, mem + k, x); k += x;
 	x = idx->bwt->bwt_size * 4; idx->bwt->bwt = (uint32_t*)(mem + k); k += x;
 	x = idx->bwt->n_sa * sizeof(bwtint_t); idx->bwt->sa = (bwtint_t*)(mem + k); k += x;
 
@@ -381,9 +381,9 @@ int bwa_idx2mem(bwaidx_t *idx)
 
 	// copy idx->bwt
 	x = idx->bwt->bwt_size * 4;
-	mem = realloc(idx->bwt->bwt, sizeof(bwt_t) + x); idx->bwt->bwt = 0;
-	memmove(mem + sizeof(bwt_t), mem, x);
-	memcpy(mem, idx->bwt, sizeof(bwt_t)); k = sizeof(bwt_t) + x;
+	mem = realloc(idx->bwt->bwt, offsetof(bwt_t, sa32) + x); idx->bwt->bwt = 0;
+	memmove(mem + offsetof(bwt_t, sa32), mem, x);
+	memcpy(mem, idx->bwt, offsetof(bwt_t, sa32)); k = offsetof(bwt_t, sa32) + x;
 	x = idx->bwt->n_sa * sizeof(bwtint_t); mem = realloc(mem, k + x); memcpy(mem + k, idx->bwt->sa, x); k += x;
 	free(idx->bwt->sa);
 	free(idx->bwt); idx->bwt = 0;

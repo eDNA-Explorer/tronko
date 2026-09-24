@@ -55,7 +55,34 @@ typedef struct {
 	int sa_intv;
 	bwtint_t n_sa;
 	bwtint_t *sa;
+	// Dense suffix-array sample built in memory by bwt_densify_sa() (tronko): when sa32 is set,
+	// sa32[k >> sa32_shift] = SA[k] for every k that is a multiple of 1 << sa32_shift, with
+	// UINT32_MAX standing for the (bwtint_t)-1 that bwt->sa holds for k = 0. These fields must
+	// stay last: bwt_restore_sa() reads 8 bytes into the int sa_intv above, and a bwa shm segment
+	// holds only the bytes before sa32 (bwa_idx2mem, bwa_mem2idx).
+	uint32_t *sa32;
+	int sa32_shift;
 } bwt_t;
+
+// Result of bwt_densify_sa(). status 0: the dense sample is built, verified and in use.
+typedef struct {
+	int status;           // 0 in use; otherwise one of the BWT_DENSE_* reasons below
+	int n_threads;        // threads that ran the build, the caller's included
+	int64_t n_walks;      // text segments, the $ segment included
+	uint64_t n_entries;   // dense entries, seq_len/interval + 1
+	uint64_t n_visited;   // text positions walked; must be seq_len + 1
+	uint64_t n_written;   // dense entries written by the walks; must be n_entries
+	uint64_t n_checked;   // file samples compared (every nonzero one); must be n_sa - 1
+	uint64_t n_mismatch;  // file samples that differed; must be 0
+	uint64_t n_unwritten; // entries still holding the fill value after the walks; must be 0
+	double seconds;       // wall clock of the build, allocation to verdict
+} bwt_dense_stat_t;
+
+#define BWT_DENSE_OK          0
+#define BWT_DENSE_SKIPPED     1 // no file sample, already dense, interval not below sa_intv, or seq_len >= UINT32_MAX
+#define BWT_DENSE_NO_MEMORY   2 // mmap failed
+#define BWT_DENSE_BAD_STARTS  3 // file-sample positions not strictly increasing once sorted
+#define BWT_DENSE_CHECK_FAIL  4 // a count or a file-sample comparison failed
 
 typedef struct {
 	bwtint_t x[3], info;
@@ -100,6 +127,12 @@ extern "C" {
 	bwtint_t bwt_occ(const bwt_t *bwt, bwtint_t k, ubyte_t c);
 	void bwt_occ4(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4]);
 	bwtint_t bwt_sa(const bwt_t *bwt, bwtint_t k);
+	// Build the dense sample (every 1 << shift indices) from the BWT and the file sample, on
+	// n_threads threads, the caller's included. It checks itself; on any failure it frees what it
+	// allocated, leaves bwt unchanged and returns nonzero, and bwt_sa() keeps using bwt->sa. On
+	// success bwt->sa is freed unless keep_sa is set, in which case bwt_sa() computes both lookups
+	// and aborts if they differ. Returns st->status.
+	int bwt_densify_sa(bwt_t *bwt, int shift, int n_threads, int keep_sa, bwt_dense_stat_t *st);
 
 	// more efficient version of bwt_occ/bwt_occ4 for retrieving two close Occ values
 	void bwt_gen_cnt_table(bwt_t *bwt);

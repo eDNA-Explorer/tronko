@@ -40,6 +40,7 @@ typedef struct {
 
 // Function declarations
 int get_resource_stats(resource_stats_t* stats);
+double resource_wall_seconds(void);
 int init_resource_monitoring(void);
 void cleanup_resource_monitoring(void);
 

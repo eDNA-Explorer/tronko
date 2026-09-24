@@ -31,6 +31,11 @@
 #include <assert.h>
 #include <stdint.h>
 #include <limits.h>
+#include <pthread.h>
+#include <sched.h>
+#include <sys/mman.h>
+#include <time.h>
+#include <alloca.h>
 #include "utils.h"
 #include "bwt.h"
 #include "kvec.h"
@@ -83,7 +88,7 @@ void bwt_cal_sa(bwt_t *bwt, int intv)
 	bwt->sa[0] = (bwtint_t)-1; // before this line, bwt->sa[0] = bwt->seq_len
 }
 
-bwtint_t bwt_sa(const bwt_t *bwt, bwtint_t k)
+static inline bwtint_t bwt_sa_sampled(const bwt_t *bwt, bwtint_t k) // the original lookup, on the file sample
 {
 	bwtint_t sa = 0, mask = bwt->sa_intv - 1;
 	while (k & mask) {
@@ -93,6 +98,264 @@ bwtint_t bwt_sa(const bwt_t *bwt, bwtint_t k)
 	/* without setting bwt->sa[0] = -1, the following line should be
 	   changed to (sa + bwt->sa[k/bwt->sa_intv]) % (bwt->seq_len + 1) */
 	return sa + bwt->sa[k/bwt->sa_intv];
+}
+
+bwtint_t bwt_sa(const bwt_t *bwt, bwtint_t k)
+{
+	if (bwt->sa32) {
+		// Same LF walk as bwt_sa_sampled(), stopped at the first multiple of 1 << sa32_shift, which
+		// comes at or before the first multiple of sa_intv. Both samples hold true SA values, so
+		// the result is the same; index 0 ($) holds UINT32_MAX for the file sample's (bwtint_t)-1.
+		bwtint_t sa = 0, k0 = k, mask = ((bwtint_t)1 << bwt->sa32_shift) - 1;
+		uint32_t v;
+		while (k & mask) {
+			++sa;
+			k = bwt_invPsi(bwt, k);
+		}
+		v = bwt->sa32[k >> bwt->sa32_shift];
+		sa += v == UINT32_MAX? (bwtint_t)-1 : (bwtint_t)v;
+		if (bwt->sa && sa != bwt_sa_sampled(bwt, k0)) { // TRONKO_CHECK_SA: the file sample was kept
+			fprintf(stderr, "[E::%s] dense SA lookup of %llu gave %llu, the file sample %llu\n", __func__,
+					(unsigned long long)k0, (unsigned long long)sa, (unsigned long long)bwt_sa_sampled(bwt, k0));
+			abort();
+		}
+		return sa;
+	}
+	return bwt_sa_sampled(bwt, k);
+}
+
+/*********************************************************************
+ * Dense suffix-array sample (tronko). bwt_densify_sa() writes SA[k] for every k that is a
+ * multiple of 1 << shift into a uint32 array, by walking the text backwards from starting points
+ * taken from the file sample: (isa, pos) = (m * sa_intv, sa[m]) for evenly spaced m >= 1, plus
+ * (0, seq_len) for the $ suffix. Sorted by pos, start i owns the text positions from its pos down
+ * to the previous start's pos + 1 (the lowest start down to 0), so the segments cover
+ * [0, seq_len] once, and since positions and SA indices correspond one to one, every index is
+ * visited once. A step is isa <- LF(isa), pos <- pos - 1, the walk of bwt_cal_sa().
+ *
+ * Self-check: the array is filled with UINT32_MAX first (no true value reaches it while
+ * seq_len < UINT32_MAX) and scanned after the walks; every nonzero file sample is compared with
+ * the walk's position; positions visited, entries written and samples compared are counted. Any
+ * failure discards the dense sample.
+ *
+ * Nothing here allocates from the malloc heap: the arrays are mmap'd and the thread handles are
+ * on the stack, so the main thread's heap history (which BWA's mate rescue reads past the end
+ * of mem_opt_t) is unchanged. Threads claim work from shared counters; the caller runs as one of
+ * the workers, so the build completes with however many threads could be created.
+ *********************************************************************/
+
+#define DSA_WALKS     16384        // text segments (plus the $ one)
+#define DSA_IN_FLIGHT 8            // segments a thread advances round-robin, for memory-level parallelism
+#define DSA_SLICE     (1ULL << 22) // entries per fill or scan work unit (16 MiB)
+
+typedef struct { bwtint_t isa, pos, lo; } dsa_walk_t;
+
+typedef struct {
+	const bwt_t *bwt;
+	uint32_t *sa32;
+	int shift;
+	const dsa_walk_t *walk;
+	int64_t n_walk, n_slice;
+	uint64_t n_ent;
+	int64_t fill_next, fill_done, walk_next, walk_done, scan_next; // work counters, atomic
+	uint64_t visited, written, checked, mismatch, unwritten;       // totals, atomic
+} dsa_job_t;
+
+static inline void dsa_prefetch(const bwt_t *bwt, bwtint_t k) // the occurrence block bwt_invPsi(bwt, k) reads
+{
+	const uint32_t *p = bwt_occ_intv(bwt, k - (k >= bwt->primary));
+	__builtin_prefetch(p);
+	__builtin_prefetch(p + 15);
+}
+
+static void dsa_wait(int64_t *counter, int64_t target)
+{
+	while (__atomic_load_n(counter, __ATOMIC_ACQUIRE) < target) sched_yield();
+}
+
+static void *dsa_worker(void *data)
+{
+	dsa_job_t *J = (dsa_job_t*)data;
+	const bwt_t *bwt = J->bwt;
+	const int shift = J->shift;
+	const bwtint_t mask = ((bwtint_t)1 << shift) - 1, file_mask = (bwtint_t)bwt->sa_intv - 1;
+	uint64_t visited = 0, written = 0, checked = 0, mismatch = 0, unwritten = 0;
+	dsa_walk_t act[DSA_IN_FLIGHT];
+	int na = 0, g, more = 1;
+	int64_t i;
+
+	// 1. fill with UINT32_MAX, so an entry no walk writes is visible afterwards
+	while ((i = __atomic_fetch_add(&J->fill_next, 1, __ATOMIC_RELAXED)) < J->n_slice) {
+		uint64_t beg = (uint64_t)i * DSA_SLICE, end = beg + DSA_SLICE < J->n_ent? beg + DSA_SLICE : J->n_ent;
+		memset(J->sa32 + beg, 0xff, (end - beg) * sizeof(uint32_t));
+		__atomic_fetch_add(&J->fill_done, 1, __ATOMIC_RELEASE);
+	}
+	dsa_wait(&J->fill_done, J->n_slice);
+
+	// 2. walk the segments, DSA_IN_FLIGHT at a time
+	for (;;) {
+		while (more && na < DSA_IN_FLIGHT) {
+			i = __atomic_fetch_add(&J->walk_next, 1, __ATOMIC_RELAXED);
+			if (i >= J->n_walk) { more = 0; break; }
+			act[na++] = J->walk[i];
+			dsa_prefetch(bwt, J->walk[i].isa);
+		}
+		if (na == 0) break;
+		for (g = 0; g < na;) {
+			dsa_walk_t *x = &act[g];
+			++visited;
+			if (!(x->isa & mask)) {
+				J->sa32[x->isa >> shift] = (uint32_t)x->pos;
+				++written;
+			}
+			if (!(x->isa & file_mask) && x->isa != 0) { // index 0 holds -1 in the file, not seq_len
+				++checked;
+				if (bwt->sa[x->isa / bwt->sa_intv] != x->pos) ++mismatch;
+			}
+			if (x->pos == x->lo) { // segment done; tested before stepping, so pos never passes 0
+				act[g] = act[--na];
+				__atomic_fetch_add(&J->walk_done, 1, __ATOMIC_RELEASE);
+				continue;
+			}
+			x->isa = bwt_invPsi(bwt, x->isa);
+			--x->pos;
+			dsa_prefetch(bwt, x->isa);
+			++g;
+		}
+	}
+	dsa_wait(&J->walk_done, J->n_walk);
+
+	// 3. scan for entries no walk wrote (entry 0 is set by the caller)
+	while ((i = __atomic_fetch_add(&J->scan_next, 1, __ATOMIC_RELAXED)) < J->n_slice) {
+		uint64_t j, beg = (uint64_t)i * DSA_SLICE, end = beg + DSA_SLICE < J->n_ent? beg + DSA_SLICE : J->n_ent;
+		for (j = beg? beg : 1; j < end; ++j)
+			unwritten += J->sa32[j] == UINT32_MAX;
+	}
+
+	__atomic_fetch_add(&J->visited, visited, __ATOMIC_RELAXED);
+	__atomic_fetch_add(&J->written, written, __ATOMIC_RELAXED);
+	__atomic_fetch_add(&J->checked, checked, __ATOMIC_RELAXED);
+	__atomic_fetch_add(&J->mismatch, mismatch, __ATOMIC_RELAXED);
+	__atomic_fetch_add(&J->unwritten, unwritten, __ATOMIC_RELAXED);
+	return 0;
+}
+
+static void dsa_sort_by_pos(dsa_walk_t *a, int64_t n) // heapsort: qsort may call malloc
+{
+	int64_t start = n / 2, end = n, root, child;
+	dsa_walk_t t;
+	for (;;) {
+		if (start > 0) --start;
+		else if (--end > 0) { t = a[0]; a[0] = a[end]; a[end] = t; }
+		else break;
+		for (root = start; (child = 2 * root + 1) < end; root = child) {
+			if (child + 1 < end && a[child + 1].pos > a[child].pos) ++child;
+			if (a[root].pos >= a[child].pos) break;
+			t = a[root]; a[root] = a[child]; a[child] = t;
+		}
+	}
+}
+
+static double dsa_now(void)
+{
+	struct timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return t.tv_sec + t.tv_nsec * 1e-9;
+}
+
+int bwt_densify_sa(bwt_t *bwt, int shift, int n_threads, int keep_sa, bwt_dense_stat_t *st)
+{
+	double t0 = dsa_now();
+	dsa_job_t J;
+	dsa_walk_t *walk;
+	pthread_t *tid;
+	size_t walk_bytes, ent_bytes;
+	int64_t i, n_file, n_walk, stride;
+	int t, n_started = 0;
+
+	memset(st, 0, sizeof(*st));
+	st->status = BWT_DENSE_SKIPPED;
+	if (bwt->sa == 0 || bwt->sa32 != 0 || shift < 1 || shift > 30 || bwt->sa_intv <= (1 << shift)
+			|| bwt->seq_len >= UINT32_MAX)
+		return st->status;
+	if (n_threads < 1) n_threads = 1;
+	if (n_threads > 1024) n_threads = 1024;
+
+	memset(&J, 0, sizeof(J));
+	J.bwt = bwt;
+	J.shift = shift;
+	J.n_ent = (bwt->seq_len >> shift) + 1;
+	J.n_slice = (int64_t)((J.n_ent + DSA_SLICE - 1) / DSA_SLICE);
+	n_file = (int64_t)bwt->n_sa - 1; // nonzero file samples
+	n_walk = n_file < DSA_WALKS? n_file : DSA_WALKS;
+	J.n_walk = n_walk + 1;
+	st->n_entries = J.n_ent;
+	st->n_walks = J.n_walk;
+
+	ent_bytes = J.n_ent * sizeof(uint32_t);
+	walk_bytes = J.n_walk * sizeof(dsa_walk_t);
+	J.sa32 = (uint32_t*)mmap(0, ent_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	walk = (dsa_walk_t*)mmap(0, walk_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (J.sa32 == MAP_FAILED || walk == MAP_FAILED) {
+		if (J.sa32 != MAP_FAILED) munmap(J.sa32, ent_bytes);
+		if (walk != MAP_FAILED) munmap(walk, walk_bytes);
+		st->status = BWT_DENSE_NO_MEMORY;
+		st->seconds = dsa_now() - t0;
+		return st->status;
+	}
+
+	// starting points, sorted by text position; the $ suffix (pos seq_len) sorts last
+	stride = n_walk? n_file / n_walk : 0;
+	for (i = 0; i < n_walk; ++i) {
+		bwtint_t m = 1 + (bwtint_t)i * stride;
+		walk[i].isa = m * bwt->sa_intv;
+		walk[i].pos = bwt->sa[m];
+	}
+	walk[n_walk].isa = 0;
+	walk[n_walk].pos = bwt->seq_len;
+	dsa_sort_by_pos(walk, J.n_walk);
+	for (i = 0; i < J.n_walk; ++i) {
+		if (i > 0 && walk[i].pos <= walk[i-1].pos) break; // a corrupt sample: segments would overlap
+		walk[i].lo = i? walk[i-1].pos + 1 : 0;
+	}
+	if (i < J.n_walk || walk[J.n_walk - 1].isa != 0) {
+		munmap(J.sa32, ent_bytes); munmap(walk, walk_bytes);
+		st->status = BWT_DENSE_BAD_STARTS;
+		st->seconds = dsa_now() - t0;
+		return st->status;
+	}
+	J.walk = walk;
+
+	tid = (pthread_t*)alloca(n_threads * sizeof(pthread_t));
+	for (t = 1; t < n_threads; ++t)
+		if (pthread_create(&tid[n_started], 0, dsa_worker, &J) == 0) ++n_started;
+	dsa_worker(&J);
+	for (t = 0; t < n_started; ++t) pthread_join(tid[t], 0);
+	munmap(walk, walk_bytes);
+	J.sa32[0] = UINT32_MAX; // the $ suffix; its walk wrote seq_len there
+
+	st->n_threads = n_started + 1;
+	st->n_visited = J.visited;
+	st->n_written = J.written;
+	st->n_checked = J.checked;
+	st->n_mismatch = J.mismatch;
+	st->n_unwritten = J.unwritten;
+	if (J.mismatch != 0 || J.unwritten != 0 || J.visited != bwt->seq_len + 1 || J.written != J.n_ent
+			|| J.checked != (uint64_t)n_file) {
+		munmap(J.sa32, ent_bytes);
+		st->status = BWT_DENSE_CHECK_FAIL;
+		st->seconds = dsa_now() - t0;
+		return st->status;
+	}
+	bwt->sa32 = J.sa32;
+	bwt->sa32_shift = shift;
+	if (!keep_sa) {
+		free(bwt->sa);
+		bwt->sa = 0;
+	}
+	st->status = BWT_DENSE_OK;
+	st->seconds = dsa_now() - t0;
+	return st->status;
 }
 
 static inline int __occ_aux(uint64_t y, int c)
@@ -464,6 +727,7 @@ bwt_t *bwt_restore_bwt(const char *fn)
 void bwt_destroy(bwt_t *bwt)
 {
 	if (bwt == 0) return;
+	if (bwt->sa32) munmap(bwt->sa32, ((bwt->seq_len >> bwt->sa32_shift) + 1) * sizeof(uint32_t));
 	free(bwt->sa); free(bwt->bwt);
 	free(bwt);
 }
