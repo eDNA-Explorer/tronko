@@ -670,6 +670,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int numMinNodes = tally.numMinNodes;
 		int count = tally.count;
 		int maxRoot = tally.maxRoot;
+#ifdef VOTE_SHADOW_CHECK
+		vote_shadow_check(results->voteRoot, numspecArr, mstr->ntree, trees_search, leaf_iter, MAX_NUM_BWA_MATCHES, hitTree, nhit, countVotes, tally, minNodes, maxRoots, lineNumber);
+#endif
 		int unassigned=0;
 		int minLevel=0;
 		int taxRoot,taxIndex0,taxIndex1,taxNode;
@@ -862,6 +865,9 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		if (leaf_iter > 0){
 			vote_reset_hit_trees(results->voteRoot, numspecArr, hitTree, nhit);
 		}
+#ifdef VOTE_SHADOW_CHECK
+		vote_shadow_check_clean(results->voteRoot, numspecArr, mstr->ntree, lineNumber);
+#endif
 	}
 	/*if (use_nw == 0){
 		affine_wavefronts_delete(affine_wavefronts);
