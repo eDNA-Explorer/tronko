@@ -131,6 +131,7 @@ typedef struct resultsStruct{
 	int *starts_reverse;
 	char **cigars_forward;
 	char **cigars_reverse;
+	struct ns_block *nsblk;   /* node-store scoring block of this thread (nodestore.h), or NULL */
 }resultsStruct;
 
 #ifdef ENABLE_PARQUET
