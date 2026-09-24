@@ -8,7 +8,8 @@
 # worker must not read past them.
 #
 # Usage: tests/integration/test_slot_cap.sh     (about 15 s: it compiles the whole program once)
-# Exit 77 (skip) when the compiler cannot build with -fsanitize=address.
+# Exit 77 (skip) when the compiler cannot build with -fsanitize=address or the example reference
+# (tronko-build/example_datasets/single_tree) is not beside tronko-assign/.
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA=$(cd "$HERE/../.." && pwd)
@@ -16,6 +17,9 @@ TA=$(cd "$HERE/../.." && pwd)
 ROOT=$(cd "$TA/.." && pwd)
 EX=$ROOT/tronko-build/example_datasets/single_tree
 CC=${CC:-gcc}
+if [ ! -f "$EX/Charadriiformes.fasta" ] || [ ! -f "$EX/reference_tree.txt" ]; then
+	echo "SKIP: no example reference at $EX"; exit 77
+fi
 T=$(mktemp -d "${TMPDIR:-/tmp}/tronko-slot-cap.XXXXXX")
 if ! echo 'int main(void){return 0;}' | $CC -fsanitize=address -x c - -o "$T/probe" 2> /dev/null; then
 	echo "SKIP: $CC cannot build with -fsanitize=address"; exit 77
