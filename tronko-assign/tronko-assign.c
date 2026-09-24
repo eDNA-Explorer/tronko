@@ -584,6 +584,10 @@ static void finish_read(struct mystruct *mstr, resultsStruct *results, int lineN
 	int maxNumSpec = mstr->maxNumSpec;
 	int number_of_total_nodes = mstr->number_of_total_nodes;
 	int max_readname_length = mstr->max_readname_length;
+	/* This thread's own copy: the per-read code below writes tstart (and nothing reads it); on the
+	 * global of the same name, every placement thread wrote it without synchronisation, a data
+	 * race that ThreadSanitizer reports. */
+	struct timespec tstart;
 	// Votes exist only in the trees this read was scored against (vote_tally.h).
 	int hitTree[MAX_NUM_BWA_MATCHES], countVotes[MAX_NUM_BWA_MATCHES];
 	int nhit = vote_hit_trees(trees_search, leaf_iter, mstr->ntree, hitTree);
