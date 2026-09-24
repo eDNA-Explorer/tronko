@@ -27,6 +27,7 @@
 #include "symbol_resolver.h"
 #include "tsv_memlog.h"
 #include "vote_tally.h"
+#include "nodestore.h"
 #ifdef ENABLE_PARQUET
 #include "parquet_writer.h"
 
@@ -132,6 +133,13 @@ char* strupr(char* s){
 	}
 	return s;
 }
+/* x86-64 production builds have no -march, so the baseline has no fused multiply-add and f + g
+ * below is rounded twice. A -march or -mfma flag would let GCC fuse d*r + g and change every stored
+ * value (see nodestore.c); this keeps the transform unfused on x86 whatever the flags. aarch64
+ * builds are left as they are: GCC fuses there already, and their goldens were made that way. */
+#if defined(__x86_64__) || defined(__i386__)
+__attribute__((optimize("fp-contract=off")))
+#endif
 void store_PPs_Arr(int numberOfRoots, double c){
 	int i, j, k, l;
 	for(i=0; i<numberOfRoots; i++){
@@ -1141,6 +1149,33 @@ int main(int argc, char **argv){
 	maxNumBase = specs[1];
 	free(specs);
 	Cinterval = opt.cinterval;
+	/* Node-innermost store and blocked scoring (nodestore.c), for the production options only.
+	 * TRONKO_NODESTORE=0 skips it; TRONKO_NODESTORE_CHECK=1 compares the store with the per-node
+	 * arrays and every leaf string. Scoring still reads the per-node arrays, so they are kept. */
+	if (ns_options_eligible(opt.use_nw, opt.use_leaf_portion, opt.print_all_nodes, opt.enable_pruning, opt.early_termination, opt.print_alignments, opt.print_alignments_to_file)
+	    && !(getenv("TRONKO_NODESTORE") && strcmp(getenv("TRONKO_NODESTORE"), "0") == 0)){
+		int ns_check = getenv("TRONKO_NODESTORE_CHECK") && strcmp(getenv("TRONKO_NODESTORE_CHECK"), "1") == 0;
+		ns_build_stats_t nst;
+		TSV_LOG_SIMPLE(tsv_log, "RELAYOUT_START");
+		if (ns_build(numberOfTrees, opt.number_of_cores, 1, ns_check, &nst)){
+			TSV_LOG(tsv_log, "RELAYOUT_DONE", "trees=%d,store_gib=%.3f,rounds=%d",
+				numberOfTrees, nst.store_gib, nst.rounds);
+			if (opt.verbose_level >= 0){
+				LOG_INFO("Node store built: %d trees, %.3f GiB, %d rounds", numberOfTrees, nst.store_gib, nst.rounds);
+			}
+		}else{
+			TSV_LOG(tsv_log, "RELAYOUT_DONE", "not_used=%s", nst.reason);
+			fprintf(stderr, "tronko-assign: node store not built (%s)\n", nst.reason);
+		}
+		if (nst.checked){
+			long bad = nst.check_T_bad + nst.check_S_bad + nst.check_pad_bad + nst.check_leaf_bad;
+			fprintf(stderr, "nodestore check: trees=%d values=%ld T_mismatch=%ld S_mismatch=%ld padding_mismatch=%ld nan=%ld leaves=%ld leaf_mismatch=%ld result=%s\n",
+				numberOfTrees, nst.check_values, nst.check_T_bad, nst.check_S_bad, nst.check_pad_bad, nst.check_nan, nst.check_leaves, nst.check_leaf_bad, bad ? "FAIL" : "PASS");
+			if (bad){
+				exit(3);
+			}
+		}
+	}
 	//HASHMAP(char, leafMap) map;
 	//hashmap_init(&map, hashmap_hash_string, strcmp);
 	//for(i=0; i<numberOfTrees; i++){
@@ -1782,6 +1817,9 @@ int main(int argc, char **argv){
 		free(treeArr[i]);
 	}
 	free(treeArr);
+	if (ns_trees != NULL){
+		ns_free_store(numberOfTrees);
+	}
 	
 	if (opt.verbose_level >= 0) {
 		log_current_resource_usage("After freeing tree arrays");

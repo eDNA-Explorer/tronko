@@ -53,7 +53,7 @@ else
     PARQUET_LIBS =
 endif
 #sources
-SOURCES = tronko-assign.c sam_parse.c bwamem3.c readreference.c assignment.c allocateMemoryForResults.c allocatetreememory.c getSequenceinRoot.c placement.c options.c printAlignments.c logger.c resource_monitor.c crash_debug.c symbol_resolver.c
+SOURCES = tronko-assign.c sam_parse.c bwamem3.c readreference.c assignment.c allocateMemoryForResults.c allocatetreememory.c getSequenceinRoot.c placement.c options.c printAlignments.c logger.c resource_monitor.c crash_debug.c symbol_resolver.c nodestore.c
 NEEDLEMANWUNSCH = needleman_wunsch.c alignment.c alignment_scoring.c
 WFA2 = WFA2/profiler_timer.c WFA2/wavefront_backtrace.c WFA2/wavefront_compute.c WFA2/wavefront_pcigar.c WFA2/bitmap.c WFA2/wavefront_compute_edit.c WFA2/wavefront_backtrace_offload.c  WFA2/wavefront_penalties.c WFA2/cigar.c WFA2/string_padded.c WFA2/wavefront_bialign.c WFA2/wavefront_compute_linear.c  WFA2/wavefront_plot.c WFA2/vector.c WFA2/wavefront_bialigner.c WFA2/heatmap.c WFA2/wavefront_debug.c WFA2/wavefront_slab.c WFA2/wavefront_align.c WFA2/wavefront_aligner.c WFA2/wavefront.c WFA2/wavefront_unialign.c WFA2/wavefront_components.c WFA2/wavefront_extend.c WFA2/mm_allocator.c WFA2/wavefront_attributes.c WFA2/wavefront_compute_affine2p.c WFA2/wavefront_heuristic.c WFA2/profiler_counter.c WFA2/wavefront_backtrace_buffer.c WFA2/wavefront_compute_affine.c
 HASHMAP = hashmap.c
