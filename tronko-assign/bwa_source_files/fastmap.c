@@ -220,7 +220,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					if (aux->concordant==1 && no_add==0 && strcmp(read2,"=")!=0){ no_add=1;}
-					if (no_add==0 && strcmp(read2,"=")==0){
+					if (no_add==0 && k < MAX_NUM_BWA_MATCHES && strcmp(read2,"=")==0){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
@@ -253,7 +253,7 @@ static void *process(void *shared, int step, void *_data)
 					}
 					//if (aux->concordant==1){ no_add=1;}
 					if (k==0){ no_add=1; }
-					if (no_add==0 && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0){
+					if (no_add==0 && k < MAX_NUM_BWA_MATCHES && strcmp(read2,"*")!=0 && strcmp(read1,"=")!=0){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j-1].concordant_matches_roots[k] = leaf_map->root;
@@ -292,7 +292,7 @@ static void *process(void *shared, int step, void *_data)
 							}
 						}
 					}
-					if (no_add==0 && strcmp(read2,"=") != 0){
+					if (no_add==0 && k < MAX_NUM_BWA_MATCHES && strcmp(read2,"=") != 0){
 							struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read1);
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
@@ -323,7 +323,7 @@ static void *process(void *shared, int step, void *_data)
 						//	no_add=1;
 						//}
 					}
-					if (no_add==0 && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0){
+					if (no_add==0 && k < MAX_NUM_BWA_MATCHES && strcmp(read2,"=")!=0 && strcmp(read2,"*")!=0){
 						struct leafMap *leaf_map;
 						leaf_map=hashmap_get(&map,read2);
 						aux->results[j-1].discordant_matches_roots[k] = leaf_map->root;
@@ -336,7 +336,7 @@ static void *process(void *shared, int step, void *_data)
 						}
 					}
 					no_add=0;
-					if ( decimal == 0 && aux->results[j-1].use_portion==1){
+					if ( decimal == 0 && k < MAX_NUM_BWA_MATCHES && aux->results[j-1].use_portion==1){
 						strcpy(aux->results[j-1].cigars_reverse[k],cigar);
 						aux->results[j-1].starts_reverse[k] = start_position;
 					}
