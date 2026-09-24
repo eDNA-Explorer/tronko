@@ -92,4 +92,115 @@ static inline void vote_reset_hit_trees(int **voteRoot, const int *numspec, cons
 	}
 }
 
+/* The tally as tronko-assign computed it before the hit-tree change, a pass over every node of
+   every tree, kept as the reference for tests/unit/test_vote_tally.c and the VOTE_SHADOW_CHECK
+   build. countVotes and maxRoots need room for ntree entries, minNodes for all the votes. */
+static inline vote_tally_t vote_tally_all_trees(int *const *voteRoot, const int *numspec, int ntree,
+                                                int *countVotes, int *minNodes, int *maxRoots)
+{
+	vote_tally_t r = {0, 0, 0, -1};
+	int i, j, count = 0, count2 = 0;
+	for (i = 0; i < ntree; i++) {
+		countVotes[i] = 0;
+		for (j = 0; j < 2*numspec[i]-1; j++) {
+			if (voteRoot[i][j] == 1) {
+				countVotes[i]++;
+				minNodes[count] = j;
+				count++;
+			}
+		}
+	}
+	r.numMinNodes = count;
+	for (i = 0; i < ntree; i++) {
+		if (countVotes[i] > r.max) {
+			r.max = countVotes[i];
+			r.maxRoot = i;
+		}
+		if (countVotes[i] > 0) {
+			r.count++;
+		}
+	}
+	for (i = 0; i < ntree; i++) {
+		if (countVotes[i] > 0) {
+			maxRoots[count2] = i;
+			count2++;
+		}
+	}
+	return r;
+}
+
+#ifdef VOTE_SHADOW_CHECK
+/* Debug build (make clean && make ARCH_FLAGS=-DVOTE_SHADOW_CHECK): after each read's tally,
+   recompute the full pass and compare every value; after the reset, check that every vote row of
+   every tree is zero. Any difference prints the read and aborts. At exit, one line on stderr:
+     VOTE_SHADOW reads=<n> multi_hit=<n> multi_vote=<n> unsorted=<n> neg_in_prefix=<n>
+                 dup_in_prefix=<n> cap_reached=<n> written_past_prefix=<n>
+   multi_hit: reads with more than one hit tree; multi_vote: with votes in more than one tree;
+   unsorted: trees_search out of tree order; neg_in_prefix: a -1 or other invalid id inside the
+   scanned prefix (expected 0, reachable only through BWA's candidate-list over-read);
+   dup_in_prefix: a tree listed twice (expected 0 unless the reference has fewer trees than
+   MAX_NUM_BWA_MATCHES); cap_reached: leaf_iter == MAX_NUM_BWA_MATCHES; written_past_prefix:
+   a tree id at or beyond min(leaf_iter, ntree) (expected 0). About as slow as the code before
+   the change, plus one more pass over the vote rows per read. */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static long vote_shadow_n[8];
+__attribute__((destructor)) static void vote_shadow_report(void)
+{
+	fprintf(stderr, "VOTE_SHADOW reads=%ld multi_hit=%ld multi_vote=%ld unsorted=%ld neg_in_prefix=%ld "
+	        "dup_in_prefix=%ld cap_reached=%ld written_past_prefix=%ld\n", vote_shadow_n[0], vote_shadow_n[1],
+	        vote_shadow_n[2], vote_shadow_n[3], vote_shadow_n[4], vote_shadow_n[5], vote_shadow_n[6], vote_shadow_n[7]);
+}
+static void vote_shadow_count(int which) { __atomic_add_fetch(&vote_shadow_n[which], 1, __ATOMIC_RELAXED); }
+static void vote_shadow_fail(int read, const char *what)
+{
+	fprintf(stderr, "VOTE_SHADOW MISMATCH read %d: %s\n", read, what);
+	abort();
+}
+static void vote_shadow_check(int *const *voteRoot, const int *numspec, int ntree, const int *trees_search,
+                              int leaf_iter, int cap, const int *hit, int nhit, const int *countVotes,
+                              vote_tally_t t, const int *minNodes, const int *maxRoots, int read)
+{
+	static __thread int *cv, *mn, *mr;
+	int i, k, scan = leaf_iter < ntree ? leaf_iter : ntree;
+	if (!cv) {
+		long nodes = 0;
+		for (i = 0; i < ntree; i++) nodes += 2*numspec[i]-1;
+		cv = malloc(ntree * sizeof(int));
+		mr = malloc(ntree * sizeof(int));
+		mn = malloc(nodes * sizeof(int));
+		if (!cv || !mr || !mn) vote_shadow_fail(read, "out of memory");
+	}
+	vote_tally_t o = vote_tally_all_trees(voteRoot, numspec, ntree, cv, mn, mr);
+	if (o.numMinNodes != t.numMinNodes) vote_shadow_fail(read, "numMinNodes");
+	if (memcmp(mn, minNodes, o.numMinNodes * sizeof(int)) != 0) vote_shadow_fail(read, "minNodes");
+	if (o.count != t.count) vote_shadow_fail(read, "count");
+	if (memcmp(mr, maxRoots, o.count * sizeof(int)) != 0) vote_shadow_fail(read, "maxRoots");
+	if (o.maxRoot != t.maxRoot || o.max != t.max) vote_shadow_fail(read, "maxRoot or max");
+	for (k = 0; k < nhit; k++) {
+		if (countVotes[k] != cv[hit[k]]) vote_shadow_fail(read, "votes of a hit tree");
+		cv[hit[k]] = 0;
+	}
+	for (i = 0; i < ntree; i++)
+		if (cv[i] != 0) vote_shadow_fail(read, "votes outside the hit trees");
+	vote_shadow_count(0);
+	if (nhit > 1) vote_shadow_count(1);
+	if (o.count > 1) vote_shadow_count(2);
+	for (i = 1; i < scan; i++) if (trees_search[i] < trees_search[i-1]) { vote_shadow_count(3); break; }
+	for (i = 0; i < scan; i++) if (trees_search[i] < 0 || trees_search[i] >= ntree) { vote_shadow_count(4); break; }
+	for (i = 1, k = 0; i < scan && !k; i++) { int m; for (m = 0; m < i; m++) if (trees_search[m] == trees_search[i] && trees_search[i] >= 0) k = 1; }
+	if (k) vote_shadow_count(5);
+	if (leaf_iter == cap) vote_shadow_count(6);
+	for (i = scan; i < ntree; i++) if (trees_search[i] != -1) { vote_shadow_count(7); break; }
+}
+static void vote_shadow_check_clean(int *const *voteRoot, const int *numspec, int ntree, int read)
+{
+	int i, j;
+	for (i = 0; i < ntree; i++)
+		for (j = 0; j < 2*numspec[i]-1; j++)
+			if (voteRoot[i][j] != 0) vote_shadow_fail(read, "voteRoot not all zero after the reset");
+}
+#endif
+
 #endif

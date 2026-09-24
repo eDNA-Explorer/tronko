@@ -20,6 +20,11 @@
 # Fixture: tests/data/multitree/ (reference_tree.trkb, multitree.fasta and its BWA index,
 # single_F.fasta, single_R.fasta; the pairs are tests/data/assignment/paired_2000_{1,2}.fasta
 # at the repository root). Goldens: tests/data/multitree/goldens[-cap25]/expected_<case>.tsv.
+# With a binary built with -DVOTE_SHADOW_CHECK (make ARCH_FLAGS=-DVOTE_SHADOW_CHECK) every read's
+# vote tally is also compared with the full pass over every tree; a difference aborts the run, and
+# the script prints the counters (reads with several hit trees, with votes in several trees, with
+# candidate lists out of tree order).
+#
 # Environment: see golden_lib.sh; TRONKO_MULTITREE_DIR replaces the fixture directory.
 set -uo pipefail
 
@@ -46,8 +51,13 @@ run_case() {
 	shift
 	for n in $CORES; do
 		out=$TMP_DIR/$c-c$n.tsv
-		run_assign "$TMP_DIR/$c-c$n.log" "${COMMON[@]}" --number-of-cores "$n" "$@" -o "$out" || { FAILS=$((FAILS + 1)); continue; }
+		if ! run_assign "$TMP_DIR/$c-c$n.log" "${COMMON[@]}" --number-of-cores "$n" "$@" -o "$out"; then
+			grep -h 'VOTE_SHADOW' "$TMP_DIR/$c-c$n.log" >&2 || true
+			FAILS=$((FAILS + 1))
+			continue
+		fi
 		check_output "$c" "$GOLDENS/expected_$c.tsv" "$out" "$c, --number-of-cores $n"
+		grep -h 'VOTE_SHADOW' "$TMP_DIR/$c-c$n.log" | sed 's/^/  /' || true
 	done
 }
 
