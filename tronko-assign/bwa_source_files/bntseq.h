@@ -61,7 +61,10 @@ typedef struct {
 	int32_t n_holes;
 	bntamb1_t *ambs; // n_holes elements
 	FILE *fp_pac;
+	int32_t *rid_bucket; // bns_pos2rid() at the start of every 2^BNS_RID_BUCKET_SHIFT bases, or 0; see bns_rid_bucket_build()
 } bntseq_t;
+
+#define BNS_RID_BUCKET_SHIFT 8
 
 extern unsigned char nst_nt4_table[256];
 
@@ -79,6 +82,8 @@ extern "C" {
 	uint8_t *bns_get_seq(int64_t l_pac, const uint8_t *pac, int64_t beg, int64_t end, int64_t *len);
 	uint8_t *bns_fetch_seq(const bntseq_t *bns, const uint8_t *pac, int64_t *beg, int64_t mid, int64_t *end, int *rid);
 	int bns_intv2rid(const bntseq_t *bns, int64_t rb, int64_t re);
+	void bns_rid_bucket_build(bntseq_t *bns);
+	void bns_rid_bucket_destroy(bntseq_t *bns);
 
 #ifdef __cplusplus
 }

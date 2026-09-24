@@ -31,6 +31,7 @@
 #include <zlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/mman.h>
 #include "bntseq.h"
 #include "utils.h"
 
@@ -217,6 +218,7 @@ void bns_destroy(bntseq_t *bns)
 			free(bns->anns[i].anno);
 		}
 		free(bns->anns);
+		bns_rid_bucket_destroy(bns);
 		free(bns);
 	}
 }
@@ -346,9 +348,52 @@ int bwa_fa2pac(int argc, char *argv[])
 	return 0;
 }
 
+/* The bucket table: rid_bucket[b] = bns_pos2rid(bns, b << BNS_RID_BUCKET_SHIFT) for every bucket b
+ * that starts inside the forward strand [0, l_pac). bns_pos2rid() returns the largest r with
+ * anns[r].offset <= pos (0 if there is none). When the offsets never decrease, that r is at or after
+ * the bucket's value for every later position of the same bucket, so the table's value followed by
+ * a forward scan over anns[].offset reaches the same r as the binary search. The table is built
+ * once, at index load, before any aligning thread starts, and only read afterwards. It is mapped
+ * with mmap() rather than malloc() so that the malloc heap and its history are the same as without
+ * the table. */
+static int64_t bns_rid_bucket_n(const bntseq_t *bns)
+{
+	return ((bns->l_pac - 1) >> BNS_RID_BUCKET_SHIFT) + 1;
+}
+
+void bns_rid_bucket_build(bntseq_t *bns)
+{
+	int64_t b, n_bucket, r;
+	int32_t *tab;
+	if (bns == 0 || bns->rid_bucket || bns->l_pac <= 0 || bns->n_seqs <= 0) return;
+	for (r = 1; r < bns->n_seqs; ++r) // the forward scan needs offsets that never decrease
+		if (bns->anns[r].offset < bns->anns[r-1].offset) return;
+	n_bucket = bns_rid_bucket_n(bns);
+	tab = (int32_t*)mmap(0, n_bucket * sizeof(int32_t), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if (tab == MAP_FAILED) return; // bns_pos2rid() keeps using the binary search
+	for (b = 0, r = 0; b < n_bucket; ++b) { // one sweep: r = bns_pos2rid(bns, b << BNS_RID_BUCKET_SHIFT)
+		int64_t pos = b << BNS_RID_BUCKET_SHIFT;
+		while (r + 1 < bns->n_seqs && bns->anns[r+1].offset <= pos) ++r;
+		tab[b] = (int32_t)r;
+	}
+	bns->rid_bucket = tab;
+}
+
+void bns_rid_bucket_destroy(bntseq_t *bns)
+{
+	if (bns == 0 || bns->rid_bucket == 0) return;
+	munmap(bns->rid_bucket, bns_rid_bucket_n(bns) * sizeof(int32_t));
+	bns->rid_bucket = 0;
+}
+
 int bns_pos2rid(const bntseq_t *bns, int64_t pos_f)
 {
 	int left, mid, right;
+	if (bns->rid_bucket && pos_f >= 0 && pos_f < bns->l_pac) { // the bucket's accession, then forward
+		int32_t r = bns->rid_bucket[pos_f >> BNS_RID_BUCKET_SHIFT];
+		while (r + 1 < bns->n_seqs && bns->anns[r+1].offset <= pos_f) ++r;
+		return r;
+	}
 	if (pos_f >= bns->l_pac) return -1;
 	left = 0; mid = 0; right = bns->n_seqs;
 	while (left < right) { // binary search
