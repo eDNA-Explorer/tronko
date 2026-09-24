@@ -121,6 +121,9 @@ jobs:
       run: |
         chmod +x tests/integration/test_assignment_parity.sh
         timeout 300 ./tests/integration/test_assignment_parity.sh
+
+    - name: Assignment parity with the production invocation
+      run: bash tests/integration/test_assignment_production_parity.sh
     
     - name: Memory leak check with Valgrind
       run: |
