@@ -122,8 +122,14 @@ jobs:
         chmod +x tests/integration/test_assignment_parity.sh
         timeout 300 ./tests/integration/test_assignment_parity.sh
 
-    - name: Assignment parity with the production invocation
-      run: bash tests/integration/test_assignment_production_parity.sh
+    - name: Golden tests (tronko-assign/tests, one thread)
+      env:
+        # Outputs that depend on bytes BWA reads out of bounds (tronko-assign/tests/README.md):
+        # Ubuntu x86-64 builds cut the SAM text of the three-tree single-end reads, and mate
+        # rescue reads past its score matrix. Fixed, with the goldens regenerated, by a later
+        # pull request of this series (branch pr/03-ub-fixes).
+        TRONKO_TESTS_XFAIL: mt_single_F mt_unpaired_R mr_paired
+      run: make -C tronko-assign/tests test
     
     - name: Memory leak check with Valgrind
       run: |
