@@ -13,13 +13,15 @@ make -C tronko-assign clean && make -C tronko-assign      # the binary under tes
 make -C tronko-assign/tests test                          # every test
 make -C tronko-assign/tests test-san                      # the unit tests of tests/Makefile under ASan and UBSan
 make -C tronko-assign/tests test-shadow                   # tronko-assign built with -DNW_SHADOW on the repository fixtures
+make -C tronko-assign/tests test-tsan                     # the threaded unit tests under ThreadSanitizer (x86-64)
 make -C tronko-assign/tests clean
 ```
 
 `make -C tronko-assign/tests test` builds and runs the unit tests of `tests/Makefile` with
 production's flags (gcc `-O3 -fno-stack-protector`, no `-march`), then `tronko-assign`'s own
 `make test`. Requirements: gcc and zlib (`build-essential zlib1g-dev libzstd-dev`), Linux on
-x86-64 or aarch64.
+x86-64 or aarch64. If ThreadSanitizer stops with "unexpected memory mapping" (kernels with high
+ASLR entropy), run it as `setarch x86_64 -R make -C tronko-assign/tests test-tsan`.
 
 `tronko-assign`'s `make test` builds the unit tests of the undefined-behaviour fixes with the
 binary's compiler flags and runs `tests/run_tests.sh`.
@@ -61,6 +63,7 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_nodestore_paths.sh` | `tests/data/assignment` | every node-store variant (block sizes, budget, kernels, the legacy loop, reads without candidates at block edges) reproduces the goldens (below) |
 | `unit/test_nw_fill` | `data/nw_fixture_alignments.txt.gz`, small and random alignments | the two-pass Needleman-Wunsch fill equals the original fill cell by cell (below) |
 | `integration/test_nw_shadow.sh` (`make test-shadow`) | `tests/data/assignment` | a build that runs both fills on every alignment and aborts on a difference reproduces the goldens |
+| `unit/test_dense_sa` | the example BWA index and synthetic indexes | the dense suffix-array sample returns what BWA's sampled lookup returns for every entry (below) |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -467,3 +470,42 @@ production-parity fixture cases at 1 and 4 threads (`TRONKO_ASSIGN_CORES`) with 
 production goldens. `make test-shadow` builds `tests/tronko-assign-nw-shadow` with the main build's
 compiler line (a minute or two) and runs it; `tronko-assign/tronko-assign` is left alone. The same
 build can be pointed at any other read set.
+
+## `unit/test_dense_sa.c`
+
+`bwa_source_files/bwt.c` can replace the BWA index's suffix-array sample (every 32nd index, from
+the `.sa` file) with a denser one built in memory when the index is loaded
+(`bwt_densify_sa()`, called once per process from `main_mem` in `fastmap.c`): a `uint32` value
+every 4th index, so that `bwt_sa()` walks about 3 steps of the BWT instead of 31 to turn a
+suffix-array index into a text position. BWA's seeds, chains and hits, and so Tronko's output,
+stay the same only if `bwt_sa()` returns exactly the value the original walk over the file sample
+returns, for every index. The test checks that:
+
+- on the repository's Charadriiformes index (`tronko-build/example_datasets/single_tree/`), whose
+  `primary % 4` is 2, so walks through `primary` step into index 0 and read the `$` sentinel: every
+  dense entry against the original lookup of its index, the dense lookup against the original for
+  every index (910,485) at 4 threads and for 100,000 random indexes at the other thread counts and
+  intervals, and the checking lookup (`TRONKO_CHECK_SA`) on a sixteenth of them;
+- on 289 synthetic indexes whose suffix array the test computes itself by sorting the suffixes,
+  independently of BWA (random, two-letter, periodic and single-letter texts of 1 to 270,000
+  bases, file intervals 32, 16 and 8, dense intervals 2 to 16, 1 to 9 threads): every entry and
+  every index against the true suffix array and the original lookup. All four residues of
+  `primary % 4` occur, and one index has more file samples than the build has segments;
+- the build's self-check: a corrupted file sample, at a segment start and elsewhere, makes it give
+  up and leave the index on the file sample; it skips a `seq_len` at or above `UINT32_MAX`, a
+  missing file sample, an interval not below the file's, and a second build;
+- the checking mode computes both lookups and aborts on a corrupted dense entry;
+- without the checking mode the file sample is freed and its pointer cleared, the lookups still
+  equal those of an untouched copy of the index, and `bwt_destroy()` releases everything (the
+  sanitizer build runs with leak detection).
+
+It prints, on success:
+
+```
+fixture: seq_len 910484, primary 349034 (% 4 = 2), 18 dense walks through the $ sentinel
+fixture: file sample 1 corrupted: status 4 (mismatches 1, unwritten 1), file sample kept
+fixture: file sample 28452 corrupted: status 4 (mismatches 1, unwritten 0), file sample kept
+fixture: TRONKO_CHECK_SA lookup aborts on a corrupted dense entry
+synthetic: 289 indexes, primary % 4 residues seen 0xf, 3739 dense walks through the $ sentinel
+test_dense_sa: 6339561 entries and lookups compared, 0 failures
+```
