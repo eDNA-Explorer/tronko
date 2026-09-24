@@ -80,8 +80,18 @@ debug: carquet_lib $(TARGET).c
 	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 # Tests (tests/run_tests.sh, described in tests/README.md). The integration tests run the binary
-# this Makefile builds, so build it first.
-test:
+# this Makefile builds, so build it first. The unit tests of the undefined-behaviour fixes link the
+# BWA sources mem_aln2sam and mem_matesw need, with the binary's optimisation and architecture flags.
+TEST_SAM_SEQ = tests/unit/test_sam_seq
+TEST_SAM_SEQ_BWA = bwa_source_files/bntseq.c bwa_source_files/bwa.c bwa_source_files/bwamem.c bwa_source_files/bwamem_extra.c bwa_source_files/bwamem_pair.c bwa_source_files/bwt.c bwa_source_files/kopen.c bwa_source_files/kstring.c bwa_source_files/ksw.c bwa_source_files/kthread.c bwa_source_files/utils.c
+$(TEST_SAM_SEQ): tests/unit/test_sam_seq.c $(TEST_SAM_SEQ_BWA) global.h
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_SAM_SEQ) tests/unit/test_sam_seq.c $(TEST_SAM_SEQ_BWA) -lm -pthread -lz
+
+TEST_MATE_RESCUE = tests/unit/test_mate_rescue
+$(TEST_MATE_RESCUE): tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) global.h
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_MATE_RESCUE) tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) -lm -pthread -lz
+
+test: $(TEST_SAM_SEQ) $(TEST_MATE_RESCUE)
 	bash tests/run_tests.sh
 
 .PHONY: test
