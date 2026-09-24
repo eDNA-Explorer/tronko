@@ -64,6 +64,8 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `unit/test_nw_fill` | `data/nw_fixture_alignments.txt.gz`, small and random alignments | the two-pass Needleman-Wunsch fill equals the original fill cell by cell (below) |
 | `integration/test_nw_shadow.sh` (`make test-shadow`) | `tests/data/assignment` | a build that runs both fills on every alignment and aborts on a difference reproduces the goldens |
 | `unit/test_dense_sa` | the example BWA index and synthetic indexes | the dense suffix-array sample returns what BWA's sampled lookup returns for every entry (below) |
+| `unit/test_chain_flt` | `data/chain_flt_fixture.chf.gz`, random and constructed calls | the grouped chain filter equals BWA's `mem_chain_flt` (below) |
+| `unit/test_pos2rid` | the example BWA index and random intervals | the bucketed accession lookup equals BWA's `bns_intv2rid`/`bns_pos2rid` (below) |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -117,12 +119,14 @@ tronko-assign/tests/
   data/gaps/<fixture>/goldens[-cap25]/expected_<case>.tsv
   data/ksw_fixture_calls.kswd.gz             ksw_extend2 calls recorded on the fixtures (tools/record_ksw_calls.sh)
   data/nw_fixture_alignments.txt.gz          needleman_wunsch_align() inputs recorded on the fixtures (tools/record_nw_alignments.sh)
+  data/chain_flt_fixture.chf.gz              mem_chain_flt() calls recorded on the fixtures (tools/record_chain_flt.sh)
   data/real/<marker>/<set>/                  real-reference read pairs and goldens (below)
   manifests/<marker>.sha256                  the real references, by URL with SHA-256
   real/                                      Makefile, lib.sh, test-real.sh, verify-branches.sh, make-goldens.sh
   tools/                                     the fixture generators: make_fixture_inputs.sh and its Python tools
   tools/record_ksw_calls.sh, tools/ksw_record.patch   record data/ksw_fixture_calls.kswd.gz again
   tools/record_nw_alignments.sh              record data/nw_fixture_alignments.txt.gz again
+  tools/record_chain_flt.sh                  record data/chain_flt_fixture.chf.gz again
 ```
 
 The pairs of the three-tree fixture are `tests/data/assignment/paired_2000_{1,2}.fasta`; the
@@ -508,4 +512,52 @@ fixture: file sample 28452 corrupted: status 4 (mismatches 1, unwritten 0), file
 fixture: TRONKO_CHECK_SA lookup aborts on a corrupted dense entry
 synthetic: 289 indexes, primary % 4 residues seen 0xf, 3739 dense walks through the $ sentinel
 test_dense_sa: 6339561 entries and lookups compared, 0 failures
+```
+
+## `unit/test_chain_flt.c`
+
+BWA keeps or drops each chain of seeds in `mem_chain_flt()` (`bwa_source_files/bwamem.c`) before it
+extends the kept ones. `tronko-assign` marks the chains with `mem_chain_flt_grouped()`, which compares
+a chain with one representative per group of kept chains that share their query interval and ALT
+flag, instead of with every kept chain. The two must set the same `.kept` and `.first` on every
+chain and return the same chains in the same order, or BWA extends different chains and the
+assignments change.
+
+The test includes `bwamem.c` and compares the current code with a verbatim copy of BWA's original
+function on:
+
+- `data/chain_flt_fixture.chf.gz`: 288 recorded `mem_chain_flt()` calls (26,769 chains) from the
+  repository's three fixture cases (every 40th call, and every call with 250 chains or more), with
+  the output the original binary produced; both functions must reproduce it;
+  `tools/record_chain_flt.sh 71f6ec3 <file>` records the same calls again (`data/PROVENANCE.md`);
+- 20,000 random chain sets through the whole function (weights from the seeds, the sort, the
+  marking, the cap and the compaction), with options away from BWA's defaults, among them a
+  negative and a NaN `drop_ratio`, which take the original loop;
+- 50,000 random chain lists with weights set directly, through the marking step alone: ALT chains,
+  weights of 2^24 and above with dense ties, non-default `mask_level`, `drop_ratio`, `min_seed_len`
+  and `max_chain_gap`, more than 64 groups and more than 4,096 chains (the heap paths);
+- six constructed lists (a break at the very first kept chain, a group opened after others were
+  covered, a group refilled after all its members were covered, ALT chains on either side).
+
+`./test_chain_flt data/chain_flt_fixture.chf.gz 10` runs ten times as many random calls. It prints
+one line, for example:
+
+```
+test_chain_flt: 288 recorded calls (26769 chains), 20000 random whole-function calls, 50000 random marking calls, 6 constructed; 120588 comparisons, 0 differ
+```
+
+## `unit/test_pos2rid.c`
+
+`bns_pos2rid()` (`bwa_source_files/bntseq.c`) maps a reference position to the accession that holds
+it. `tronko-assign` builds a table of the answer at the start of every 256 bases when the index is
+loaded and steps forward from it, instead of binary-searching every accession. The test compares
+`bns_pos2rid()` and `bns_intv2rid()` with verbatim copies of BWA's originals on the repository's
+fixture index (every position, every bucket, intervals at every accession boundary on both strands),
+on 2,000 synthetic references with zero-length accessions and lengths around and at multiples of a
+bucket (every position), on references where no table may be built, and on the fixture index
+converted to BWA's shared-memory layout, which must keep BWA's own layout and use the binary search.
+It takes the fixture index prefix as its argument (the Makefile passes it) and prints one line:
+
+```
+test_pos2rid: fixture index 455248 positions and its accession boundaries, 262186522 synthetic positions; 264669519 comparisons, 0 differ
 ```

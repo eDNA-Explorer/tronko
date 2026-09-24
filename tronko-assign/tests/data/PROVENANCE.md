@@ -88,6 +88,18 @@ reverse, paired: 4,000, 2,000 and 4,000 calls, in that order). The leaves are ex
 this file byte for byte (`gzip -9n`); any commit up to the parent of the two-pass fill gives the
 same bytes.
 
+## `tronko-assign/tests/data/chain_flt_fixture.chf.gz` (`tools/record_chain_flt.sh`)
+
+288 records, 26,769 chains, the input of `unit/test_chain_flt.c`: the input (options, chains and
+their seeds) and the output (the count, and per surviving chain its input index, weight, `kept`
+and `first`) of BWA's original `mem_chain_flt()` for the 1st, 41st, 81st, ... call and every call
+with 250 chains or more, of the 10,000 calls (one per read) that the three cases of
+`tests/integration/test_assignment_production_parity.sh` make at one thread (single, unpaired
+reverse, paired, in that order). The record format is described in `unit/test_chain_flt.c` (part
+1). `tools/record_chain_flt.sh 71f6ec3 <file>` writes the same records; its gzip stream is
+compressed differently, so compare the decompressed bytes (`cmp <(gzip -dc a) <(gzip -dc b)`).
+Any commit up to the parent of the grouped chain filter gives the same records.
+
 ## `tronko-assign/tests/data/real/`: real-reference read sets
 
 Public Illumina MiSeq amplicon reads of the two production markers, from the European Nucleotide

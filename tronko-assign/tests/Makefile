@@ -36,19 +36,29 @@ FIXTURE_INDEX = ../../tronko-build/example_datasets/single_tree/Charadriiformes.
 DENSE_SA_BWA = $(BWA)/bwtindex.c $(BWA)/utils.c $(BWA)/bntseq.c $(BWA)/bwt_gen.c $(BWA)/QSufSort.c \
 	$(BWA)/is.c $(BWA)/rope.c $(BWA)/rle.c $(BWA)/kstring.c
 DENSE_SA_DEPS = unit/test_dense_sa.c $(BWA)/bwt.c $(BWA)/bwt.h
+CHAIN_WFLAGS = -Wall
+# BWA sources a test links besides the one it includes; fastmap.c needs the rest of tronko-assign.
+BWA_LINK = $(BWA)/bntseq.c $(BWA)/bwa.c $(BWA)/bwamem_pair.c $(BWA)/bwamem_extra.c $(BWA)/bwt.c \
+	$(BWA)/ksw.c $(BWA)/kstring.c $(BWA)/kthread.c $(BWA)/utils.c
+CHAIN_DATA = data/chain_flt_fixture.chf.gz
+CHAIN_DEPS = $(wildcard $(BWA)/*.c $(BWA)/*.h) ../global.h
 
-test: test_vote_tally test_ksw_extend test_nw_fill test_dense_sa
+test: test_vote_tally test_ksw_extend test_nw_fill test_dense_sa test_chain_flt test_pos2rid
 	./test_vote_tally
 	./test_ksw_extend $(KSW_DATA)
 	./test_nw_fill $(NW_DATA) $(NW_RANDOM)
 	./test_dense_sa $(FIXTURE_INDEX)
+	./test_chain_flt $(CHAIN_DATA)
+	./test_pos2rid $(FIXTURE_INDEX)
 	$(MAKE) -C .. test
 
-test-san: test_vote_tally_san test_ksw_extend_san test_nw_fill_san test_dense_sa_san
+test-san: test_vote_tally_san test_ksw_extend_san test_nw_fill_san test_dense_sa_san test_chain_flt_san test_pos2rid_san
 	ASAN_OPTIONS=detect_leaks=1 ./test_vote_tally_san
 	ASAN_OPTIONS=detect_leaks=1 ./test_ksw_extend_san $(KSW_DATA)
 	ASAN_OPTIONS=detect_leaks=1 ./test_nw_fill_san $(NW_DATA) $(NW_RANDOM_SAN)
 	ASAN_OPTIONS=detect_leaks=1 ./test_dense_sa_san $(FIXTURE_INDEX)
+	ASAN_OPTIONS=detect_leaks=1 ./test_chain_flt_san $(CHAIN_DATA)
+	ASAN_OPTIONS=detect_leaks=1 ./test_pos2rid_san $(FIXTURE_INDEX)
 
 test-tsan: test_dense_sa_tsan
 	TSAN_OPTIONS=halt_on_error=1 ./test_dense_sa_tsan $(FIXTURE_INDEX)
@@ -101,9 +111,22 @@ test_dense_sa_san: $(DENSE_SA_DEPS)
 test_dense_sa_tsan: $(DENSE_SA_DEPS)
 	$(call build_dense_sa,$(TSANFLAGS),$@)
 
+test_chain_flt: unit/test_chain_flt.c $(CHAIN_DEPS)
+	$(CC) $(CFLAGS) $(CHAIN_WFLAGS) -o $@ unit/test_chain_flt.c $(filter-out $(BWA)/bwamem.c,$(BWA_LINK)) $(LIBS)
+
+test_chain_flt_san: unit/test_chain_flt.c $(CHAIN_DEPS)
+	$(CC) $(SANFLAGS) $(CHAIN_WFLAGS) -o $@ unit/test_chain_flt.c $(filter-out $(BWA)/bwamem.c,$(BWA_LINK)) $(LIBS)
+
+test_pos2rid: unit/test_pos2rid.c $(CHAIN_DEPS)
+	$(CC) $(CFLAGS) $(CHAIN_WFLAGS) -o $@ unit/test_pos2rid.c $(BWA)/bwamem.c $(BWA_LINK) $(LIBS)
+
+test_pos2rid_san: unit/test_pos2rid.c $(CHAIN_DEPS)
+	$(CC) $(SANFLAGS) $(CHAIN_WFLAGS) -o $@ unit/test_pos2rid.c $(BWA)/bwamem.c $(BWA_LINK) $(LIBS)
+
 clean:
 	$(RM) test_vote_tally test_vote_tally_san test_ksw_extend test_ksw_extend_san unit/test_nodestore
 	$(RM) test_nw_fill test_nw_fill_san tronko-assign-nw-shadow
 	$(RM) test_dense_sa test_dense_sa_san test_dense_sa_tsan
+	$(RM) test_chain_flt test_chain_flt_san test_pos2rid test_pos2rid_san
 
 .PHONY: test test-san test-tsan test-shadow clean
