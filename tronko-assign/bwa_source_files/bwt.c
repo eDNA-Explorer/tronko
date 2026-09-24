@@ -205,7 +205,10 @@ static void *dsa_worker(void *data)
 			dsa_walk_t *x = &act[g];
 			++visited;
 			if (!(x->isa & mask)) {
-				J->sa32[x->isa >> shift] = (uint32_t)x->pos;
+				// each entry has one writer when the file sample is sound; a relaxed atomic store (a
+				// plain store in machine code) keeps a corrupt sample's overlapping segments, which the
+				// verdict then rejects, from being a data race
+				__atomic_store_n(&J->sa32[x->isa >> shift], (uint32_t)x->pos, __ATOMIC_RELAXED);
 				++written;
 			}
 			if (!(x->isa & file_mask) && x->isa != 0) { // index 0 holds -1 in the file, not seq_len
