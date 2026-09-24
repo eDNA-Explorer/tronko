@@ -1,0 +1,259 @@
+{
+ "marker": "mifish",
+ "set": "heldout",
+ "pairs": 30000,
+ "study": {
+  "accession": "PRJNA894161",
+  "secondary_accession": "SRP405273",
+  "title": "Comparison of teleo and miFish barcodes",
+  "center": "AZTI",
+  "first_public": "2022-10-27",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA894161"
+ },
+ "primers": {
+  "forward": "GTCGGTAAAACTCGTGCCAGC",
+  "reverse": "CATAGTGGGGTATCTAATCCCAGTTTG"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "min_length": 100,
+  "drop_N": true,
+  "adapters": [
+   "AGATCGGAAGAGC",
+   "CTGTCTCTTATACACATCT"
+  ],
+  "drop_insert_shorter_than": 100,
+  "cut_at_adapter": false,
+  "seed": 20260923,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "adapter_rule": "the first adapter occurrence in each trimmed read ends the insert; a pair whose insert is shorter than drop_insert_shorter_than in either read is dropped; with cut_at_adapter the reads are cut there",
+  "dereplicate": "exact duplicate pairs (same trimmed forward and reverse sequence) removed across all runs of the set, first occurrence kept",
+  "interleave": "per-run shuffle, round-robin across runs in the order listed"
+ },
+ "runs": [
+  {
+   "run": "SRR22098887",
+   "sample": "SAMN31439595",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO072_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 269230,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/087/SRR22098887/SRR22098887_1.fastq.gz",
+     "md5": "1ef76acd8474429ab87caa550ed25297",
+     "bytes": 22307868
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/087/SRR22098887/SRR22098887_2.fastq.gz",
+     "md5": "8e40df4f48a34c9ee11152ba8a4e4786",
+     "bytes": 25450668
+    }
+   ]
+  },
+  {
+   "run": "SRR22098907",
+   "sample": "SAMN31439577",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO030_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 275811,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/007/SRR22098907/SRR22098907_1.fastq.gz",
+     "md5": "e0668f7153b21268fd7ed9fbbfca8525",
+     "bytes": 22814029
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/007/SRR22098907/SRR22098907_2.fastq.gz",
+     "md5": "89d89a03fa05c81beeee331682c3a464",
+     "bytes": 27707765
+    }
+   ]
+  },
+  {
+   "run": "SRR22098896",
+   "sample": "SAMN31439587",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO052_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 169739,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/096/SRR22098896/SRR22098896_1.fastq.gz",
+     "md5": "f6a7178d6ea50062903fa26f5f056308",
+     "bytes": 14607553
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/096/SRR22098896/SRR22098896_2.fastq.gz",
+     "md5": "6504a4d11dc2b566cc57b4513b89bbaf",
+     "bytes": 16301400
+    }
+   ]
+  },
+  {
+   "run": "SRR22098900",
+   "sample": "SAMN31439583",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO045_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 87321,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/000/SRR22098900/SRR22098900_1.fastq.gz",
+     "md5": "672d8c21910da5446452562828670a3f",
+     "bytes": 7260061
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/000/SRR22098900/SRR22098900_2.fastq.gz",
+     "md5": "d5c453ec390c60ee59f0d96902779a0d",
+     "bytes": 8453287
+    }
+   ]
+  },
+  {
+   "run": "SRR22098906",
+   "sample": "SAMN31439578",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO031_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 211929,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/006/SRR22098906/SRR22098906_1.fastq.gz",
+     "md5": "25b4e83405ffaf2778e29bce9358e474",
+     "bytes": 16867720
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/006/SRR22098906/SRR22098906_2.fastq.gz",
+     "md5": "5baa33379c9a6c78b07d80b9cd2ab15f",
+     "bytes": 19902970
+    }
+   ]
+  },
+  {
+   "run": "SRR22098898",
+   "sample": "SAMN31439585",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO050_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 75413,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/098/SRR22098898/SRR22098898_1.fastq.gz",
+     "md5": "a2b2c89289f0a430d63c601d213fa661",
+     "bytes": 5972747
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/098/SRR22098898/SRR22098898_2.fastq.gz",
+     "md5": "f78381a598dc2e89f6580573fec529f2",
+     "bytes": 7186168
+    }
+   ]
+  },
+  {
+   "run": "SRR22098902",
+   "sample": "SAMN31439581",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO043_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 142618,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/002/SRR22098902/SRR22098902_1.fastq.gz",
+     "md5": "0ae1172e576b15770007d81af3cec30a",
+     "bytes": 12369871
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/002/SRR22098902/SRR22098902_2.fastq.gz",
+     "md5": "5d16097951504ba32123798d68322e64",
+     "bytes": 14222804
+    }
+   ]
+  },
+  {
+   "run": "SRR22098905",
+   "sample": "SAMN31439579",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO039_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 190990,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/005/SRR22098905/SRR22098905_1.fastq.gz",
+     "md5": "61978216a15d2a76ba139b70953441e4",
+     "bytes": 15555419
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/005/SRR22098905/SRR22098905_2.fastq.gz",
+     "md5": "7cf44b14721b69691e4ab428c46a6832",
+     "bytes": 17821593
+    }
+   ]
+  },
+  {
+   "run": "SRR22098904",
+   "sample": "SAMN31439580",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO041_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 184934,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/004/SRR22098904/SRR22098904_1.fastq.gz",
+     "md5": "4a74747480d904a57538ab24064203cc",
+     "bytes": 16827204
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/004/SRR22098904/SRR22098904_2.fastq.gz",
+     "md5": "81203210abfa76a85b30695ed1138f47",
+     "bytes": 18079951
+    }
+   ]
+  },
+  {
+   "run": "SRR22098882",
+   "sample": "SAMN31439597",
+   "sample_title": "Metagenome or environmental sample from fish metagenome",
+   "library_name": "18BIO085_mifish",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 120994,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/082/SRR22098882/SRR22098882_1.fastq.gz",
+     "md5": "a3a5c1852520b16c20f9fc38dd73c1b0",
+     "bytes": 9058590
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR220/082/SRR22098882/SRR22098882_2.fastq.gz",
+     "md5": "4b60cf8f5402169386ec088019aea1bd",
+     "bytes": 10771677
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "heldout_F.fasta.zst": {
+   "sha256": "a5014cbe9b68374e4c3da6a1a5fc94a7368e5ba925f10fe33e736bec9b848754",
+   "sha256_decompressed": "6be705f1bc74156637b3fcd2b8006e60abc9d35d592ab59b053c4a9195f25589",
+   "records": 30000
+  },
+  "heldout_R.fasta.zst": {
+   "sha256": "f7b0fd61cd775519164e134e781d9bd8f8d75c409b9e1221310706fd4c963691",
+   "sha256_decompressed": "824c78eb3fb88bd8b3ba9cbce9e2a160313c126b75d1cb99ae0e5a5bf53f80cd",
+   "records": 30000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}
