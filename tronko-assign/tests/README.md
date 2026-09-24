@@ -55,6 +55,7 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_multitree_parity.sh` | `data/multitree/`: three copies of the example tree in one reference | reads with two or three candidate trees: candidate gathering, votes in several trees, the multi-tree LCA |
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
 | `unit/test_vote_tally` | random forests and reads | the vote tally over a read's candidate trees equals the pass over every tree (below) |
+| `unit/test_ksw_extend` | `data/ksw_fixture_calls.kswd.gz` and random calls | the vectorised seed-extension kernels return what BWA's scalar `ksw_extend2` returns (below) |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -106,10 +107,12 @@ tronko-assign/tests/
   data/multitree/goldens[-cap25]/expected_<case>.tsv
   data/gaps/<fixture>/                       reads
   data/gaps/<fixture>/goldens[-cap25]/expected_<case>.tsv
+  data/ksw_fixture_calls.kswd.gz             ksw_extend2 calls recorded on the fixtures (tools/record_ksw_calls.sh)
   data/real/<marker>/<set>/                  real-reference read pairs and goldens (below)
   manifests/<marker>.sha256                  the real references, by URL with SHA-256
   real/                                      Makefile, lib.sh, test-real.sh, verify-branches.sh, make-goldens.sh
   tools/                                     the fixture generators: make_fixture_inputs.sh and its Python tools
+  tools/record_ksw_calls.sh, tools/ksw_record.patch   record data/ksw_fixture_calls.kswd.gz again
 ```
 
 The pairs of the three-tree fixture are `tests/data/assignment/paired_2000_{1,2}.fasta`; the
@@ -317,4 +320,45 @@ exit; the three-tree script passes that line on:
 ```
 PASS: mt_paired, --number-of-cores 4
   VOTE_SHADOW reads=2000 multi_hit=1247 multi_vote=1184 unsorted=630 neg_in_prefix=0 dup_in_prefix=0 cap_reached=0 written_past_prefix=0
+```
+
+## `unit/test_ksw_extend.c`
+
+`bwa_source_files/ksw.c` keeps BWA's seed-extension kernel as `ksw_extend2_scalar()` and makes
+`ksw_extend2()` dispatch at run time to a vectorised kernel: AVX2 when the CPU has it, SSE2
+otherwise (on aarch64 through `sse2neon.h`). The vectorised kernels must return the same six values
+(`score`, `qle`, `tle`, `gtle`, `gscore`, `max_off`) as the scalar code for every input, or the
+alignments BWA reports, and with them Tronko's output, change.
+
+The test compares `ksw_extend2()`, `ksw_extend2_sse2()` and, on a CPU with AVX2,
+`ksw_extend2_avx2()` with the expected values on:
+
+- the 2,115 calls in `data/ksw_fixture_calls.kswd.gz`, inputs and outputs recorded from the
+  unmodified kernel while `tronko-assign` ran the repository's fixture cases (every hundredth call
+  of the paired, single and unpaired-reverse runs on the Charadriiformes example reference), so
+  the file holds only repository data;
+- 67,000 random calls from a fixed seed, compared with `ksw_extend2_scalar()`: general inputs, and
+  inputs aimed at the rules a vectorised kernel breaks most easily (cells beyond the band that are
+  read again when it grows, the z-drop's gap-extension factors, tiny bands, empty targets, and
+  scores at and beyond the 16-bit bound where the scalar code takes over).
+
+It prints one line, for example on an x86-64 CPU with AVX2:
+
+```
+test_ksw_extend: 2115 recorded calls, 67000 random calls, 4 kernels (with avx2), 276460 comparisons, 0 differ
+```
+
+On a CPU without AVX2, and on aarch64, the AVX2 kernel is not run and the line says
+`3 kernels (without avx2)`. Run the test on an x86-64 machine with AVX2 after any change to the
+AVX2 code.
+
+`tools/record_ksw_calls.sh <output.kswd.gz>` records the calls again: it applies
+`tools/ksw_record.patch` to a copy of the commit before the vectorised kernel, builds
+`tronko-assign`, runs the three fixture cases at one thread and writes every hundredth
+`ksw_extend2` call of each, with its inputs and outputs. The decompressed result equals the
+committed file byte for byte:
+
+```
+bash tronko-assign/tests/tools/record_ksw_calls.sh /tmp/calls.kswd.gz
+cmp <(gzip -dc /tmp/calls.kswd.gz) <(gzip -dc tronko-assign/tests/data/ksw_fixture_calls.kswd.gz)
 ```

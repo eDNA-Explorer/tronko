@@ -1,0 +1,93 @@
+diff --git a/tronko-assign/bwa_source_files/bwamem.c b/tronko-assign/bwa_source_files/bwamem.c
+index 37043c7..be73c9d 100644
+--- a/tronko-assign/bwa_source_files/bwamem.c
++++ b/tronko-assign/bwa_source_files/bwamem.c
+@@ -629,6 +629,7 @@ static inline int cal_max_gap(const mem_opt_t *opt, int qlen)
+ 
+ #define MAX_BAND_TRY  2
+ 
++extern __thread int ksw_dump_site;
+ void mem_chain2aln(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac, int l_query, const uint8_t *query, const mem_chain_t *c, mem_alnreg_v *av)
+ {
+ 	int i, k, rid, max_off[2], aw[2]; // aw: actual bandwidth used in extension
+@@ -728,6 +729,7 @@ void mem_chain2aln(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac
+ 					printf("*** Left ref:   "); for (j = 0; j < tmp; ++j) putchar("ACGTN"[(int)rs[j]]); putchar('\n');
+ 					printf("*** Left query: "); for (j = 0; j < s->qbeg; ++j) putchar("ACGTN"[(int)qs[j]]); putchar('\n');
+ 				}
++				ksw_dump_site = 1 | (i << 4);
+ 				a->score = ksw_extend2(s->qbeg, qs, tmp, rs, 5, opt->mat, opt->o_del, opt->e_del, opt->o_ins, opt->e_ins, aw[0], opt->pen_clip5, opt->zdrop, s->len * opt->a, &qle, &tle, &gtle, &gscore, &max_off[0]);
+ 				if (bwa_verbose >= 4) { printf("*** Left extension: prev_score=%d; score=%d; bandwidth=%d; max_off_diagonal_dist=%d\n", prev, a->score, aw[0], max_off[0]); fflush(stdout); }
+ 				if (a->score == prev || max_off[0] < (aw[0]>>1) + (aw[0]>>2)) break;
+@@ -756,6 +758,7 @@ void mem_chain2aln(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac
+ 					printf("*** Right ref:   "); for (j = 0; j < rmax[1] - rmax[0] - re; ++j) putchar("ACGTN"[(int)rseq[re+j]]); putchar('\n');
+ 					printf("*** Right query: "); for (j = 0; j < l_query - qe; ++j) putchar("ACGTN"[(int)query[qe+j]]); putchar('\n');
+ 				}
++				ksw_dump_site = 2 | (i << 4);
+ 				a->score = ksw_extend2(l_query - qe, query + qe, rmax[1] - rmax[0] - re, rseq + re, 5, opt->mat, opt->o_del, opt->e_del, opt->o_ins, opt->e_ins, aw[1], opt->pen_clip3, opt->zdrop, sc0, &qle, &tle, &gtle, &gscore, &max_off[1]);
+ 				if (bwa_verbose >= 4) { printf("*** Right extension: prev_score=%d; score=%d; bandwidth=%d; max_off_diagonal_dist=%d\n", prev, a->score, aw[1], max_off[1]); fflush(stdout); }
+ 				if (a->score == prev || max_off[1] < (aw[1]>>1) + (aw[1]>>2)) break;
+diff --git a/tronko-assign/bwa_source_files/ksw.c b/tronko-assign/bwa_source_files/ksw.c
+index cdb2444..e90abd2 100644
+--- a/tronko-assign/bwa_source_files/ksw.c
++++ b/tronko-assign/bwa_source_files/ksw.c
+@@ -381,7 +381,7 @@ typedef struct {
+ 	int32_t h, e;
+ } eh_t;
+ 
+-int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
++static int ksw_extend2_recorded(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+ {
+ 	eh_t *eh; // score array
+ 	int8_t *qp; // query profile
+@@ -482,6 +482,51 @@ int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target,
+ 	return max;
+ }
+ 
++/* Recorder of ksw_extend2 calls (tronko-assign/tests/tools/ksw_record.patch). With KSW_DUMP
++ * set, every KSW_DUMP_EVERY-th call (default 100; calls 0, 100, 200, ...) is appended to that
++ * file: 20 int32 (0x4457534b "KSWD", call site, qlen, tlen, m, o_del, e_del, o_ins, e_ins, w,
++ * end_bonus, zdrop, h0, score, qle, tle, gtle, gscore, max_off, 0), then m * m bytes of mat,
++ * qlen bytes of query, tlen bytes of target. Run at one thread so that the call order is fixed. */
++#include <stdio.h>
++#include <pthread.h>
++__thread int ksw_dump_site = 0; /* set by mem_chain2aln: 1 = left, 2 = right, | (band try << 4) */
++static pthread_mutex_t ksw_dump_lock = PTHREAD_MUTEX_INITIALIZER;
++static FILE *ksw_dump_fp = 0;
++static long ksw_dump_every = 100, ksw_dump_calls = 0;
++static void ksw_dump_close(void) { if (ksw_dump_fp) fclose(ksw_dump_fp); }
++static void ksw_dump_init(void)
++{
++	const char *p = getenv("KSW_DUMP"), *e = getenv("KSW_DUMP_EVERY");
++	if (e && atol(e) > 0) ksw_dump_every = atol(e);
++	if (p) ksw_dump_fp = fopen(p, "wb");
++	atexit(ksw_dump_close);
++}
++static pthread_once_t ksw_dump_once = PTHREAD_ONCE_INIT;
++int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
++{
++	int qle, tle, gtle, gscore, max_off, score;
++	pthread_once(&ksw_dump_once, ksw_dump_init);
++	score = ksw_extend2_recorded(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, &qle, &tle, &gtle, &gscore, &max_off);
++	if (ksw_dump_fp) {
++		pthread_mutex_lock(&ksw_dump_lock);
++		if (ksw_dump_calls++ % ksw_dump_every == 0) {
++			int32_t hdr[20] = { 0x4457534b, ksw_dump_site, qlen, tlen, m, o_del, e_del, o_ins, e_ins, w,
++				end_bonus, zdrop, h0, score, qle, tle, gtle, gscore, max_off, 0 };
++			fwrite(hdr, 4, 20, ksw_dump_fp);
++			fwrite(mat, 1, m * m, ksw_dump_fp);
++			fwrite(query, 1, qlen, ksw_dump_fp);
++			fwrite(target, 1, tlen, ksw_dump_fp);
++		}
++		pthread_mutex_unlock(&ksw_dump_lock);
++	}
++	if (_qle) *_qle = qle;
++	if (_tle) *_tle = tle;
++	if (_gtle) *_gtle = gtle;
++	if (_gscore) *_gscore = gscore;
++	if (_max_off) *_max_off = max_off;
++	return score;
++}
++
+ int ksw_extend(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int gapo, int gape, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off)
+ {
+ 	return ksw_extend2(qlen, query, tlen, target, m, mat, gapo, gape, gapo, gape, w, end_bonus, zdrop, h0, qle, tle, gtle, gscore, max_off);
