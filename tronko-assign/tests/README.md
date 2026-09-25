@@ -89,6 +89,7 @@ tronko-assign/tests/
   data/real/<marker>/<set>/                  real-reference read pairs and goldens (below)
   manifests/<marker>.sha256                  the real references, by URL with SHA-256
   real/                                      Makefile, lib.sh, test-real.sh, verify-branches.sh, make-goldens.sh
+  tools/                                     the fixture generators: make_fixture_inputs.sh and its Python tools
 ```
 
 The pairs of the three-tree fixture are `tests/data/assignment/paired_2000_{1,2}.fasta`; the
@@ -257,3 +258,8 @@ TRONKO_ASSIGN_BIN=<binary built from that commit> TRONKO_MATCH_CAP=10 TRONKO_TES
 ```
 
 The real-reference goldens are made with `make update-goldens` ([above](#c-add-goldens-or-replace-them-after-an-intended-change)).
+
+The fixture inputs themselves (reads, references, BWA index) are regenerated from the example
+dataset by `tools/make_fixture_inputs.sh <out-dir>`, which also compares every file with the
+committed one ([tools/README.md](tools/README.md)); `data/PROVENANCE.md` names the tool that wrote
+each fixture.

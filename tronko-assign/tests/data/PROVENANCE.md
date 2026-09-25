@@ -20,19 +20,19 @@ builds and production's Debian build reproduce them, Ubuntu gcc 13.3 x86-64 buil
 ([README](../README.md)). They hold read names, taxonomy paths and scores,
 no sequence.
 
-The fixture generators (`multitree_fixture.py`, `make_multitree_fixture.sh`, `gap_fixtures.py`,
-`make_gap_fixtures.sh`) are kept with the golden scripts outside the repository; each fixture below
-names the one that wrote it. The check that no committed file holds sequence beyond the example is
-described at the end.
+The fixture generators are in `tronko-assign/tests/tools/` ([README](../tools/README.md)):
+`sim_reads.py`, `multitree_fixture.py` and `gap_fixtures.py`, and `make_fixture_inputs.sh`, which
+regenerates every fixture input below from the example dataset and compares each file with the
+committed one. Each fixture below names the tool that wrote it.
 
 ## `tests/data/assignment/` (repository root)
 
 | File | Source |
 |---|---|
 | `reference_tree.trkb` | `tronko-convert` of the example `reference_tree.txt` (one tree, 1,466 leaves) |
-| `single_4000.fasta` | 4,000 single-end reads simulated from example leaves (150 bases, 2 substitutions each; names `<i>_<accession>`) |
-| `paired_2000_1.fasta`, `paired_2000_2.fasta` | 2,000 read pairs simulated the same way from example leaves |
-| `single.fasta`, `paired_1.fasta`, `paired_2.fasta` | four reads and four pairs from example leaves (the original parity test's inputs) |
+| `single_4000.fasta` | 4,000 single-end reads simulated from example leaves of at least 250 bases (a random 150-base window, 2 substitutions each; names `r<i>_<accession>`), `tools/sim_reads.py`, seed 7 |
+| `paired_2000_1.fasta`, `paired_2000_2.fasta` | 2,000 read pairs from the same simulation: the first 150 bases of a leaf and the reverse complement of its last 150 bases, 2 substitutions each (names `p<i>_<accession>`), `tools/sim_reads.py`, seed 7 |
+| `single.fasta`, `paired_1.fasta`, `paired_2.fasta` | four reads and four pairs from example leaf `GU572157.1` (the original parity test's inputs; their generator is not in the repository) |
 | `expected_single_nw_trkb.tsv`, `expected_unpaired_r_nw_trkb.tsv`, `expected_paired_nw_trkb.tsv` | goldens of `tests/integration/test_assignment_production_parity.sh` (unpaired forward, unpaired reverse, paired) |
 | `expected_single_nw.tsv`, `expected_single_wfa.tsv`, `expected_paired_wfa.tsv` | goldens of `tests/integration/test_assignment_parity.sh` on the four-read inputs |
 
@@ -45,23 +45,23 @@ goldens") and by the commit "tests: assignment parity with the production invoca
 |---|---|
 | `expected_paired_nw_trkb_L400.tsv`, `expected_unpaired_r_nw_trkb_L400.tsv` | goldens of `integration/test_multibatch_parity.sh`: the `tests/data/assignment/` pairs at `-L 400` (ten batches) |
 
-## `tronko-assign/tests/data/multitree/` (`make_multitree_fixture.sh`, `multitree_fixture.py`, seed 7)
+## `tronko-assign/tests/data/multitree/` (`tools/multitree_fixture.py`, seed 7)
 
 | File | Source |
 |---|---|
 | `multitree.fasta` | every leaf of example tree copy 0, every second leaf of copy 1, every leaf of copy 2 (leaf names suffixed `_1`, `_2`) |
-| `multitree.fasta.amb`, `.ann`, `.bwt`, `.pac`, `.sa` | `bwa index multitree.fasta` |
+| `multitree.fasta.amb`, `.ann`, `.bwt`, `.pac`, `.sa` | the BWA index of `multitree.fasta`, built by `tronko-assign` in a run without `-6` (`tools/make_fixture_inputs.sh`) |
 | `reference_tree.trkb` | `tronko-convert` of three copies of the example tree (copy 2 with its taxonomy lines rotated by one) |
 | `single_F.fasta`, `single_R.fasta` | 2,000 single-end reads each from example leaves: plain (150 bases), and chimeras of two or three example segments |
 | `goldens/`, `goldens-cap25/`: `expected_mt_paired.tsv`, `expected_mt_single_F.tsv`, `expected_mt_unpaired_R.tsv` | goldens of `integration/test_multitree_parity.sh` (the paired case reads `tests/data/assignment/paired_2000_{1,2}.fasta`) |
 
-## `tronko-assign/tests/data/gaps/` (`make_gap_fixtures.sh`, `gap_fixtures.py`)
+## `tronko-assign/tests/data/gaps/` (`tools/gap_fixtures.py`, `tools/make_fixture_inputs.sh`)
 
 | Fixture | Files | Source |
 |---|---|---|
-| `mate-rescue/` | `mr_1.fasta`, `mr_2.fasta` | 620 pairs on example leaves in which one mate cannot be seeded: a substitution every 12th base, or random sequence (uniform A, C, G, T from a fixed seed); 40 with a 260-base mate |
+| `mate-rescue/` | `mr_1.fasta`, `mr_2.fasta` | 620 pairs on example leaves in which one mate cannot be seeded: a substitution every 12th base, or random sequence (uniform A, C, G, T); 40 with a 260-base mate; `gap_fixtures.py mate-rescue`, seed 11 |
 | `prod-cmdline/` | `paired_2000_1.fasta.zst`, `paired_2000_2.fasta.zst`, `single_4000.fasta.zst` | the `tests/data/assignment/` reads, compressed as the pipeline compresses them (`zstd -3 --no-check`) |
-| `read-content/` | `rc_1.fasta`, `rc_2.fasta`, `rc_single.fasta` | example-leaf reads with one N, random reads (fixed seed) that align nowhere, and reads of 30 to 60 bases |
+| `read-content/` | `rc_1.fasta`, `rc_2.fasta`, `rc_single.fasta` | example-leaf reads with one N, random reads that align nowhere, and reads of 30 to 60 bases; `gap_fixtures.py read-content`, seed 13 |
 | `prod-names/` | `pn_paired_F.fasta`, `pn_paired_R.fasta`, `pn_unpaired_F.fasta`, `pn_unpaired_R.fasta` | the `tests/data/assignment/` reads renamed as the pipeline names them (`12S_MiFish_U_paired_F_<idx>`); the sequences are the example-derived reads |
 | each | `goldens/`, `goldens-cap25/`: `expected_<case>.tsv` | goldens of `integration/test_gap_fixtures.sh` |
 
@@ -90,18 +90,3 @@ MiFish is `12S_MiFish_U` (primers GTCGGTAAAACTCGTGCCAGC / CATAGTGGGGTATCTAATCCCA
 the goldens, production `tronko-assign` (`71f6ec3`) at one thread built as the pipeline builds it,
 packed with each run's command line and `time -v` record in the set's `goldens.tar.zst` (every file listed with its SHA-256 in `goldens.sha256`), and the set's
 `provenance.txt` ([README](../README.md#real-reference-goldens)).
-
-## The check
-
-`check_test_data.py <worktree> <real read sets>` (kept with the golden scripts) reads every FASTA
-file committed under `tests/data/` and `tronko-assign/tests/data/` (the `.zst` ones decompressed),
-looks up every 25-mer of every sequence, on both strands, in the example `Charadriiformes.fasta`,
-and then looks up every 25-mer not found there (mutated bases, chimera junctions, random reads) in
-the real read sets of the production markers. It also checks that no TSV holds a run of 25 or more
-sequence letters. It passes only if no such 25-mer occurs in any real read and no TSV holds
-sequence. Result on this branch, against the 24 read files of eight production markers (320,000
-reads): **PASS**. Of the 36,177 committed sequences, 853 hold a 25-mer that is outside the example
-and occurs in some real read (985 distinct 25-mers, from substituted bases of simulated reads and
-random reads, all in conserved CO1 stretches); the longest such stretch in any sequence is 41
-bases, below the 50-base limit and far below a read's length. The multi-tree reference
-(`multitree.fasta`) is entirely example 25-mers; no TSV holds a run of 25 or more sequence letters.
