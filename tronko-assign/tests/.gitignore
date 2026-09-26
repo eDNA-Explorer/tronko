@@ -8,3 +8,7 @@ tronko-assign-nw-shadow
 test_dense_sa
 test_dense_sa_san
 test_dense_sa_tsan
+test_chain_flt
+test_chain_flt_san
+test_pos2rid
+test_pos2rid_san

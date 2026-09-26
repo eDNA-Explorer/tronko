@@ -324,28 +324,17 @@ mem_chain_v mem_chain(const mem_opt_t *opt, const bwt_t *bwt, const bntseq_t *bn
 #define flt_lt(a, b) ((a).w > (b).w)
 KSORT_INIT(mem_flt, mem_chain_t, flt_lt)
 
-int mem_chain_flt(const mem_opt_t *opt, int n_chn, mem_chain_t *a)
+typedef kvec_t(int) mem_flt_idx_v;
+
+/* The pairwise filter as BWA wrote it: chain i is compared with every kept chain, in index order.
+ * mem_chain_flt() uses it only when opt->drop_ratio is negative or NaN (see below). */
+static void mem_chain_flt_pairwise(const mem_opt_t *opt, int n_chn, mem_chain_t *a, mem_flt_idx_v *chains)
 {
 	int i, k;
-	kvec_t(int) chains = {0,0,0}; // this keeps int indices of the non-overlapping chains
-	if (n_chn == 0) return 0; // no need to filter
-	// compute the weight of each chain and drop chains with small weight
-	for (i = k = 0; i < n_chn; ++i) {
-		mem_chain_t *c = &a[i];
-		c->first = -1; c->kept = 0;
-		c->w = mem_chain_weight(c);
-		if (c->w < opt->min_chain_weight) free(c->seeds);
-		else a[k++] = *c;
-	}
-	n_chn = k;
-	ks_introsort(mem_flt, n_chn, a);
-	// pairwise chain comparisons
-	a[0].kept = 3;
-	kv_push(int, chains, 0);
 	for (i = 1; i < n_chn; ++i) {
 		int large_ovlp = 0;
-		for (k = 0; k < chains.n; ++k) {
-			int j = chains.a[k];
+		for (k = 0; k < chains->n; ++k) {
+			int j = chains->a[k];
 			int b_max = chn_beg(a[j]) > chn_beg(a[i])? chn_beg(a[j]) : chn_beg(a[i]);
 			int e_min = chn_end(a[j]) < chn_end(a[i])? chn_end(a[j]) : chn_end(a[i]);
 			if (e_min > b_max && (!a[j].is_alt || a[i].is_alt)) { // have overlap; don't consider ovlp where the kept chain is ALT while the current chain is primary
@@ -360,11 +349,128 @@ int mem_chain_flt(const mem_opt_t *opt, int n_chn, mem_chain_t *a)
 				}
 			}
 		}
-		if (k == chains.n) {
-			kv_push(int, chains, i);
+		if (k == chains->n) {
+			kv_push(int, *chains, i);
 			a[i].kept = large_ovlp? 2 : 3;
 		}
 	}
+}
+
+/* The same filter with the kept chains grouped by (chn_beg, chn_end, is_alt).
+ *
+ * It sets the same .kept and .first on every chain and pushes the same indices onto `chains`, in the
+ * same order, as mem_chain_flt_pairwise(), for any input sorted by mem_flt (weight non-increasing
+ * with the index) and any opt->drop_ratio >= 0:
+ * - The overlap test reads a kept chain j only through chn_beg(), chn_end() and .is_alt, the group
+ *   key, so it gives the same answer for every member of a group. It is evaluated once per group,
+ *   with the same expression and the same types.
+ * - The drop test, a[i].w < a[j].w * drop_ratio && a[j].w - a[i].w >= min_seed_len<<1, can only
+ *   become true as a[j].w grows (int to float conversion and multiplication by drop_ratio >= 0 are
+ *   monotone). Members join a group in index order, which is non-increasing weight order, so if any
+ *   member passes, the first one does. The pairwise loop breaks at the lowest kept chain that
+ *   overlaps and passes: that is jb, the lowest first member among the groups that do.
+ * - Before it breaks, the pairwise loop sets .first on every overlapping kept chain with index
+ *   <= jb, the breaking chain included. In a group those members are a prefix of the member list;
+ *   prefixes nest, so the members whose .first is set are always a prefix too, and `cov` marks where
+ *   it ends. large_ovlp is set by any visited overlapping chain: a group whose first member is <= jb.
+ * Per chain the work is proportional to the number of groups instead of the number of kept chains.
+ * Scratch lives on the stack up to MEM_FLT_STACK_* entries and on the heap beyond. */
+#define MEM_FLT_STACK_GRP 64
+#define MEM_FLT_STACK_NEXT 4096
+
+typedef struct {
+	int beg, end, is_alt; // the key, shared by every member: chn_beg(), chn_end(), .is_alt
+	int first;            // the member with the lowest index, which is the heaviest
+	int cov;              // the first member whose .first this filter has not set, or -1 if none
+	int last;             // the member with the highest index
+	int ovlp;             // scratch: 1 if the current chain overlaps the group significantly
+} mem_flt_grp_t;
+
+static void mem_chain_flt_grouped(const mem_opt_t *opt, int n_chn, mem_chain_t *a, mem_flt_idx_v *chains)
+{
+	mem_flt_grp_t grp_stack[MEM_FLT_STACK_GRP], *grp = grp_stack, *p;
+	int next_stack[MEM_FLT_STACK_NEXT], *next = next_stack; // next[j]: the member after kept chain j in its group, or -1
+	int i, g, n_grp, m_grp = MEM_FLT_STACK_GRP;
+	if (n_chn < 2) return;
+	if (n_chn > MEM_FLT_STACK_NEXT) next = (int*)malloc(n_chn * sizeof(int));
+	p = &grp[0]; // chain 0 is kept by the caller; it opens the first group
+	p->beg = chn_beg(a[0]), p->end = chn_end(a[0]), p->is_alt = a[0].is_alt;
+	p->first = p->cov = p->last = 0, next[0] = -1;
+	n_grp = 1;
+	for (i = 1; i < n_chn; ++i) {
+		int large_ovlp = 0, jb = INT_MAX, gi = -1, m;
+		int bi = chn_beg(a[i]), ei = chn_end(a[i]), li = ei - bi;
+		for (g = 0; g < n_grp; ++g) { // overlap per group; jb = the lowest kept chain the pairwise loop would break at
+			int j, b_max, e_min;
+			p = &grp[g], j = p->first;
+			b_max = p->beg > bi? p->beg : bi;
+			e_min = p->end < ei? p->end : ei;
+			p->ovlp = 0;
+			if (e_min > b_max && (!p->is_alt || a[i].is_alt)) {
+				int lj = p->end - p->beg;
+				int min_l = li < lj? li : lj;
+				if (e_min - b_max >= min_l * opt->mask_level && min_l < opt->max_chain_gap) { // significant overlap
+					p->ovlp = 1;
+					if (a[i].w < a[j].w * opt->drop_ratio && a[j].w - a[i].w >= opt->min_seed_len<<1)
+						if (j < jb) jb = j;
+				}
+			}
+			if (p->beg == bi && p->end == ei && p->is_alt == a[i].is_alt) gi = g;
+		}
+		for (g = 0; g < n_grp; ++g) { // the members the pairwise loop visits: index <= jb in overlapping groups
+			p = &grp[g];
+			if (!p->ovlp) continue;
+			if (p->first <= jb) large_ovlp = 1;
+			for (m = p->cov; m >= 0 && m <= jb; m = next[m])
+				if (a[m].first < 0) a[m].first = i;
+			p->cov = m;
+		}
+		if (jb == INT_MAX) { // no break: chain i is kept
+			kv_push(int, *chains, i);
+			a[i].kept = large_ovlp? 2 : 3;
+			next[i] = -1;
+			if (gi >= 0) { // append it to its group
+				p = &grp[gi];
+				next[p->last] = i, p->last = i;
+				if (p->cov < 0) p->cov = i;
+			} else { // open a new group
+				if (n_grp == m_grp) {
+					m_grp <<= 1;
+					if (grp == grp_stack) {
+						grp = (mem_flt_grp_t*)malloc(m_grp * sizeof(mem_flt_grp_t));
+						memcpy(grp, grp_stack, n_grp * sizeof(mem_flt_grp_t));
+					} else grp = (mem_flt_grp_t*)realloc(grp, m_grp * sizeof(mem_flt_grp_t));
+				}
+				p = &grp[n_grp++];
+				p->beg = bi, p->end = ei, p->is_alt = a[i].is_alt;
+				p->first = p->cov = p->last = i;
+			}
+		}
+	}
+	if (grp != grp_stack) free(grp);
+	if (next != next_stack) free(next);
+}
+
+int mem_chain_flt(const mem_opt_t *opt, int n_chn, mem_chain_t *a)
+{
+	int i, k;
+	mem_flt_idx_v chains = {0,0,0}; // this keeps int indices of the non-overlapping chains
+	if (n_chn == 0) return 0; // no need to filter
+	// compute the weight of each chain and drop chains with small weight
+	for (i = k = 0; i < n_chn; ++i) {
+		mem_chain_t *c = &a[i];
+		c->first = -1; c->kept = 0;
+		c->w = mem_chain_weight(c);
+		if (c->w < opt->min_chain_weight) free(c->seeds);
+		else a[k++] = *c;
+	}
+	n_chn = k;
+	ks_introsort(mem_flt, n_chn, a);
+	// pairwise chain comparisons
+	a[0].kept = 3;
+	kv_push(int, chains, 0);
+	if (opt->drop_ratio >= 0.0f) mem_chain_flt_grouped(opt, n_chn, a, &chains); // same result as the pairwise loop
+	else mem_chain_flt_pairwise(opt, n_chn, a, &chains); // the grouped filter needs a monotone drop test
 	for (i = 0; i < chains.n; ++i) {
 		mem_chain_t *c = &a[chains.a[i]];
 		if (c->first >= 0) a[c->first].kept = 1;

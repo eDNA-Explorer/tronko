@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <zlib.h>
 #include <assert.h>
@@ -314,6 +315,7 @@ bwaidx_t *bwa_idx_load_from_disk(const char *hint, int which)
 	if (which & BWA_IDX_BNS) {
 		int i, c;
 		idx->bns = bns_restore(prefix);
+		bns_rid_bucket_build(idx->bns); // on the loading thread, before any aligning thread starts
 		for (i = c = 0; i < idx->bns->n_seqs; ++i)
 			if (idx->bns->anns[i].is_alt) ++c;
 		if (bwa_verbose >= 3)
@@ -359,7 +361,8 @@ int bwa_mem2idx(int64_t l_mem, uint8_t *mem, bwaidx_t *idx)
 	x = idx->bwt->n_sa * sizeof(bwtint_t); idx->bwt->sa = (bwtint_t*)(mem + k); k += x;
 
 	// generate idx->bns and idx->pac
-	x = sizeof(bntseq_t); idx->bns = malloc(x); memcpy(idx->bns, mem + k, x); k += x;
+	x = offsetof(bntseq_t, rid_bucket); idx->bns = malloc(sizeof(bntseq_t)); memcpy(idx->bns, mem + k, x); k += x;
+	idx->bns->rid_bucket = 0; // not in the segment; bns_pos2rid() then uses the binary search
 	x = idx->bns->n_holes * sizeof(bntamb1_t); idx->bns->ambs = (bntamb1_t*)(mem + k); k += x;
 	x = idx->bns->n_seqs  * sizeof(bntann1_t); idx->bns->anns = malloc(x); memcpy(idx->bns->anns, mem + k, x); k += x;
 	for (i = 0; i < idx->bns->n_seqs; ++i) {
@@ -392,8 +395,8 @@ int bwa_idx2mem(bwaidx_t *idx)
 	tmp = idx->bns->n_seqs * sizeof(bntann1_t) + idx->bns->n_holes * sizeof(bntamb1_t);
 	for (i = 0; i < idx->bns->n_seqs; ++i) // compute the size of heap-allocated memory
 		tmp += strlen(idx->bns->anns[i].name) + strlen(idx->bns->anns[i].anno) + 2;
-	mem = realloc(mem, k + sizeof(bntseq_t) + tmp);
-	x = sizeof(bntseq_t); memcpy(mem + k, idx->bns, x); k += x;
+	mem = realloc(mem, k + offsetof(bntseq_t, rid_bucket) + tmp);
+	x = offsetof(bntseq_t, rid_bucket); memcpy(mem + k, idx->bns, x); k += x; // the segment keeps BWA's layout
 	x = idx->bns->n_holes * sizeof(bntamb1_t); memcpy(mem + k, idx->bns->ambs, x); k += x;
 	free(idx->bns->ambs);
 	x = idx->bns->n_seqs * sizeof(bntann1_t); memcpy(mem + k, idx->bns->anns, x); k += x;
@@ -408,6 +411,7 @@ int bwa_idx2mem(bwaidx_t *idx)
 	x = idx->bns->l_pac/4+1;
 	mem = realloc(mem, k + x);
 	memcpy(mem + k, idx->pac, x); k += x;
+	bns_rid_bucket_destroy(idx->bns);
 	free(idx->bns); idx->bns = 0;
 	free(idx->pac); idx->pac = 0;
 
