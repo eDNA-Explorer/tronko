@@ -26,10 +26,12 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#include <string.h>
 #ifdef __aarch64__
 #include "sse2neon.h"
 #else
 #include <emmintrin.h>
+#include <immintrin.h>
 #endif /* ifdef __aarch64__ */
 #include "ksw.h"
 
@@ -381,7 +383,7 @@ typedef struct {
 	int32_t h, e;
 } eh_t;
 
-int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+int ksw_extend2_scalar(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
 {
 	eh_t *eh; // score array
 	int8_t *qp; // query profile
@@ -480,6 +482,450 @@ int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target,
 	if (_gscore) *_gscore = gscore;
 	if (_max_off) *_max_off = max_off;
 	return max;
+}
+
+/*****************************************
+ *** SW extension, vectorised (Tronko) ***
+ *****************************************/
+
+/* ksw_extend2() below returns, for every input, the same six results (score, qle, tle, gtle,
+ * gscore, max_off) as ksw_extend2_scalar() above, which is BWA's ksw_extend2 unchanged.
+ *
+ * The kernels keep the scalar code's setup, row order, band, exits and band narrowing, and
+ * vectorise only the cell loop of one row: eight (SSE2) or sixteen (AVX2) cells per vector, in
+ * 16-bit integers. That is exact because gaps open from M, the diagonal term, never from H:
+ * within row i, M(i,j) and E(i+1,j) depend only on row i-1, and the horizontal gap
+ * F(i,j+1) = max(F(i,j) - e_ins, max(M(i,j) - oe_ins, 0)), F(i,beg) = 0, is a max-plus prefix
+ * scan over values of row i-1, which shifts compute exactly in any grouping. H = max(M, E, F)
+ * is then per cell. The rest is kept as follows:
+ * - memory: a row writes H and E at [beg, end] and nothing else. Cells beyond the band keep
+ *   what an earlier row left there, which a later row reads when the band grows back, so the
+ *   last, partial vector of a row writes back the old contents of the cells at and past end,
+ *   loaded before any write.
+ * - ties: the row maximum goes to the last j holding it, the best score to the first row that
+ *   reaches it, the whole-query score to the last row; the per-row code after the cells
+ *   (KS_ROW_EPILOGUE) is the scalar code.
+ * - integer range: every value stays in [min(mat) - max(oe_del, oe_ins), h0 + qlen * max(mat, 0)];
+ *   ks_eligible() sends any call where that bound could leave 16 bits, or with parameters
+ *   outside the range checked, to the scalar code.
+ *
+ * ksw_extend2() uses the AVX2 kernel when the CPU has AVX2 and the SSE2 kernel otherwise (every
+ * x86-64 CPU; on aarch64 through sse2neon.h). The AVX2 kernel is compiled with a target
+ * attribute, so the build flags do not change and one binary runs on any x86-64 CPU.
+ * tronko-assign/tests/unit/test_ksw_extend.c compares every kernel with ksw_extend2_scalar()
+ * on recorded and random calls. */
+
+/* Unaligned 16-bit vector loads and stores. On aarch64, sse2neon.h implements
+ * _mm_loadu_si128/_mm_storeu_si128 through int32 pointers, which UBSan reports as misaligned
+ * for the 2-byte-aligned int16 arrays here; use the int16 NEON forms there instead. */
+#if defined(__aarch64__)
+#define KS_LOADU(p) vreinterpretq_s32_s16(vld1q_s16((const int16_t*)(p)))
+#define KS_STOREU(p, x) vst1q_s16((int16_t*)(p), vreinterpretq_s16_s32(x))
+#else
+#define KS_LOADU(p) _mm_loadu_si128((const __m128i*)(p))
+#define KS_STOREU(p, x) _mm_storeu_si128((__m128i*)(p), (x))
+#endif
+
+#define KS_PAD 32            /* int16 elements of slack before and after every row array */
+#define KS_STACK_ELEMS 16384 /* 32 KiB on the stack; longer queries use malloc */
+
+/* Whether the 16-bit kernels may run. Every value they store is in
+ * [min(mat) - max(oe_del, oe_ins), h0 + qlen * max(mat, 0)]; the scan subtracts at most
+ * 16 * e_ins more and the AVX2 carry at most 30000 from a non-negative value. With the limits
+ * below, all of it stays inside int16. Anything else runs the scalar code, which then behaves
+ * exactly as before (including its assert on h0 and its band arithmetic for w < 0). */
+static int ks_eligible(int qlen, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int h0)
+{
+	int i, maxpos = 0;
+	long bound;
+	if (qlen < 1 || qlen > 16000 || m < 1 || m > 16 || w < 0) return 0;
+	if (e_del < 1 || e_ins < 1 || e_del > 1000 || e_ins > 1000) return 0;
+	if (o_del < 0 || o_ins < 0 || o_del > 4000 || o_ins > 4000) return 0;
+	if (h0 < 1) return 0;
+	for (i = 0; i < m * m; ++i) if (mat[i] > maxpos) maxpos = mat[i];
+	bound = (long)h0 + (long)qlen * maxpos;
+	return bound <= 20000;
+}
+
+typedef struct {
+	int16_t *H;   /* H[j] mirrors the scalar code's eh[j].h, j in [0, qlen] */
+	int16_t *E;   /* E[j] mirrors eh[j].e */
+	int16_t *P;   /* query profile, row k at P + k * stride */
+	int stride;
+	void *heap;
+} ks_buf_t;
+
+/* Three zeroed arrays of stride elements plus a profile of m rows, with KS_PAD elements of
+ * slack on each side, so that full-vector loads and stores near qlen stay inside the buffer. */
+static void ks_buf_init(ks_buf_t *b, int16_t *stack, int qlen, int m, const int8_t *mat, const uint8_t *query, int fill_profile)
+{
+	int j, k, stride = ((qlen + 1 + 2 * KS_PAD) + 15) & ~15;
+	size_t n = (size_t)(m + 2) * stride;
+	int16_t *base;
+	b->heap = 0;
+	if (n <= KS_STACK_ELEMS) base = stack;
+	else base = b->heap = malloc(n * sizeof(int16_t));
+	memset(base, 0, n * sizeof(int16_t));
+	b->stride = stride;
+	b->H = base + KS_PAD;
+	b->E = base + stride + KS_PAD;
+	b->P = base + 2 * stride + KS_PAD;
+	if (fill_profile) for (k = 0; k < m; ++k) {
+		const int8_t *p = &mat[k * m];
+		int16_t *pk = b->P + k * stride;
+		for (j = 0; j < qlen; ++j) pk[j] = p[query[j]];
+	}
+}
+
+/* The first row and the band clamp, as in ksw_extend2_scalar(). */
+static int ks_setup(int16_t *H, int qlen, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int h0, int fill_first_row)
+{
+	int i, j, k, max, max_ins, max_del, oe_ins = o_ins + e_ins;
+	if (fill_first_row) {
+		H[0] = h0; H[1] = h0 > oe_ins? h0 - oe_ins : 0;
+		for (j = 2; j <= qlen && H[j-1] > e_ins; ++j)
+			H[j] = H[j-1] - e_ins;
+	}
+	k = m * m;
+	for (i = 0, max = 0; i < k; ++i)
+		max = max > mat[i]? max : mat[i];
+	max_ins = (int)((double)(qlen * max + end_bonus - o_ins) / e_ins + 1.);
+	max_ins = max_ins > 1? max_ins : 1;
+	w = w < max_ins? w : max_ins;
+	max_del = (int)((double)(qlen * max + end_bonus - o_del) / e_del + 1.);
+	max_del = max_del > 1? max_del : 1;
+	w = w < max_del? w : max_del;
+	return w;
+}
+
+/* The per-row code after the cells, as in ksw_extend2_scalar(): the whole-query score, the
+ * zero-row exit, the best score, the z-drop and the band narrowing for the next row. jend is
+ * where the scalar cell loop would have left j. */
+#define KS_ROW_EPILOGUE(H, E) do { \
+	if (jend == qlen) { \
+		max_ie = gscore > h1? max_ie : i; \
+		gscore = gscore > h1? gscore : h1; \
+	} \
+	if (mrow == 0) goto done; \
+	if (mrow > max) { \
+		max = mrow, max_i = i, max_j = mj; \
+		max_off = max_off > abs(mj - i)? max_off : abs(mj - i); \
+	} else if (zdrop > 0) { \
+		if (i - max_i > mj - max_j) { \
+			if (max - mrow - ((i - max_i) - (mj - max_j)) * e_del > zdrop) goto done; \
+		} else { \
+			if (max - mrow - ((mj - max_j) - (i - max_i)) * e_ins > zdrop) goto done; \
+		} \
+	} \
+	for (j = beg; j < end && H[j] == 0 && E[j] == 0; ++j); \
+	beg = j; \
+	for (j = end; j >= beg && H[j] == 0 && E[j] == 0; --j); \
+	end = j + 2 < qlen? j + 2 : qlen; \
+} while (0)
+
+/* SSE2 kernel: 8 cells of one row per vector. */
+
+static inline int ks_hmax8(__m128i x)
+{
+	x = _mm_max_epi16(x, _mm_shuffle_epi32(x, 0x4E));
+	x = _mm_max_epi16(x, _mm_shuffle_epi32(x, 0xB1));
+	x = _mm_max_epi16(x, _mm_srli_si128(x, 2)); /* only lane 0 is used: max(lane 0, lane 1) */
+	return (int16_t)_mm_cvtsi128_si32(x);
+}
+
+static int ks_extend_sse2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+	int16_t stack[KS_STACK_ELEMS] __attribute__((aligned(32)));
+	ks_buf_t b;
+	int16_t *H, *E;
+	int i, j, oe_del = o_del + e_del, oe_ins = o_ins + e_ins, beg, end, max, max_i, max_j, max_ie, gscore, max_off;
+	const __m128i zero = _mm_setzero_si128(), ones = _mm_set1_epi16(-1);
+	const __m128i v_oe_del = _mm_set1_epi16(oe_del), v_e_del = _mm_set1_epi16(e_del), v_oe_ins = _mm_set1_epi16(oe_ins);
+	const __m128i ve1 = _mm_set1_epi16(e_ins), ve2 = _mm_set1_epi16(2 * e_ins), ve4 = _mm_set1_epi16(4 * e_ins);
+	/* _mm_set_epi16 takes lane 7 first (sse2neon.h has no _mm_setr_epi16) */
+	const __m128i vramp = _mm_set_epi16(8*e_ins, 7*e_ins, 6*e_ins, 5*e_ins, 4*e_ins, 3*e_ins, 2*e_ins, e_ins);
+	const __m128i lane = _mm_set_epi16(7, 6, 5, 4, 3, 2, 1, 0);
+
+	ks_buf_init(&b, stack, qlen, m, mat, query, 1);
+	H = b.H, E = b.E;
+	w = ks_setup(H, qlen, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, h0, 1);
+	max = h0, max_i = max_j = -1; max_ie = -1, gscore = -1;
+	max_off = 0;
+	beg = 0, end = qlen;
+	for (i = 0; i < tlen; ++i) {
+		int h1, mrow, mj, jend;
+		const int16_t *q = b.P + target[i] * b.stride;
+		if (beg < i - w) beg = i - w;
+		if (end > i + w + 1) end = i + w + 1;
+		if (end > qlen) end = qlen;
+		if (beg == 0) {
+			h1 = h0 - (o_del + e_del * (i + 1));
+			if (h1 < 0) h1 = 0;
+		} else h1 = 0;
+		if (beg < end) {
+			__m128i Hcur = KS_LOADU(H + beg); /* H(i-1, j-1), read before any write */
+			__m128i Sprev = zero, vmax = ones, vidx = ones;
+			H[beg] = (int16_t)h1;
+			for (j = beg; j < end; j += 8) {
+				__m128i Hnext = KS_LOADU(H + j + 8); /* before H[j+8] is overwritten */
+				__m128i Ev = KS_LOADU(E + j);
+				__m128i Qv = KS_LOADU(q + j);
+				__m128i M = _mm_andnot_si128(_mm_cmpeq_epi16(Hcur, zero), _mm_add_epi16(Hcur, Qv));
+				__m128i S, c, F, Hv, Ev1, jv, ge;
+				/* S(j) = F(i, j+1): inclusive max-plus scan of g = max(M - oe_ins, 0), decay e_ins */
+				S = _mm_max_epi16(_mm_sub_epi16(M, v_oe_ins), zero);
+				S = _mm_max_epi16(S, _mm_sub_epi16(_mm_slli_si128(S, 2), ve1));
+				S = _mm_max_epi16(S, _mm_sub_epi16(_mm_slli_si128(S, 4), ve2));
+				S = _mm_max_epi16(S, _mm_sub_epi16(_mm_slli_si128(S, 8), ve4));
+				c = _mm_shuffle_epi32(_mm_shufflehi_epi16(Sprev, 0xFF), 0xFF); /* broadcast S(j0 - 1) */
+				S = _mm_max_epi16(S, _mm_sub_epi16(c, vramp));
+				/* F(i, j) = S(j - 1); F(i, beg) = 0 */
+				F = _mm_or_si128(_mm_slli_si128(S, 2), _mm_srli_si128(Sprev, 14));
+				Hv = _mm_max_epi16(_mm_max_epi16(M, Ev), F);
+				Ev1 = _mm_max_epi16(_mm_sub_epi16(Ev, v_e_del), _mm_max_epi16(_mm_sub_epi16(M, v_oe_del), zero));
+				jv = _mm_add_epi16(_mm_set1_epi16(j), lane);
+				if (j + 8 <= end) {
+					KS_STOREU(E + j, Ev1);
+					KS_STOREU(H + j + 1, Hv); /* eh[j+1].h = H(i, j) */
+				} else { /* last, partial vector: cells j >= end keep their old values */
+					__m128i valid = _mm_cmpgt_epi16(_mm_set1_epi16(end), jv);
+					/* old H[j+1 .. j+8] = [Hcur[1..7], Hnext[0]], both loaded before any write */
+					__m128i oldH = _mm_or_si128(_mm_srli_si128(Hcur, 2), _mm_slli_si128(Hnext, 14));
+					KS_STOREU(E + j, _mm_or_si128(_mm_and_si128(valid, Ev1), _mm_andnot_si128(valid, Ev)));
+					KS_STOREU(H + j + 1, _mm_or_si128(_mm_and_si128(valid, Hv), _mm_andnot_si128(valid, oldH)));
+					Hv = _mm_or_si128(_mm_and_si128(valid, Hv), _mm_andnot_si128(valid, ones));
+				}
+				/* per lane: running max and the last j reaching it (H >= running max) */
+				ge = _mm_andnot_si128(_mm_cmpgt_epi16(vmax, Hv), ones);
+				vidx = _mm_or_si128(_mm_and_si128(ge, jv), _mm_andnot_si128(ge, vidx));
+				vmax = _mm_max_epi16(vmax, Hv);
+				Sprev = S;
+				Hcur = Hnext;
+			}
+			mrow = ks_hmax8(vmax);
+			{
+				__m128i sel = _mm_cmpeq_epi16(vmax, _mm_set1_epi16(mrow));
+				mj = ks_hmax8(_mm_or_si128(_mm_and_si128(sel, vidx), _mm_andnot_si128(sel, ones)));
+			}
+			h1 = H[end];
+			jend = end;
+		} else {
+			mrow = 0, mj = -1, jend = beg;
+			H[end] = (int16_t)h1;
+		}
+		E[end] = 0;
+		KS_ROW_EPILOGUE(H, E);
+	}
+done:
+	if (b.heap) free(b.heap);
+	if (_qle) *_qle = max_j + 1;
+	if (_tle) *_tle = max_i + 1;
+	if (_gtle) *_gtle = max_ie + 1;
+	if (_gscore) *_gscore = gscore;
+	if (_max_off) *_max_off = max_off;
+	return max;
+}
+
+/* AVX2 kernel: 16 cells of one row per vector (x86-64 only, chosen at run time). */
+
+#if defined(__x86_64__) || defined(__i386__)
+#define KS_AVX2 __attribute__((target("avx2")))
+
+/* Query profile with a byte shuffle: row k is mat[k*m + query[j]], sign-extended to 16 bits.
+ * Falls back to the scalar loop if any query byte is >= m (the scalar code's contract is
+ * 0 <= query[j] < m; this keeps even out-of-contract inputs identical). */
+static KS_AVX2 void ks_profile_avx2(int16_t *P, int stride, int qlen, int m, const int8_t *mat, const uint8_t *query)
+{
+	int j, k, n16 = qlen & ~15;
+	__m128i mx = _mm_setzero_si128();
+	for (j = 0; j < n16; j += 16) mx = _mm_max_epu8(mx, _mm_loadu_si128((const __m128i*)(query + j)));
+	for (j = n16; j < qlen; ++j) if (query[j] >= m) n16 = -1;
+	if (n16 >= 0) {
+		uint8_t t[16];
+		_mm_storeu_si128((__m128i*)t, mx);
+		for (j = 0; j < 16; ++j) if (t[j] >= m) n16 = -1;
+	}
+	for (k = 0; k < m; ++k) {
+		int16_t *pk = P + k * stride;
+		j = 0;
+		if (n16 > 0) {
+			int8_t tb[16];
+			__m128i tv;
+			memset(tb, 0, sizeof(tb));
+			memcpy(tb, &mat[k * m], m);
+			tv = _mm_loadu_si128((const __m128i*)tb);
+			for (; j < n16; j += 16)
+				_mm256_storeu_si256((__m256i*)(pk + j), _mm256_cvtepi8_epi16(_mm_shuffle_epi8(tv, _mm_loadu_si128((const __m128i*)(query + j)))));
+		}
+		for (; j < qlen; ++j) pk[j] = mat[k * m + query[j]];
+	}
+}
+
+/* The first row of ksw_extend2_scalar(): H[0] = h0 and, for 1 <= j <= qlen,
+ * H[j] = max(h0 - oe_ins - (j - 1) * e_ins, 0) (the scalar loop stops at the first value <= 0
+ * and leaves zeros, which is the same thing for e_ins >= 1). Saturating 16-bit arithmetic;
+ * the last store may write up to 15 elements past qlen, into the padding. */
+static KS_AVX2 void ks_first_row_avx2(int16_t *H, int qlen, int o_ins, int e_ins, int h0)
+{
+	int j, base = h0 - (o_ins + e_ins); /* value at j = 1 */
+	const __m256i ramp = _mm256_setr_epi16(0, e_ins, 2*e_ins, 3*e_ins, 4*e_ins, 5*e_ins, 6*e_ins, 7*e_ins,
+			8*e_ins, 9*e_ins, 10*e_ins, 11*e_ins, 12*e_ins, 13*e_ins, 14*e_ins, 15*e_ins);
+	H[0] = h0;
+	for (j = 1; j <= qlen && base > 0; j += 16, base -= 16 * e_ins)
+		_mm256_storeu_si256((__m256i*)(H + j), _mm256_max_epi16(_mm256_subs_epi16(_mm256_set1_epi16(base), ramp), _mm256_setzero_si256()));
+}
+
+static inline KS_AVX2 int ks_hmax32(__m256i x)
+{
+	__m128i y = _mm_max_epi32(_mm256_castsi256_si128(x), _mm256_extracti128_si256(x, 1));
+	y = _mm_max_epi32(y, _mm_shuffle_epi32(y, 0x4E));
+	y = _mm_max_epi32(y, _mm_shuffle_epi32(y, 0xB1));
+	return _mm_cvtsi128_si32(y);
+}
+
+static KS_AVX2 int ks_extend_avx2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+	int16_t stack[KS_STACK_ELEMS] __attribute__((aligned(32)));
+	ks_buf_t b;
+	int16_t *H, *E;
+	int i, j, oe_del = o_del + e_del, oe_ins = o_ins + e_ins, beg, end, max, max_i, max_j, max_ie, gscore, max_off;
+	const __m256i zero = _mm256_setzero_si256(), ones = _mm256_set1_epi16(-1);
+	const __m256i v_oe_del = _mm256_set1_epi16(oe_del), v_e_del = _mm256_set1_epi16(e_del), v_oe_ins = _mm256_set1_epi16(oe_ins);
+	const __m256i ve1 = _mm256_set1_epi16(e_ins), ve2 = _mm256_set1_epi16(2 * e_ins), ve4 = _mm256_set1_epi16(4 * e_ins);
+	const __m256i vramp_hi = _mm256_setr_epi16(30000, 30000, 30000, 30000, 30000, 30000, 30000, 30000,
+			e_ins, 2*e_ins, 3*e_ins, 4*e_ins, 5*e_ins, 6*e_ins, 7*e_ins, 8*e_ins);
+	const __m256i vramp = _mm256_setr_epi16(e_ins, 2*e_ins, 3*e_ins, 4*e_ins, 5*e_ins, 6*e_ins, 7*e_ins, 8*e_ins,
+			9*e_ins, 10*e_ins, 11*e_ins, 12*e_ins, 13*e_ins, 14*e_ins, 15*e_ins, 16*e_ins);
+	const __m256i lane = _mm256_setr_epi16(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+
+	ks_buf_init(&b, stack, qlen, m, mat, query, 0);
+	H = b.H, E = b.E;
+	ks_profile_avx2(b.P, b.stride, qlen, m, mat, query);
+	ks_first_row_avx2(H, qlen, o_ins, e_ins, h0);
+	w = ks_setup(H, qlen, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, h0, 0);
+	max = h0, max_i = max_j = -1; max_ie = -1, gscore = -1;
+	max_off = 0;
+	beg = 0, end = qlen;
+	for (i = 0; i < tlen; ++i) {
+		int h1, mrow, mj, jend;
+		const int16_t *q = b.P + target[i] * b.stride;
+		if (beg < i - w) beg = i - w;
+		if (end > i + w + 1) end = i + w + 1;
+		if (end > qlen) end = qlen;
+		if (beg == 0) {
+			h1 = h0 - (o_del + e_del * (i + 1));
+			if (h1 < 0) h1 = 0;
+		} else h1 = 0;
+		if (beg < end) {
+			__m256i Hcur = _mm256_loadu_si256((const __m256i*)(H + beg));
+			__m256i Sprev = zero, k0 = ones, k1 = ones; /* keys (H << 16 | j), -1 = none */
+			H[beg] = (int16_t)h1;
+			for (j = beg; j < end; j += 16) {
+				__m256i Hnext = _mm256_loadu_si256((const __m256i*)(H + j + 16));
+				__m256i Ev = _mm256_loadu_si256((const __m256i*)(E + j));
+				__m256i Qv = _mm256_loadu_si256((const __m256i*)(q + j));
+				__m256i M = _mm256_andnot_si256(_mm256_cmpeq_epi16(Hcur, zero), _mm256_add_epi16(Hcur, Qv));
+				__m256i S, c, F, Hv, Ev1, jv;
+				S = _mm256_max_epi16(_mm256_sub_epi16(M, v_oe_ins), zero);
+				/* scan within each 128-bit half (in-lane byte shifts, zeros shifted in) */
+				S = _mm256_max_epi16(S, _mm256_sub_epi16(_mm256_bslli_epi128(S, 2), ve1));
+				S = _mm256_max_epi16(S, _mm256_sub_epi16(_mm256_bslli_epi128(S, 4), ve2));
+				S = _mm256_max_epi16(S, _mm256_sub_epi16(_mm256_bslli_epi128(S, 8), ve4));
+				/* upper half: S[7] - (l - 7) e_ins from the lower half; the lower half gets
+				 * S[7] - 30000, below every S */
+				c = _mm256_permute4x64_epi64(S, 0x55);
+				c = _mm256_shufflehi_epi16(c, 0xFF);
+				c = _mm256_unpackhi_epi64(c, c);
+				S = _mm256_max_epi16(S, _mm256_sub_epi16(c, vramp_hi));
+				/* previous vector: S(j0 - 1) - (l + 1) e_ins */
+				c = _mm256_permute4x64_epi64(Sprev, 0xFF);
+				c = _mm256_shufflehi_epi16(c, 0xFF);
+				c = _mm256_unpackhi_epi64(c, c); /* broadcast S(j0 - 1) */
+				S = _mm256_max_epi16(S, _mm256_sub_epi16(c, vramp));
+				/* F = [Sprev[15], S[0..14]] */
+				F = _mm256_alignr_epi8(S, _mm256_permute2x128_si256(Sprev, S, 0x21), 14);
+				Hv = _mm256_max_epi16(_mm256_max_epi16(M, Ev), F);
+				Ev1 = _mm256_max_epi16(_mm256_sub_epi16(Ev, v_e_del), _mm256_max_epi16(_mm256_sub_epi16(M, v_oe_del), zero));
+				jv = _mm256_add_epi16(_mm256_set1_epi16(j), lane);
+				if (j + 16 <= end) {
+					_mm256_storeu_si256((__m256i*)(E + j), Ev1);
+					_mm256_storeu_si256((__m256i*)(H + j + 1), Hv);
+				} else { /* last, partial vector: cells j >= end keep their old values */
+					__m256i valid = _mm256_cmpgt_epi16(_mm256_set1_epi16(end), jv);
+					/* old H[j+1 .. j+16] = [Hcur[1..15], Hnext[0]], both loaded before any write */
+					__m256i oldH = _mm256_alignr_epi8(_mm256_permute2x128_si256(Hcur, Hnext, 0x21), Hcur, 2);
+					_mm256_storeu_si256((__m256i*)(E + j), _mm256_blendv_epi8(Ev, Ev1, valid));
+					_mm256_storeu_si256((__m256i*)(H + j + 1), _mm256_blendv_epi8(oldH, Hv, valid));
+					Hv = _mm256_blendv_epi8(ones, Hv, valid);
+				}
+				/* row maximum and the last j holding it, as one 32-bit key per cell: the largest
+				 * key has the largest H and, among equal H, the largest j; H = -1 marks no cell */
+				k0 = _mm256_max_epi32(k0, _mm256_unpacklo_epi16(jv, Hv));
+				k1 = _mm256_max_epi32(k1, _mm256_unpackhi_epi16(jv, Hv));
+				Sprev = S;
+				Hcur = Hnext;
+			}
+			{
+				int key = ks_hmax32(_mm256_max_epi32(k0, k1)); /* >= 0: the row has a cell */
+				mrow = key >> 16, mj = key & 0xffff;
+			}
+			h1 = H[end];
+			jend = end;
+		} else {
+			mrow = 0, mj = -1, jend = beg;
+			H[end] = (int16_t)h1;
+		}
+		E[end] = 0;
+		KS_ROW_EPILOGUE(H, E);
+	}
+done:
+	if (b.heap) free(b.heap);
+	if (_qle) *_qle = max_j + 1;
+	if (_tle) *_tle = max_i + 1;
+	if (_gtle) *_gtle = max_ie + 1;
+	if (_gscore) *_gscore = gscore;
+	if (_max_off) *_max_off = max_off;
+	return max;
+}
+#endif
+
+int ksw_extend2_sse2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+	if (ks_eligible(qlen, m, mat, o_del, e_del, o_ins, e_ins, w, h0))
+		return ks_extend_sse2(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
+	return ksw_extend2_scalar(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
+}
+
+int ksw_extend2_avx2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	if (ks_eligible(qlen, m, mat, o_del, e_del, o_ins, e_ins, w, h0))
+		return ks_extend_avx2(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
+#endif
+	return ksw_extend2_sse2(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
+}
+
+int ksw_simd_has_avx2(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	__builtin_cpu_init();
+	return __builtin_cpu_supports("avx2");
+#else
+	return 0;
+#endif
+}
+
+static int ks_use_avx2 = -1; /* -1 until the first call; every thread computes the same value */
+
+int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)
+{
+	int avx2 = __atomic_load_n(&ks_use_avx2, __ATOMIC_RELAXED);
+	if (avx2 < 0) {
+		avx2 = ksw_simd_has_avx2();
+		__atomic_store_n(&ks_use_avx2, avx2, __ATOMIC_RELAXED);
+	}
+	if (avx2) return ksw_extend2_avx2(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
+	return ksw_extend2_sse2(qlen, query, tlen, target, m, mat, o_del, e_del, o_ins, e_ins, w, end_bonus, zdrop, h0, _qle, _tle, _gtle, _gscore, _max_off);
 }
 
 int ksw_extend(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int gapo, int gape, int w, int end_bonus, int zdrop, int h0, int *qle, int *tle, int *gtle, int *gscore, int *max_off)

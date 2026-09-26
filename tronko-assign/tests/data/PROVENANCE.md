@@ -67,6 +67,16 @@ goldens") and by the commit "tests: assignment parity with the production invoca
 | `prod-names/` | `pn_paired_F.fasta`, `pn_paired_R.fasta`, `pn_unpaired_F.fasta`, `pn_unpaired_R.fasta` | the `tests/data/assignment/` reads renamed as the pipeline names them (`12S_MiFish_U_paired_F_<idx>`); the sequences are the example-derived reads |
 | each | `goldens/`, `goldens-cap25/`: `expected_<case>.tsv` | goldens of `integration/test_gap_fixtures.sh` |
 
+## `tronko-assign/tests/data/ksw_fixture_calls.kswd.gz` (`tools/record_ksw_calls.sh`)
+
+2,115 records, the input of `unit/test_ksw_extend.c`: every hundredth `ksw_extend2()` call of each
+of the three cases of `tests/integration/test_assignment_production_parity.sh` at one thread
+(paired, single, unpaired reverse, in that order), with its inputs and the outputs of BWA's original
+scalar code. The record format is described in `unit/test_ksw_extend.c`.
+`tools/record_ksw_calls.sh <file>` records it again from the commit before the vectorised
+`ksw_extend2`; the decompressed bytes equal the committed file's
+(`cmp <(gzip -dc a) <(gzip -dc b)`).
+
 ## `tronko-assign/tests/data/real/`: real-reference read sets
 
 Public Illumina MiSeq amplicon reads of the two production markers, from the European Nucleotide
