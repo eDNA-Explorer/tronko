@@ -5,3 +5,6 @@ test_ksw_extend_san
 test_nw_fill
 test_nw_fill_san
 tronko-assign-nw-shadow
+test_dense_sa
+test_dense_sa_san
+test_dense_sa_tsan

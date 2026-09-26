@@ -91,6 +91,15 @@ static int parse_proc_io(resource_stats_t* stats) {
     return 0;
 }
 
+// Seconds since init_resource_monitoring(), the wall_time_sec of get_resource_stats(), without
+// reading /proc (which allocates a FILE); 0 before initialisation.
+double resource_wall_seconds(void) {
+    struct timeval now;
+    if (!monitoring_initialized) return 0.0;
+    gettimeofday(&now, NULL);
+    return (now.tv_sec - process_start_time.tv_sec) + (now.tv_usec - process_start_time.tv_usec) / 1000000.0;
+}
+
 int init_resource_monitoring(void) {
     if (monitoring_initialized) {
         return 0;

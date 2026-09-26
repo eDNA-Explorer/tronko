@@ -16,6 +16,8 @@
 #include "../hashmap_base.h"
 #include "kseq.h"
 #include "../global.h"
+#include <fcntl.h>
+#include <sys/resource.h>
 KSEQ_DECLARE(gzFile)
 
 extern unsigned char nst_nt4_table[256];
@@ -565,6 +567,66 @@ static void update_a(mem_opt_t *opt, const mem_opt_t *opt0)
 	}
 }
 
+extern FILE *g_tsv_log_file;           // tronko-assign.c, set by --tsv-log
+double resource_wall_seconds(void);    // resource_monitor.c
+
+// One --tsv-log line in the format of tsv_memlog_write(), without its fopen of /proc files: the
+// dense-SA build runs between mem_opt_init() and the BWA call, where the main thread must not
+// allocate (see bwt_densify_sa() in bwt.c).
+static void dense_sa_tsv_line(const char *phase, const char *extra)
+{
+	struct rusage ru;
+	char buf[128];
+	long vm_pages = 0, rss_pages = 0, page_kb = sysconf(_SC_PAGESIZE) / 1024;
+	int fd, n;
+
+	if (g_tsv_log_file == 0) return;
+	memset(&ru, 0, sizeof(ru));
+	getrusage(RUSAGE_SELF, &ru);
+	if ((fd = open("/proc/self/statm", O_RDONLY)) >= 0) {
+		if ((n = read(fd, buf, sizeof(buf) - 1)) > 0) {
+			buf[n] = 0;
+			sscanf(buf, "%ld %ld", &vm_pages, &rss_pages);
+		}
+		close(fd);
+	}
+	fprintf(g_tsv_log_file, "%.3f\t%s\t%.1f\t%.1f\t%.1f\t%.3f\t%.3f\t%s\n", resource_wall_seconds(), phase,
+			rss_pages * page_kb / 1024.0, vm_pages * page_kb / 1024.0, ru.ru_maxrss / 1024.0,
+			ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1e6, ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6, extra);
+	fflush(g_tsv_log_file);
+}
+
+#define DENSE_SA_SHIFT 2 // a dense suffix-array sample every 4 indices
+
+// Replace the index's file suffix-array sample (every 32nd) with a dense one built in memory, so
+// that bwt_sa() walks about 3 LF steps instead of 31 and returns the same values (bwt.c). Called
+// once per process, on the index load. TRONKO_CHECK_SA=1 keeps the file sample and makes every
+// lookup compute both and abort on a difference.
+static void dense_sa_build(bwaidx_t *idx, int n_threads)
+{
+	bwt_dense_stat_t st;
+	const char *check = getenv("TRONKO_CHECK_SA");
+	int keep_sa = check != 0 && atoi(check) != 0;
+	char extra[160];
+
+	if (idx->mem != 0 || idx->bwt == 0) return; // a shared-memory index: bwt->sa is not ours to free
+	dense_sa_tsv_line("DENSE_SA_LAYOUT_START", "");
+	bwt_densify_sa(idx->bwt, DENSE_SA_SHIFT, n_threads, keep_sa, &st);
+	snprintf(extra, sizeof(extra), "status=%d,threads=%d,entries=%llu,checked=%llu", st.status, st.n_threads,
+			(unsigned long long)st.n_entries, (unsigned long long)st.n_checked);
+	dense_sa_tsv_line("DENSE_SA_LAYOUT_DONE", extra);
+	if (st.status == BWT_DENSE_OK)
+		fprintf(stderr, "[M::%s] dense suffix-array sample every %d: %llu entries (%.2f GiB), %lld segments on %d threads, "
+				"%llu file samples matched, %.1f s%s\n", __func__, 1 << DENSE_SA_SHIFT, (unsigned long long)st.n_entries,
+				st.n_entries * 4.0 / (1 << 30), (long long)st.n_walks, st.n_threads, (unsigned long long)st.n_checked,
+				st.seconds, keep_sa? "; TRONKO_CHECK_SA: checking every lookup against the file sample" : "");
+	else
+		fprintf(stderr, "[W::%s] dense suffix-array sample not used (status %d: visited %llu, written %llu, checked %llu, "
+				"mismatches %llu, unwritten %llu); lookups use the file sample\n", __func__, st.status,
+				(unsigned long long)st.n_visited, (unsigned long long)st.n_written, (unsigned long long)st.n_checked,
+				(unsigned long long)st.n_mismatch, (unsigned long long)st.n_unwritten);
+}
+
 int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaMatches* bwa_results, int concordant, int numberOfTrees, int startline, int paired, int start, int end, int max_query_length, int max_readname_length, int max_acc_name)
 {
 	mem_opt_t *opt, opt0;
@@ -784,6 +846,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	aux.idx = idx_once? idx_once : bwa_idx_load_from_shm(databaseFile);
 	if (aux.idx == 0) {
 		if ((aux.idx = bwa_idx_load(databaseFile, BWA_IDX_ALL)) == 0) return 1; // FIXME: memory leak
+		dense_sa_build(aux.idx, opt->n_threads); // first call only: the index is kept for the process
 	} else if (bwa_verbose >= 3)
 		fprintf(stderr, "[M::%s] load the bwa index from shared memory\n", __func__);
 	idx_once = aux.idx;
