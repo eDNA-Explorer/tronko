@@ -10,10 +10,18 @@ code (below). A change that alters any assignment, score digit or row order fail
 
 ```
 make -C tronko-assign clean && make -C tronko-assign      # the binary under test
-make -C tronko-assign/tests test                          # every test; same as: make -C tronko-assign test
+make -C tronko-assign/tests test                          # every test
+make -C tronko-assign/tests test-san                      # the unit tests of tests/Makefile under ASan and UBSan
+make -C tronko-assign/tests clean
 ```
 
-`make test` also builds the unit tests (`tests/unit/`) with the binary's compiler flags.
+`make -C tronko-assign/tests test` builds and runs the unit tests of `tests/Makefile` with
+production's flags (gcc `-O3 -fno-stack-protector`, no `-march`), then `tronko-assign`'s own
+`make test`. Requirements: gcc and zlib (`build-essential zlib1g-dev libzstd-dev`), Linux on
+x86-64 or aarch64.
+
+`tronko-assign`'s `make test` builds the unit tests of the undefined-behaviour fixes with the
+binary's compiler flags and runs `tests/run_tests.sh`.
 `tests/run_tests.sh` prints one `==` line per test: PASS, FAIL or SKIP (a missing fixture is a
 skip, exit 77). It exits 1 if any test failed. The whole run takes a few minutes, most of it the
 three-tree and gap fixtures at one thread.
@@ -46,6 +54,7 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_multibatch_parity.sh` | the same pairs at `-L 400` | ten batches per run: what is loaded, estimated and reset per batch |
 | `integration/test_multitree_parity.sh` | `data/multitree/`: three copies of the example tree in one reference | reads with two or three candidate trees: candidate gathering, votes in several trees, the multi-tree LCA |
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
+| `unit/test_vote_tally` | random forests and reads | the vote tally over a read's candidate trees equals the pass over every tree (below) |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -273,3 +282,39 @@ The fixture inputs themselves (reads, references, BWA index) are regenerated fro
 dataset by `tools/make_fixture_inputs.sh <out-dir>`, which also compares every file with the
 committed one ([tools/README.md](tools/README.md)); `data/PROVENANCE.md` names the tool that wrote
 each fixture.
+
+## `unit/test_vote_tally.c`
+
+After placement, `runAssignmentOnChunk_WithBWA` tallies a read's votes: how many nodes of each
+tree lie inside the score window, the list of voted nodes (`minNodes`), the tree with the most
+votes (`maxRoot`, lowest index on a tie) and the ascending list of trees with votes
+(`maxRoots`). It used to pass over every node of every tree in the reference, 7,086,092 nodes on
+CO1_fwhF2_EPTDr2n, for every read; `vote_tally.h` now passes only over the read's candidate trees
+(`vote_hit_trees()`, `vote_tally_hit_trees()`, `vote_reset_hit_trees()`). The old pass is kept
+there as `vote_tally_all_trees()`.
+
+The test runs both on random forests (1 to 4,000 trees, one-leaf trees, one large tree) and
+random reads, with the buffers reused from read to read as in `tronko-assign`, and requires the
+same `numMinNodes`, `minNodes`, per-tree counts, count of voting trees, `maxRoot`, `max` and
+`maxRoots` for every read, and `voteRoot` all zero after each reset. The candidate lists come out
+of tree order, with duplicate trees, with -1 and out-of-range ids, longer than the tree count and
+empty; the votes include none, one node, sparse, dense, every node and equal counts in several
+trees. It prints one line, for example:
+
+```
+test_vote_tally: 140000 reads on 6 forests; 55613 with more than one hit tree, ... ; without the sort 12713 results would change, without the duplicate removal 31529; 0 differ
+```
+
+The last counts show that the inputs exercise the rules: that many reads would get a different
+result if the candidate trees were taken in hit order, or with duplicates.
+
+## `integration/test_multitree_parity.sh` with `-DVOTE_SHADOW_CHECK`
+
+Built with `make ARCH_FLAGS=-DVOTE_SHADOW_CHECK`, `tronko-assign` also recomputes every read's
+vote tally with the old full pass and aborts on any difference, and prints one line of counters at
+exit; the three-tree script passes that line on:
+
+```
+PASS: mt_paired, --number-of-cores 4
+  VOTE_SHADOW reads=2000 multi_hit=1247 multi_vote=1184 unsorted=630 neg_in_prefix=0 dup_in_prefix=0 cap_reached=0 written_past_prefix=0
+```

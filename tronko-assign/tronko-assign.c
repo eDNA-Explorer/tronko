@@ -26,6 +26,7 @@
 #include "crash_debug.h"
 #include "symbol_resolver.h"
 #include "tsv_memlog.h"
+#include "vote_tally.h"
 #ifdef ENABLE_PARQUET
 #include "parquet_writer.h"
 
@@ -646,9 +647,6 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}
 		numberOfTrees = leaf_iter;
-		for(i=0;i<number_of_total_nodes;i++){
-			minNodes[i]=-1;
-		}
 		for(i=0; i<leaf_iter; i++){
 			for(j=0; j<2*numspecArr[trees_search[i]]-1; j++){
 				results->nodeScores[i][trees_search[i]][j]=0;
@@ -669,39 +667,17 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 			}
 		}
-		int countVotes[mstr->ntree];
-		int count=0;
-		for(i=0; i<mstr->ntree; i++){
-			countVotes[i]=0;
-			for(j=0;j<2*numspecArr[i]-1;j++){
-				if (results->voteRoot[i][j]==1){
-					countVotes[i]++;
-					minNodes[count]=j;
-					count++;
-				}
-			}
-		}
-		int numMinNodes=count;
-		int max=0;
-		int maxRoot=-1;
-		count=0;
-		for(i=0;i<mstr->ntree;i++){
-			if (countVotes[i]>max){
-				max=countVotes[i];
-				maxRoot=i;
-			}
-			if (countVotes[i]>0){
-				count++;
-			}
-		}
-		int LCA, LCAs[count], maxRoots[count];
-		int count2=0;
-		for(i=0;i<mstr->ntree;i++){
-			if ( countVotes[i]>0){
-				maxRoots[count2]=i;
-				count2++;
-			}
-		}
+		// Votes exist only in the trees this read was scored against (vote_tally.h).
+		int hitTree[MAX_NUM_BWA_MATCHES], countVotes[MAX_NUM_BWA_MATCHES];
+		int nhit = vote_hit_trees(trees_search, leaf_iter, mstr->ntree, hitTree);
+		int LCA, LCAs[MAX_NUM_BWA_MATCHES], maxRoots[MAX_NUM_BWA_MATCHES];
+		vote_tally_t tally = vote_tally_hit_trees(results->voteRoot, numspecArr, hitTree, nhit, countVotes, minNodes, maxRoots);
+		int numMinNodes = tally.numMinNodes;
+		int count = tally.count;
+		int maxRoot = tally.maxRoot;
+#ifdef VOTE_SHADOW_CHECK
+		vote_shadow_check(results->voteRoot, numspecArr, mstr->ntree, trees_search, leaf_iter, MAX_NUM_BWA_MATCHES, hitTree, nhit, countVotes, tally, minNodes, maxRoots, lineNumber);
+#endif
 		int unassigned=0;
 		int minLevel=0;
 		int taxRoot,taxIndex0,taxIndex1,taxNode;
@@ -892,12 +868,11 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		results->minimum[2] = -1;
 		LCA = -1;
 		if (leaf_iter > 0){
-			for(i=0; i<mstr->ntree; i++){
-				for (j=0; j<2*numspecArr[i]-1; j++){
-					results->voteRoot[i][j]=0;
-				}
-			}
+			vote_reset_hit_trees(results->voteRoot, numspecArr, hitTree, nhit);
 		}
+#ifdef VOTE_SHADOW_CHECK
+		vote_shadow_check_clean(results->voteRoot, numspecArr, mstr->ntree, lineNumber);
+#endif
 	}
 	/*if (use_nw == 0){
 		affine_wavefronts_delete(affine_wavefronts);
