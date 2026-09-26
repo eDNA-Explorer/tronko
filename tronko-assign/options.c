@@ -1,5 +1,7 @@
 #include "options.h"
 #include <getopt.h>
+#include <ctype.h>
+#include <string.h>
 
 static struct option long_options[]=
 {
@@ -98,6 +100,33 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
 	\n";
 
+/* Copies the first whitespace-delimited word of arg into dst, as sscanf(arg, "%s", dst) did, but
+ * refuses a word that does not fit in dst (size bytes, terminator included) instead of writing
+ * past the end: the run stops with a message naming the option. Returns what that sscanf
+ * returned: 1, or EOF when arg holds no word, in which case dst is left as it was. */
+static int scan_path_arg(const char *arg, char *dst, size_t size, int option){
+	const char *name = "";
+	size_t n = 0;
+	int i;
+	while (isspace((unsigned char)*arg)) arg++;
+	if (*arg == '\0')
+		return EOF;
+	while (arg[n] != '\0' && !isspace((unsigned char)arg[n])) n++;
+	if (n >= size){
+		for (i = 0; long_options[i].name != 0; i++){
+			if (long_options[i].val == option){
+				name = long_options[i].name;
+				break;
+			}
+		}
+		fprintf(stderr, "Path given to -%c (--%s) is %zu characters long; at most %zu are supported. Exiting...\n", option, name, n, size - 1);
+		exit(1);
+	}
+	memcpy(dst, arg, n);
+	dst[n] = '\0';
+	return 1;
+}
+
 void print_help_statement(){
 	printf("%s", &usage[0]);
 	return;
@@ -189,7 +218,7 @@ void parse_options(int argc, char **argv, Options *opt){
 				opt->skip_build=1;
 				break;
 			case '5': //print node info
-				success = sscanf(optarg, "%s", opt->print_node_info);
+				success = scan_path_arg(optarg, opt->print_node_info, sizeof(opt->print_node_info), '5');
 				if (!success)
 					fprintf(stderr, "Invalid file\n");
 				break;
@@ -215,7 +244,7 @@ void parse_options(int argc, char **argv, Options *opt){
 				opt->reverse_second_of_paired_read=1;
 				break;	
 			case 'f':
-				success = sscanf(optarg, "%s", opt->reference_file);
+				success = scan_path_arg(optarg, opt->reference_file, sizeof(opt->reference_file), 'f');
 				if (!success)
 					fprintf(stderr, "Invalid reference file.\n");
 				break;
@@ -225,58 +254,58 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Could not read score constant\n");
 				break;
 			case 't':
-				success = sscanf(optarg, "%s", opt->print_trees_dir);
+				success = scan_path_arg(optarg, opt->print_trees_dir, sizeof(opt->print_trees_dir), 't');
 				if (!success)
 					fprintf(stderr, "Invalid directory to print Newick trees.\n");
 				break;
 			case 'm':
-				success = sscanf(optarg, "%s", opt->msa_file);
+				success = scan_path_arg(optarg, opt->msa_file, sizeof(opt->msa_file), 'm');
 				if (!success)
 					fprintf(stderr, "Invalid MSA file\n");
 				break;
 			case 'd':
-				success = sscanf(optarg, "%s", opt->partitions_directory);
+				success = scan_path_arg(optarg, opt->partitions_directory, sizeof(opt->partitions_directory), 'd');
 				if (!success)
 					fprintf(stderr, "Invalid partitions output directory\n");
 				break;
 			case 'o':
-				success = sscanf(optarg, "%s", opt->results_file);
+				success = scan_path_arg(optarg, opt->results_file, sizeof(opt->results_file), 'o');
 				if (!success)
 					fprintf(stderr, "Invalid output results file\n");
 				break;
 			case 'x':
-				success = sscanf(optarg, "%s", opt->taxonomy_file);
+				success = scan_path_arg(optarg, opt->taxonomy_file, sizeof(opt->taxonomy_file), 'x');
 				if (!success)
 					fprintf(stderr, "Invalid taxonomy file\n");
 				break;
 			case 'g':
-				success = sscanf(optarg, "%s", opt->read1_file);
+				success = scan_path_arg(optarg, opt->read1_file, sizeof(opt->read1_file), 'g');
 				if (!success)
 					fprintf(stderr, "Invalid single read file\n");
 				break;
 			case '1':
-				success = sscanf(optarg, "%s", opt->read1_file);
+				success = scan_path_arg(optarg, opt->read1_file, sizeof(opt->read1_file), '1');
 				if (!success)
 					fprintf(stderr, "Invalid read 1 file.\n");
 				break;
 			case '2':
-				success = sscanf(optarg, "%s", opt->read2_file);
+				success = scan_path_arg(optarg, opt->read2_file, sizeof(opt->read2_file), '2');
 				if (!success)
 					fprintf(stderr, "Invalid read 2 file.\n");
 				break;
 			case 'a':
-				success = sscanf(optarg, "%s", opt->fasta_file);
+				success = scan_path_arg(optarg, opt->fasta_file, sizeof(opt->fasta_file), 'a');
 				if (!success)
 					fprintf(stderr, "Invalid fasta file.\n");
 				break;
 			case '3':
-				success = sscanf(optarg, "%s", opt->print_alignments_dir);
+				success = scan_path_arg(optarg, opt->print_alignments_dir, sizeof(opt->print_alignments_dir), '3');
 				opt->print_alignments_to_file = 1;
 				if (!success)
 					fprintf(stderr, "Invalid directory.\n");
 				break;
 			case '4':
-				success = sscanf(optarg, "%s", opt->treedir);
+				success = scan_path_arg(optarg, opt->treedir, sizeof(opt->treedir), '4');
 				if (!success)
 					fprintf(stderr, "Invalid directory.\n");
 				break;

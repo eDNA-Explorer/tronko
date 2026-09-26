@@ -18,7 +18,9 @@ byte-identical on aarch64 and x86-64. Until the SAM SEQ fix (commit "bwa: conver
 indexing the SAM SEQ literals"), `mt_single_F` and `mt_unpaired_R` depend on the build: aarch64
 builds and production's Debian build reproduce them, Ubuntu gcc 13.3 x86-64 builds do not
 ([README](../README.md)). They hold read names, taxonomy paths and scores,
-no sequence.
+no sequence. The exception is `gaps/mate-rescue/`: its goldens were regenerated from the fixed
+code by commit "tests: regenerate the mate-rescue goldens from the fixed code", because production's
+output on that fixture depends on the `-a` path string ([README](../README.md)).
 
 The fixture generators are in `tronko-assign/tests/tools/` ([README](../tools/README.md)):
 `sim_reads.py`, `multitree_fixture.py` and `gap_fixtures.py`, and `make_fixture_inputs.sh`, which
