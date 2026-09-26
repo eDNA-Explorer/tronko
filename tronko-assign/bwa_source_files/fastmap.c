@@ -108,9 +108,10 @@ static void *process(void *shared, int step, void *_data)
 		int k=0;
 		int no_add=0;
 		int success=1;
-	HASHMAP(char, leafMap) map;
-	hashmap_init(&map, hashmap_hash_string, strcmp);
-	for(i=0; i<aux->ntree; i++){
+	static HASHMAP(char, leafMap) map; // built on the first call and kept for the process, as is the index in main_mem
+	int build_map = hashmap_size(&map) == 0;
+	if (build_map) hashmap_init(&map, hashmap_hash_string, strcmp);
+	for(i=0; build_map && i<aux->ntree; i++){
 		for(j=numspecArr[i]-1; j<2*numspecArr[i]-1; j++){
 			struct leafMap *l;
 			l = malloc(sizeof(*l));
@@ -543,11 +544,6 @@ static void *process(void *shared, int step, void *_data)
 			}
 		}
 		free(data->seqs); free(data);
-		struct leafMap *blob;
-		hashmap_foreach_data(blob,&map){
-			free(blob);
-		}
-		hashmap_cleanup(&map);
 		return 0;
 	}
 	return 0;
@@ -580,6 +576,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	void *ko = 0, *ko2 = 0;
 	mem_pestat_t pes[4];
 	ktp_aux_t aux;
+	static bwaidx_t *idx_once = 0; // loaded on the first call and kept for the process
 
 	memset(&aux, 0, sizeof(ktp_aux_t));
 	memset(pes, 0, 4 * sizeof(mem_pestat_t));
@@ -784,11 +781,12 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	} else update_a(opt, &opt0);
 	bwa_fill_scmat(opt->a, opt->b, opt->mat);
 
-	aux.idx = bwa_idx_load_from_shm(databaseFile);
+	aux.idx = idx_once? idx_once : bwa_idx_load_from_shm(databaseFile);
 	if (aux.idx == 0) {
 		if ((aux.idx = bwa_idx_load(databaseFile, BWA_IDX_ALL)) == 0) return 1; // FIXME: memory leak
 	} else if (bwa_verbose >= 3)
 		fprintf(stderr, "[M::%s] load the bwa index from shared memory\n", __func__);
+	idx_once = aux.idx;
 	if (ignore_alt)
 		for (i = 0; i < aux.idx->bns->n_seqs; ++i)
 			aux.idx->bns->anns[i].is_alt = 0;
@@ -843,7 +841,6 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	bwa_results = aux.results;
 	free(hdr_line);
 	free(opt);
-	bwa_idx_destroy(aux.idx);
 	kseq_destroy(aux.ks);
 	//err_gzclose(fp); kclose(ko);
 	if (aux.ks2) {
