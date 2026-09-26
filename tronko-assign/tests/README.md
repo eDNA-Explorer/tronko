@@ -12,6 +12,7 @@ code (below). A change that alters any assignment, score digit or row order fail
 make -C tronko-assign clean && make -C tronko-assign      # the binary under test
 make -C tronko-assign/tests test                          # every test
 make -C tronko-assign/tests test-san                      # the unit tests of tests/Makefile under ASan and UBSan
+make -C tronko-assign/tests test-shadow                   # tronko-assign built with -DNW_SHADOW on the repository fixtures
 make -C tronko-assign/tests clean
 ```
 
@@ -58,6 +59,8 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `unit/test_ksw_extend` | `data/ksw_fixture_calls.kswd.gz` and random calls | the vectorised seed-extension kernels return what BWA's scalar `ksw_extend2` returns (below) |
 | `unit/test_nodestore` | random trees and reads | the blocked node-store scoring equals production's per-node scoring bit for bit (below) |
 | `integration/test_nodestore_paths.sh` | `tests/data/assignment` | every node-store variant (block sizes, budget, kernels, the legacy loop, reads without candidates at block edges) reproduces the goldens (below) |
+| `unit/test_nw_fill` | `data/nw_fixture_alignments.txt.gz`, small and random alignments | the two-pass Needleman-Wunsch fill equals the original fill cell by cell (below) |
+| `integration/test_nw_shadow.sh` (`make test-shadow`) | `tests/data/assignment` | a build that runs both fills on every alignment and aborts on a difference reproduces the goldens |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -110,11 +113,13 @@ tronko-assign/tests/
   data/gaps/<fixture>/                       reads
   data/gaps/<fixture>/goldens[-cap25]/expected_<case>.tsv
   data/ksw_fixture_calls.kswd.gz             ksw_extend2 calls recorded on the fixtures (tools/record_ksw_calls.sh)
+  data/nw_fixture_alignments.txt.gz          needleman_wunsch_align() inputs recorded on the fixtures (tools/record_nw_alignments.sh)
   data/real/<marker>/<set>/                  real-reference read pairs and goldens (below)
   manifests/<marker>.sha256                  the real references, by URL with SHA-256
   real/                                      Makefile, lib.sh, test-real.sh, verify-branches.sh, make-goldens.sh
   tools/                                     the fixture generators: make_fixture_inputs.sh and its Python tools
   tools/record_ksw_calls.sh, tools/ksw_record.patch   record data/ksw_fixture_calls.kswd.gz again
+  tools/record_nw_alignments.sh              record data/nw_fixture_alignments.txt.gz again
 ```
 
 The pairs of the three-tree fixture are `tests/data/assignment/paired_2000_{1,2}.fasta`; the
@@ -383,3 +388,82 @@ three read modes, the store self-check (`TRONKO_NODESTORE_CHECK=1`), blocks of 1
 1 MiB block budget, each supported kernel (`TRONKO_NS_KERNEL`), the legacy loop
 (`TRONKO_NODESTORE=0`), and reads without candidates at block starts and ends against the legacy
 loop of the same binary.
+
+## `unit/test_nw_fill.c`
+
+`needleman_wunsch_align()` aligns every candidate leaf to its read (production runs `-w`). The
+three integer score matrices it fills decide the traceback, and with it the alignment strings, the
+positions and the mismatch counts that placement scores. `alignment.c` keeps seq-align's original
+fill, `alignment_fill_matrices()`, and adds `alignment_fill_matrices_fast()`, which `aligner_align()`
+runs for every scoring without `no_mismatches`, `no_gaps_in_a` or `no_gaps_in_b` (tronko's
+included): substitution scores from a per-alignment profile built with `scoring_lookup()` itself,
+and each row in two vectorisable passes (match and gap-in-A, which read only the previous row) and
+one serial pass (gap-in-B, which reads the cell to its left). It must produce the same integer in
+every cell of every matrix, or tronko's output can change.
+
+The test includes `alignment.c` (both fills are `static`) and, for every alignment, runs
+`aligner_align()`, copies the three matrices, runs the original fill on the same aligner, and
+compares all `(len_a + 1) × (len_b + 1)` cells of each matrix with `memcmp`. Inputs:
+
+- `data/nw_fixture_alignments.txt.gz` (71 KB, one `leaf TAB read` per line): every fifth
+  `needleman_wunsch_align()` call of the three production-parity fixture cases (single, unpaired
+  reverse, paired) on the Charadriiformes example reference, 2,000 alignments of leaves of about
+  311 bases and reads of 150, so repository data only; `tools/record_nw_alignments.sh 71f6ec3
+  <file>` records the same file again, byte for byte (`data/PROVENANCE.md`);
+- every pair of lengths 0 to 8, with every scoring and also as Smith-Waterman (which must take the
+  original fill);
+- 200,000 random alignments from a fixed seed (`make test`; 20,000 in `make test-san`, set
+  `NW_RANDOM_SAN` for more), lengths 0 to 300 and leaves up to 1,174 bases (the longest CO1 leaf):
+  ACGT; both cases with `N` and `-`; reads derived from the leaf with substitutions, indels, lower
+  case and `N`; all ASCII bytes 1 to 127; and reads with 129 to 255 distinct byte values drawn
+  from 1 to 255 (so bytes 0x80 to 0xFC too), against DNA leaves or leaves of any byte;
+- scorings: tronko's (match 2, mismatch −1, gap open −3, gap extend −1, no start or end gap
+  penalty, case-insensitive), each end-gap and start-gap setting, case-sensitive, a wildcard `N`
+  and a swap table, another penalty scale, and `no_mismatches` and `no_gaps_in_a`, which must take
+  the original fill.
+
+It also checks that `aligner_align()` ran the fast fill where it should (the profile was built)
+and the original fill where it should not, and it hashes the score and both alignment strings of
+`needleman_wunsch_align2()` for the fixture alignments and the ASCII random alignments. Those
+hashes are pinned to the values the original seq-align code produces: `alignment.c`,
+`alignment_scoring.c` and `needleman_wunsch.c` as at `71f6ec3`, unchanged up to the parent of the
+commit that adds the two-pass fill. To recompute them, compile the test against that code, from
+`tronko-assign/tests`:
+
+```
+mkdir -p /tmp/nw-reference
+git archive 71f6ec3 tronko-assign | tar -x -C /tmp/nw-reference
+gcc -O3 -DNW_TEST_REFERENCE -I/tmp/nw-reference/tronko-assign -o /tmp/nw-reference/ref unit/test_nw_fill.c \
+    /tmp/nw-reference/tronko-assign/alignment_scoring.c /tmp/nw-reference/tronko-assign/needleman_wunsch.c -lz
+/tmp/nw-reference/ref data/nw_fixture_alignments.txt.gz
+```
+
+It prints the values that `EXPECTED_FIXTURE_HASH` and `checkpoint_expected` in the test hold:
+
+```
+test_nw_fill reference: fixture 0xcb40bf124bff058dULL, random after 20000 0x7a4f15eddcf82f66ULL, after 200000 0x2517715214af8866ULL (2000 fixture, 200000 random alignments)
+```
+
+The test itself prints one line, for example:
+
+```
+test_nw_fill: 2000 fixture, 2916 small, 200000 random alignments (19820 with 129+ distinct bytes); 207832 fills compared, 0 differ; fast fill not used 0, fallback misused 0; end-to-end hash vs the original code: fixture equal, random equal at 20000 and 200000
+```
+
+Bytes above 0x7F: where `char` is signed (x86-64), the unchanged `scoring_lookup()` indexes its
+bitsets and tables with negative values for such bytes. That is undefined behaviour of the
+original code, reached only by non-DNA input, and identical for both fills. The test places the
+scoring struct after 8 KiB of zeroed memory so those reads stay inside its own allocation, and
+`make test-san` compiles `alignment_scoring.c` with AddressSanitizer only; everything else,
+`alignment.c` included, runs under both sanitizers.
+
+## `integration/test_nw_shadow.sh`
+
+Built with `-DNW_SHADOW`, `tronko-assign` recomputes every alignment the two-pass fill computes
+with the original fill, compares the three matrices and aborts on any difference; at exit it
+prints `NW_SHADOW alignments_compared=<n> mismatches=0`. The script runs the three
+production-parity fixture cases at 1 and 4 threads (`TRONKO_ASSIGN_CORES`) with such a binary
+(`TRONKO_ASSIGN_BIN`) and requires exit 0, the line with `n > 0`, and output identical to the
+production goldens. `make test-shadow` builds `tests/tronko-assign-nw-shadow` with the main build's
+compiler line (a minute or two) and runs it; `tronko-assign/tronko-assign` is left alone. The same
+build can be pointed at any other read set.

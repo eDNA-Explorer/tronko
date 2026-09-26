@@ -73,3 +73,4 @@ itself is not touched.
 | Tool | Records | Read by |
 |---|---|---|
 | `record_ksw_calls.sh <output>`, with `ksw_record.patch` | `tronko-assign/tests/data/ksw_fixture_calls.kswd.gz`, from the commit before the vectorised `ksw_extend2` | `unit/test_ksw_extend.c` |
+| `record_nw_alignments.sh <commit> <output>` | `tronko-assign/tests/data/nw_fixture_alignments.txt.gz`, from `71f6ec3` or any commit up to the parent of the two-pass fill | `unit/test_nw_fill.c` |

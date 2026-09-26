@@ -77,6 +77,17 @@ scalar code. The record format is described in `unit/test_ksw_extend.c`.
 `ksw_extend2`; the decompressed bytes equal the committed file's
 (`cmp <(gzip -dc a) <(gzip -dc b)`).
 
+## `tronko-assign/tests/data/nw_fixture_alignments.txt.gz` (`tools/record_nw_alignments.sh`)
+
+2,000 lines of `leaf TAB read`, the input of `unit/test_nw_fill.c`: the 1st, 6th, 11th, ...
+`needleman_wunsch_align()` call of the 10,000 that the three cases of
+`tests/integration/test_assignment_production_parity.sh` make at one thread (single, unpaired
+reverse, paired: 4,000, 2,000 and 4,000 calls, in that order). The leaves are example leaves as
+`tronko-assign` passes them to the aligner (about 311 bases), the reads the
+`tests/data/assignment/` reads (150 bases). `tools/record_nw_alignments.sh 71f6ec3 <file>` writes
+this file byte for byte (`gzip -9n`); any commit up to the parent of the two-pass fill gives the
+same bytes.
+
 ## `tronko-assign/tests/data/real/`: real-reference read sets
 
 Public Illumina MiSeq amplicon reads of the two production markers, from the European Nucleotide
