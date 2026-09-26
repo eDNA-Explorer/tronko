@@ -1,4 +1,5 @@
 #include "placement.h"
+#include "nodestore.h"
 
 int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,char* seq1, char* seq2,char* const pattern_alg,char* const text_alg, char* const ops_alg, int begin_offset, int end_offset){
 	char* const operations = cigar->operations;
@@ -944,7 +945,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 	//free(leaf_sequence);
 	//free(positionsInRoot);
 }
-void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold){
+void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int numberOfTotalRoots, int *positions, char *locQuery, nw_aligner_t *nw, alignment_t *aln, scoring_t *scoring, type_of_PP ***nodeScores, int **voteRoot, int number_of_matches , int **leaf_coordinates, int paired, type_of_PP* minimum_score, char *alignments_dir, char *forward_name, char *reverse_name, int print_alignments, char *leaf_sequence, int *positionsInRoot, int maxNumSpec, int* starts_forward, char** cigars_forward, int* starts_reverse, char** cigars_reverse, int print_alignments_to_file, int use_leaf_portion, int padding, int max_query_length, int max_numbase, int print_all_nodes, int early_termination, type_of_PP strike_box, int max_strikes, int enable_pruning, type_of_PP pruning_threshold, ns_block_t *sink){
 	int i, j, k, node, match;
 	type_of_PP forward_mismatch, reverse_mismatch;
 	forward_mismatch=0;
@@ -1325,9 +1326,14 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc = Cinterval * pruning_threshold;
 
+		if (sink != NULL){
+			/* node store path: compile the rows; the block is scored later (nodestore.c) */
+			ns_sink_add_job(sink, match, positions, locQuery, alength);
+		}else{
 		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery, positions, nodeScores, alength, match, print_all_nodes, site_scores_file,forward_name,
 		    early_termination, &best_score, &strikes, strike_box_threshold, max_strikes,
 		    enable_pruning, pruning_threshold_calc);
+		}
 		if ( print_all_nodes == 1){
 			fclose(site_scores_file);
 		}
@@ -1720,9 +1726,13 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		type_of_PP strike_box_threshold2 = Cinterval * strike_box;
 		type_of_PP pruning_threshold_calc2 = Cinterval * pruning_threshold;
 
+		if (sink != NULL){
+			ns_sink_add_job(sink, match, positions, locQuery, alength);
+		}else{
 		assignScores_Arr_paired(leaf_coordinates[match][0],rootArr[leaf_coordinates[match][0]],locQuery,positions,nodeScores,alength,match,print_all_nodes,site_scores_file,reverse_name,
 		    early_termination, &best_score2, &strikes2, strike_box_threshold2, max_strikes,
 		    enable_pruning, pruning_threshold_calc2);
+		}
 		if ( print_all_nodes == 1){
 			fclose(site_scores_file);
 		}
@@ -1731,6 +1741,12 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		//free(leaf_sequence);
 	}
 		}
+	}
+	if (sink != NULL){
+		/* node store path: the reduction runs after the block is scored (ns_reduce) */
+		minimum_score[1] = forward_mismatch;
+		minimum_score[2] = reverse_mismatch;
+		return;
 	}
 	type_of_PP maximum=-9999999999999999;
 	int minRoot=0;

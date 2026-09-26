@@ -13,5 +13,7 @@ void assignScores_Arr_paired(int rootNum, int node, char *locQuery, int *positio
     int early_termination, type_of_PP *best_score, int *strikes,
     type_of_PP strike_box, int max_strikes,
     int enable_pruning, type_of_PP pruning_threshold);
+type_of_PP tronko_log001(void);
+type_of_PP tronko_log025(void);
 type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int *positions, int print_all_nodes, FILE* site_scores_file,char* readname);
 #endif /* _ASSIGNMEMFORTHREADS_ */

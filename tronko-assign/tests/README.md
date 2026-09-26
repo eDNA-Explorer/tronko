@@ -56,6 +56,8 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
 | `unit/test_vote_tally` | random forests and reads | the vote tally over a read's candidate trees equals the pass over every tree (below) |
 | `unit/test_ksw_extend` | `data/ksw_fixture_calls.kswd.gz` and random calls | the vectorised seed-extension kernels return what BWA's scalar `ksw_extend2` returns (below) |
+| `unit/test_nodestore` | random trees and reads | the blocked node-store scoring equals production's per-node scoring bit for bit (below) |
+| `integration/test_nodestore_paths.sh` | `tests/data/assignment` | every node-store variant (block sizes, budget, kernels, the legacy loop, reads without candidates at block edges) reproduces the goldens (below) |
 | `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
 | `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
@@ -362,3 +364,22 @@ committed file byte for byte:
 bash tronko-assign/tests/tools/record_ksw_calls.sh /tmp/calls.kswd.gz
 cmp <(gzip -dc /tmp/calls.kswd.gz) <(gzip -dc tronko-assign/tests/data/ksw_fixture_calls.kswd.gz)
 ```
+
+## `unit/test_nodestore.c` and `integration/test_nodestore_paths.sh`
+
+`nodestore.c` lays each tree's posteriors out node-innermost at load and scores reads in blocks
+against node tiles. `unit/test_nodestore.c` (built by `tronko-assign`'s `make test` with the
+binary's flags, about 2 s) checks, on random trees whose node counts straddle the tile widths and
+on reads with sentinel columns, NaN and tied posteriors, `-1` positions, gaps, lowercase and other
+characters, one- and two-mate reads and empty leaf strings, that every (read, node) score of the
+blocked path equals production's `assignScores_Arr_paired`/`getscore_Arr` (linked unchanged) bit
+for bit, for blocks of 1, 7, 64 and 1,000 reads and every kernel the CPU supports; that every leaf
+string from the store equals `getSequenceInNodeWithoutNs`; and that `ns_reduce` equals the
+reduction of `place_paired_with_nw`, including scores on the vote window's edge. Nine deliberately
+broken variants of `nodestore.c` are all caught.
+
+`integration/test_nodestore_paths.sh` runs the repository fixtures against their goldens: the
+three read modes, the store self-check (`TRONKO_NODESTORE_CHECK=1`), blocks of 1 and 7 reads, a
+1 MiB block budget, each supported kernel (`TRONKO_NS_KERNEL`), the legacy loop
+(`TRONKO_NODESTORE=0`), and reads without candidates at block starts and ends against the legacy
+loop of the same binary.
