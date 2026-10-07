@@ -49,6 +49,11 @@ for path in "$REFERENCE" "$FASTA" "$DATA/single.fasta" \
 	fi
 done
 
+# the BWA-MEM3 index beside the FASTA (tronko-assign runs BWA-MEM3; -6 needs the index)
+# shellcheck source=../../tronko-assign/tests/integration/mem3_lib.sh
+source "$REPO_ROOT/tronko-assign/tests/integration/mem3_lib.sh"
+mem3_index "$FASTA" || exit 1
+
 echo "baseline_commit=$BASELINE_COMMIT"
 echo "reference_sha256=$(hash_file "$REFERENCE")"
 echo "fasta_sha256=$(hash_file "$FASTA")"
