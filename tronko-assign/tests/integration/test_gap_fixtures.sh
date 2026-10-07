@@ -33,12 +33,12 @@ FASTA="$EX/Charadriiformes.fasta"
 REFERENCE="$DATA/reference_tree.trkb"
 CASES=${TRONKO_GAP_CASES:-"mr_paired pc_single pc_unpaired_r pc_paired rc_single rc_unpaired_r rc_paired pn_single pn_unpaired_r pn_paired"}
 
-for f in "$FASTA" "$FASTA.bwt" "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/prod-cmdline/single_4000.fasta.zst" \
+for f in "$FASTA" "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/prod-cmdline/single_4000.fasta.zst" \
 	"$GAPS/read-content/rc_single.fasta" "$GAPS/prod-names/pn_paired_F.fasta"; do
 	[[ -f $f ]] || { echo "SKIP: missing fixture file $f"; exit 77; }
 done
 mem3_index "$FASTA" || exit 2
-stage_mate_rescue "$FASTA" "$FASTA".{amb,ann,bwt,pac,sa,bwt.2bit.64} "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/mate-rescue/mr_2.fasta" ||
+stage_mate_rescue "$FASTA" "$FASTA".{amb,ann,pac,bwt.2bit.64} "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/mate-rescue/mr_2.fasta" ||
 	{ echo "cannot stage the mate-rescue inputs in $MATE_RESCUE_DIR" >&2; exit 2; }
 
 # case_args <case>: the argument list without --number-of-cores and the output option, in

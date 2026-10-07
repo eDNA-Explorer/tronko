@@ -17,7 +17,7 @@
 # strand, which is read correctly by production's Debian build and by aarch64 gcc builds; Ubuntu
 # gcc 13.3 x86-64 builds read a NUL for a reverse-strand G and differ in about 620 rows.
 #
-# Fixture: tests/data/multitree/ (reference_tree.trkb, multitree.fasta and its BWA index,
+# Fixture: tests/data/multitree/ (reference_tree.trkb, multitree.fasta (its BWA-MEM3 index is built at test time),
 # single_F.fasta, single_R.fasta; the pairs are tests/data/assignment/paired_2000_{1,2}.fasta
 # at the repository root). Goldens: tests/data/multitree/goldens[-cap25]/expected_<case>.tsv.
 # Environment: see golden_lib.sh; TRONKO_MULTITREE_DIR replaces the fixture directory.
@@ -29,7 +29,7 @@ source "$SCRIPT_DIR/golden_lib.sh"
 MT=${TRONKO_MULTITREE_DIR:-"$TA/tests/data/multitree"}
 DATA="$REPO_ROOT/tests/data/assignment"
 
-for f in reference_tree.trkb multitree.fasta multitree.fasta.bwt single_F.fasta single_R.fasta; do
+for f in reference_tree.trkb multitree.fasta single_F.fasta single_R.fasta; do
 	[[ -f "$MT/$f" ]] || { echo "SKIP: missing fixture file $MT/$f"; exit 77; }
 done
 for f in "$DATA/paired_2000_1.fasta" "$DATA/paired_2000_2.fasta"; do

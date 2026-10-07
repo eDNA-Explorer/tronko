@@ -13,8 +13,6 @@
 #       reference_tree.trkb            tronko-convert of multitree_fixture.py's three-tree reference
 #       multitree.fasta, single_F.fasta, single_R.fasta
 #                                      multitree_fixture.py (seed 7)
-#       multitree.fasta.amb .ann .bwt .pac .sa
-#                                      BWA index, built by tronko-assign in a run without -6
 #   tronko-assign/tests/data/gaps/
 #       mate-rescue/mr_1.fasta, mr_2.fasta              gap_fixtures.py mate-rescue (seed 11)
 #       read-content/rc_single.fasta, rc_1.fasta, rc_2.fasta
@@ -74,15 +72,7 @@ echo "== tronko-assign/tests/data/multitree"
 python3 "$TOOLS/multitree_fixture.py" "$EXAMPLE" "$WORK/multitree"
 "$CONVERT" -i "$WORK/multitree/reference_tree.txt" -o "$MT/reference_tree.trkb" >"$WORK/convert-multitree.log" 2>&1
 cp "$WORK/multitree"/{multitree.fasta,single_F.fasta,single_R.fasta} "$MT/"
-# The BWA index: tronko-assign builds it next to the FASTA when run without -6. Build it in a run
-# of its own on ten reads (building it in-process advances the process's random state; the tests
-# pass -6 and never build it).
-rm -f "$MT"/multitree.fasta.{amb,ann,bwt,pac,sa}
-mkdir -p "$WORK/idx"
-head -20 "$MT/single_F.fasta" >"$WORK/idx/tiny.fasta"
-(cd "$WORK/idx" && "$ASSIGN" -r -f "$MT/reference_tree.trkb" -a "$MT/multitree.fasta" -w \
-	--Cinterval 10 --number-of-cores 1 -s -g tiny.fasta -o tiny.tsv >index-build.log 2>&1) ||
-	{ cat "$WORK/idx/index-build.log" >&2; exit 1; }
+# The aligner's index is not committed: the tests build BWA-MEM3's beside each FASTA.
 
 echo "== tronko-assign/tests/data/gaps"
 python3 "$TOOLS/gap_fixtures.py" mate-rescue "$EXAMPLE/Charadriiformes.fasta" "$GAPS/mate-rescue"

@@ -12,10 +12,19 @@ alters any assignment, score digit or row order fails.
 
 ```
 make -C tronko-assign clean && make -C tronko-assign      # the binary under test
+make -C tronko-assign bwa-mem3                            # the aligner it runs (clang 19 by default)
 make -C tronko-assign/tests test                          # every test; same as: make -C tronko-assign test
 ```
 
-`make test` also builds the unit tests (`tests/unit/`) with the binary's compiler flags.
+`tronko-assign` runs BWA-MEM3 v0.14.0 as a separate program for its candidate search.
+`make bwa-mem3` clones the pinned release (tag `v0.14.0`, commit `5c1d5e3`), builds it unchanged
+in `tronko-assign/build/bwa-mem3` and copies the binary beside `tronko-assign`; `make test` does
+this first when the binary is missing. BWA-MEM3 needs clang 19 (the default) or GCC 15
+(`make bwa-mem3 BWA_MEM3_CC=gcc-15 BWA_MEM3_CXX=g++-15`); a binary that ships must be built with
+one of them. For development only, an older compiler is accepted with
+`make bwa-mem3 BWA_MEM3_CC=gcc BWA_MEM3_CXX=g++ ALLOW_UNSUPPORTED_COMPILER=1`. The fixtures commit
+only their reference FASTA; the tests build each one's BWA-MEM3 index beside it
+(`integration/mem3_lib.sh`, well under a second each).
 `tests/run_tests.sh` prints one `==` line per test: PASS, FAIL or SKIP (a missing fixture is a
 skip, exit 77). It exits 1 if any test failed. The whole run takes a few minutes, most of it the
 three-tree and gap fixtures at one thread.
@@ -29,6 +38,7 @@ Environment, read by every integration script (`integration/golden_lib.sh`):
 | `TRONKO_MATCH_CAP` | read from `global.h` | `MAX_NUM_BWA_MATCHES` of the binary: 10 as committed, 25 as production builds it |
 | `TRONKO_TESTS_XFAIL` | empty | case names whose mismatch is reported as XFAIL, not a failure |
 | `TRONKO_TESTS_RECORD` | `0` | `1` writes each output as the golden instead of comparing (one thread count only) |
+| `TRONKO_BWA_MEM3` | `tronko-assign/bwa-mem3` | the BWA-MEM3 binary every `tronko-assign` run uses, and that builds the fixtures' indexes |
 
 **Production's match cap.** Production patches `global.h` before it builds
 (`sed -i 's/#define MAX_NUM_BWA_MATCHES 10/#define MAX_NUM_BWA_MATCHES 25/' global.h`). Build a
@@ -36,8 +46,8 @@ tree patched that way and run the tests as above: the scripts read the cap from 
 compare with the cap-25 goldens (`<dir>-cap25/`). On these fixtures the cap-25 goldens are
 byte-identical to the cap-10 ones, because no read here has more than three candidate trees.
 
-**Thread counts.** Every thread count must reproduce the one-thread goldens: BWA runs once per
-batch over the whole batch, and tie-breaks are keyed to a read's position in the batch, not to
+**Thread counts.** Every thread count must reproduce the one-thread goldens: BWA-MEM3 runs once
+per batch over the whole batch, at the run's thread count, and tie-breaks are keyed to a read's position in the batch, not to
 the thread that places it. The default checks 1, 4 and 16 threads.
 
 ## What each test pins
@@ -48,8 +58,7 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_multibatch_parity.sh` | the same pairs at `-L 400` | ten batches per run: what is loaded, estimated and reset per batch |
 | `integration/test_multitree_parity.sh` | `data/multitree/`: three copies of the example tree in one reference | reads with two or three candidate trees: candidate gathering, votes in several trees, the multi-tree LCA |
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
-| `unit/test_sam_seq` | none | BWA's SAM writer: for every byte a read can hold, on both strands, the SEQ column is the read as `A C G T N` and the SAM text has no NUL before its end, so the parse finds every record (7,710 checks) |
-| `unit/test_mate_rescue` | none | mate rescue in all four orientations, 8-bit and 16-bit kernels, with `mem_opt_t` placed against a page with no access rights: every index into the score matrix is in bounds and the mate is found where it was taken from |
+| `integration/test_bwamem3.sh` | the first 20 single-end reads of the repository fixture | the BWA-MEM3 run itself, through a stand-in `bwa-mem3` that logs its calls: the pinned command line and thread count, BWA-MEM3's environment overrides removed, the index staged once and dropped, `--no-shm`, `--bwa-mem3`, the index built without `-6` and refused when missing with it, and a stop with a message when the version is not 0.14.0, the aligner fails, a read has no record or records come out of order |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
 | `integration/test_slot_cap.sh` | chimeric reads made from the example reference | a copy built with `MAX_NUM_BWA_MATCHES 2` and AddressSanitizer on reads with three candidate leaves: the SAM parse stops at the last slot and placement reads no further |
 
@@ -57,14 +66,14 @@ The four gap fixtures, with the example reference:
 
 | Fixture, cases | Reads | What it reaches |
 |---|---|---|
-| `mate-rescue`: `mr_paired` | 620 pairs in which one mate cannot be seeded (a substitution every 12th base, or random sequence), 40 of them with a 260-base mate | BWA's mate rescue: `ksw_align2` about 4,000 times per run, including the 16-bit kernel |
+| `mate-rescue`: `mr_paired` | 620 pairs in which one mate cannot be seeded (a substitution every 12th base, or random sequence), 40 of them with a 260-base mate | the aligner's mate rescue (in the vendored BWA, `ksw_align2` about 4,000 times per run, including the 16-bit kernel) |
 | `prod-cmdline`: `pc_single`, `pc_unpaired_r`, `pc_paired` | the repository fixture's reads as `.fasta.zst`, written as the pipeline writes them (one frame, no checksum) | production's full command line, `-R -T --tsv-log <file> -V2`: the zstd reader, logging, the resource monitor, the crash-handler set-up; the goldens equal the repository fixture's |
 | `read-content`: `rc_single`, `rc_unpaired_r`, `rc_paired` | reads with one N, random reads that align nowhere, reads of 30 to 60 bases | reads production's QC keeps (`bbduk maxns=1`): an N in scoring, single-end reads with no hit, unaligned mates |
 | `prod-names`: `pn_single`, `pn_unpaired_r`, `pn_paired` | the repository fixture's reads named as the pipeline names them, `12S_MiFish_U_paired_F_<idx>` | the read-name handling of the paired readers for names that start with a digit |
 
 ## Goldens regenerated by the undefined-behaviour fixes
 
-Before the undefined-behaviour fixes (tested by `unit/test_sam_seq` and `unit/test_mate_rescue`),
+Before the undefined-behaviour fixes (tested, while the vendored BWA was in the tree, by its unit tests `test_sam_seq` and `test_mate_rescue`),
 two out-of-bounds reads in the BWA code that `tronko-assign` carries made some outputs depend on
 memory layout. Both are fixed, and the goldens they affected were regenerated from the fixed code
 at one thread:
@@ -132,9 +141,10 @@ How they were made, at one thread, on x86-64 (Intel Cascade Lake, Ubuntu 24.04, 
 tronko-assign/tests/
   run_tests.sh, Makefile
   integration/golden_lib.sh                  shared by the scripts: cap, threads, compare, record
+  integration/mem3_lib.sh                    the BWA-MEM3 binary and the fixtures' BWA-MEM3 indexes
   integration/test_*.sh
   data/multibatch[-cap25]/expected_<case>_L400.tsv
-  data/multitree/                            reference_tree.trkb, multitree.fasta + BWA index, single_F.fasta, single_R.fasta
+  data/multitree/                            reference_tree.trkb, multitree.fasta, single_F.fasta, single_R.fasta
   data/multitree/goldens[-cap25]/expected_<case>.tsv
   data/gaps/<fixture>/                       reads
   data/gaps/<fixture>/goldens[-cap25]/expected_<case>.tsv
@@ -145,8 +155,9 @@ tronko-assign/tests/
 ```
 
 The pairs of the three-tree fixture are `tests/data/assignment/paired_2000_{1,2}.fasta`; the
-gap fixtures use `tronko-build/example_datasets/single_tree/Charadriiformes.fasta` (with its BWA
-index) and `tests/data/assignment/reference_tree.trkb`.
+gap fixtures use `tronko-build/example_datasets/single_tree/Charadriiformes.fasta` and
+`tests/data/assignment/reference_tree.trkb`. The BWA-MEM3 index of each FASTA (`.amb .ann .pac
+.bwt.2bit.64`) is built beside it at test time and is not committed.
 
 ## Real-reference goldens
 
@@ -189,6 +200,13 @@ The goldens are the output at one thread of the code with F1 removed
 lists the seven files `tronko-assign` opens (`reference_tree.trkb`, the FASTA and its five BWA
 index files) with their SHA-256. The checksums, not the URLs, identify the files: a copy from
 anywhere passes if its bytes match.
+
+**Not yet adapted to BWA-MEM3.** The manifests list the vendored BWA's index files (`.bwt`, `.sa`
+among them); `tronko-assign` now reads BWA-MEM3's index (`.amb .ann .pac .bwt.2bit.64`), which
+the bucket does not hold. The `.amb`, `.ann` and `.pac` files BWA-MEM3 writes equal the vendored
+BWA's on the fixture references; `.bwt.2bit.64` has to be built (`bwa-mem3 index`; FWH took 130 s
+and 31.83 GiB on an n2-highmem-64). Until `real/` builds or fetches it, these targets fail at the
+first run with "the BWA-MEM3 index file ... is missing".
 
 Four targets in `real/Makefile` use them. Each fetches the reference files by URL into a cache
 (`~/.cache/tronko-test-real`, or `TRONKO_REAL_CACHE`), checks each against the manifest when it

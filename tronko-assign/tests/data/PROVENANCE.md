@@ -56,7 +56,6 @@ goldens") and by the commit "tests: assignment parity with the production invoca
 | File | Source |
 |---|---|
 | `multitree.fasta` | every leaf of example tree copy 0, every second leaf of copy 1, every leaf of copy 2 (leaf names suffixed `_1`, `_2`) |
-| `multitree.fasta.amb`, `.ann`, `.bwt`, `.pac`, `.sa` | the BWA index of `multitree.fasta`, built by `tronko-assign` in a run without `-6` (`tools/make_fixture_inputs.sh`) |
 | `reference_tree.trkb` | `tronko-convert` of three copies of the example tree (copy 2 with its taxonomy lines rotated by one) |
 | `single_F.fasta`, `single_R.fasta` | 2,000 single-end reads each from example leaves: plain (150 bases), and chimeras of two or three example segments |
 | `goldens/`, `goldens-cap25/`: `expected_mt_paired.tsv`, `expected_mt_single_F.tsv`, `expected_mt_unpaired_R.tsv` | goldens of `integration/test_multitree_parity.sh` (the paired case reads `tests/data/assignment/paired_2000_{1,2}.fasta`) |

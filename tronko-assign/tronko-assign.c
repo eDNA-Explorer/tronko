@@ -16,7 +16,6 @@
 #include "readreference.h"
 #include "options.h"
 #include "printAlignments.h"
-#include "bwa_source_files_include.h"
 #include "bwamem3.h"
 #include "hashmap.h"
 #include "allocateMemoryForResults.h"

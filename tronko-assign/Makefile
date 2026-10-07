@@ -55,7 +55,6 @@ endif
 #sources
 SOURCES = tronko-assign.c sam_parse.c bwamem3.c readreference.c assignment.c allocateMemoryForResults.c allocatetreememory.c getSequenceinRoot.c placement.c options.c printAlignments.c logger.c resource_monitor.c crash_debug.c symbol_resolver.c
 NEEDLEMANWUNSCH = needleman_wunsch.c alignment.c alignment_scoring.c
-BWA = bwa_source_files/bntseq.c bwa_source_files/bwa.c bwa_source_files/bwamem.c bwa_source_files/bwamem_extra.c bwa_source_files/bwamem_pair.c bwa_source_files/bwashm.c bwa_source_files/bwt.c bwa_source_files/bwt_gen.c bwa_source_files/bwtindex.c bwa_source_files/fastmap.c bwa_source_files/is.c bwa_source_files/kopen.c bwa_source_files/kstring.c bwa_source_files/ksw.c bwa_source_files/kthread.c bwa_source_files/QSufSort.c bwa_source_files/rle.c bwa_source_files/rope.c bwa_source_files/utils.c
 WFA2 = WFA2/profiler_timer.c WFA2/wavefront_backtrace.c WFA2/wavefront_compute.c WFA2/wavefront_pcigar.c WFA2/bitmap.c WFA2/wavefront_compute_edit.c WFA2/wavefront_backtrace_offload.c  WFA2/wavefront_penalties.c WFA2/cigar.c WFA2/string_padded.c WFA2/wavefront_bialign.c WFA2/wavefront_compute_linear.c  WFA2/wavefront_plot.c WFA2/vector.c WFA2/wavefront_bialigner.c WFA2/heatmap.c WFA2/wavefront_debug.c WFA2/wavefront_slab.c WFA2/wavefront_align.c WFA2/wavefront_aligner.c WFA2/wavefront.c WFA2/wavefront_unialign.c WFA2/wavefront_components.c WFA2/wavefront_extend.c WFA2/mm_allocator.c WFA2/wavefront_attributes.c WFA2/wavefront_compute_affine2p.c WFA2/wavefront_heuristic.c WFA2/profiler_counter.c WFA2/wavefront_backtrace_buffer.c WFA2/wavefront_compute_affine.c
 HASHMAP = hashmap.c
 OBJECTS = (SOURCES: .c = .o)
@@ -74,24 +73,14 @@ ifdef ENABLE_PARQUET
 endif
 
 $(TARGET): $(TARGET).c
-	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
+	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 debug: carquet_lib $(TARGET).c
-	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
+	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
 # Tests (tests/run_tests.sh, described in tests/README.md). The integration tests run the binary
-# this Makefile builds, so build it first. The unit tests of the undefined-behaviour fixes link the
-# BWA sources mem_aln2sam and mem_matesw need, with the binary's optimisation and architecture flags.
-TEST_SAM_SEQ = tests/unit/test_sam_seq
-TEST_SAM_SEQ_BWA = bwa_source_files/bntseq.c bwa_source_files/bwa.c bwa_source_files/bwamem.c bwa_source_files/bwamem_extra.c bwa_source_files/bwamem_pair.c bwa_source_files/bwt.c bwa_source_files/kopen.c bwa_source_files/kstring.c bwa_source_files/ksw.c bwa_source_files/kthread.c bwa_source_files/utils.c
-$(TEST_SAM_SEQ): tests/unit/test_sam_seq.c $(TEST_SAM_SEQ_BWA) global.h
-	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_SAM_SEQ) tests/unit/test_sam_seq.c $(TEST_SAM_SEQ_BWA) -lm -pthread -lz
-
-TEST_MATE_RESCUE = tests/unit/test_mate_rescue
-$(TEST_MATE_RESCUE): tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) global.h
-	$(CC) $(OPTIMIZATION) $(ARCH_FLAGS) $(STACKPROTECT) -std=gnu99 -I. -o $(TEST_MATE_RESCUE) tests/unit/test_mate_rescue.c $(TEST_SAM_SEQ_BWA) -lm -pthread -lz
-
-test: $(TEST_SAM_SEQ) $(TEST_MATE_RESCUE) bwa-mem3
+# this Makefile builds and the BWA-MEM3 binary beside it, so build both first.
+test: $(TARGET) bwa-mem3
 	bash tests/run_tests.sh
 
 # BWA-MEM3, the aligner tronko-assign runs (a separate program, never linked in): the pinned
