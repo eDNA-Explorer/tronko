@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, experimental, develop ]
   pull_request:
-    branches: [ main, experimental ]
+    branches: [ main, experimental, high-perf, 'pr2/**' ]
 
 jobs:
   unit-tests:
@@ -12,8 +12,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     
     - name: Install dependencies
       run: |
@@ -29,7 +27,8 @@ jobs:
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
@@ -76,7 +75,6 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        submodules: recursive
     
     - name: Install dependencies
       run: |
@@ -90,7 +88,8 @@ jobs:
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
@@ -149,8 +148,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     
     - name: Install dependencies
       run: |
@@ -165,7 +162,8 @@ jobs:
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
