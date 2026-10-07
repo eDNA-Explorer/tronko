@@ -1202,7 +1202,6 @@ int main(int argc, char **argv){
 	int max_name_length = 0;
 	int max_query_length = 0;
 	int numberOfLinesToRead=opt.number_of_lines_to_read;
-	int64_t reads_before_batch = 0;
 	bwa_num_threads = opt.number_of_cores;
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
 	if ( strcmp("single",opt.paired_or_single)==0){
@@ -1357,8 +1356,6 @@ int main(int argc, char **argv){
 			}
 			TSV_LOG(tsv_log, "BATCH_LOADED", "batch=%d,reads=%d", batch_count, returnLineNumber);
 			bwaMatches* batch_results = allocateBWAResults(returnLineNumber,mstr[0].use_leaf_portion,0);
-			bwa_read_ordinal_base = reads_before_batch;
-			reads_before_batch += returnLineNumber;
 			run_bwa(0, returnLineNumber, batch_results, mstr[0].concordant, numberOfTrees, mstr[0].databasefile, 0, max_query_length, max_name_length, max_nodename);
 			divideFile = returnLineNumber/opt.number_of_cores;
 			first_iter=0;
@@ -1663,8 +1660,6 @@ int main(int argc, char **argv){
 			returnLineNumber = returnLineNumber2;
 			first_iter=0;
 			bwaMatches* batch_results = allocateBWAResults(returnLineNumber,mstr[0].use_leaf_portion,1);
-			bwa_read_ordinal_base = reads_before_batch;
-			reads_before_batch += returnLineNumber;
 			run_bwa(0, returnLineNumber, batch_results, mstr[0].concordant, numberOfTrees, mstr[0].databasefile, 1, max_query_length, max_name_length, max_nodename);
 			divideFile= returnLineNumber/opt.number_of_cores;
 			j=0;
