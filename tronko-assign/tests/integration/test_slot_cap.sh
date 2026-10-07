@@ -20,12 +20,15 @@ CC=${CC:-gcc}
 if [ ! -f "$EX/Charadriiformes.fasta" ] || [ ! -f "$EX/reference_tree.txt" ]; then
 	echo "SKIP: no example reference at $EX"; exit 77
 fi
+# shellcheck source=mem3_lib.sh
+source "$HERE/mem3_lib.sh"
+mem3_index "$EX/Charadriiformes.fasta" || exit 1
 T=$(mktemp -d "${TMPDIR:-/tmp}/tronko-slot-cap.XXXXXX")
 if ! echo 'int main(void){return 0;}' | $CC -fsanitize=address -x c - -o "$T/probe" 2> /dev/null; then
 	echo "SKIP: $CC cannot build with -fsanitize=address"; exit 77
 fi
 mkdir -p "$T/src"
-tar -C "$TA" --exclude=./carquet --exclude=./tests --exclude=./tronko-assign -cf - . | tar -C "$T/src" -xf -
+tar -C "$TA" --exclude=./carquet --exclude=./tests --exclude=./tronko-assign --exclude=./build --exclude=./bwa-mem3 -cf - . | tar -C "$T/src" -xf -
 sed -i 's/^#define MAX_NUM_BWA_MATCHES [0-9]*/#define MAX_NUM_BWA_MATCHES 2/' "$T/src/global.h"
 grep -q '^#define MAX_NUM_BWA_MATCHES 2$' "$T/src/global.h" || { echo "FAIL: could not set the cap"; exit 1; }
 if ! (cd "$T/src" && make ARCH_FLAGS="-fsanitize=address -fno-omit-frame-pointer" > "$T/build.log" 2>&1); then
