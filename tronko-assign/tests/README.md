@@ -105,6 +105,15 @@ goldens of each marker (TSV and parquet). The commit that regenerates them lists
 golden; every changed row belongs to a read whose SAM fields differ between the code before and
 after the change, and the primary hits that differ have equal alignment scores.
 
+The commit "bwa: take a zero insert-size spread as no deviation, as BWA-MEM3 does", after it, removes
+an undefined behaviour BWA-MEM3 has already fixed: when every pair of a batch has the same spacing,
+the insert-size estimate has a standard deviation of 0 and the pairing score was computed from 0/0.
+Among the goldens only the three paired fixtures that read the 2,000 simulated pairs as one batch
+reach it (`tests/data/assignment` paired, `pc_paired`, `pn_paired`): 309 of their 2,000 rows change
+again, and they were recorded once more with the guarded build, in the same way. With it the SAM
+fields `tronko-assign` reads equal BWA-MEM3 v0.14.0 `--compat=bwa-mem`'s run once per batch on
+every fixture.
+
 How they were made, at one thread, on x86-64 (Intel Cascade Lake, Ubuntu 24.04, gcc 13.3):
 
 - fixture goldens: the record mode of each script (`TRONKO_TESTS_RECORD=1`) from a plain `make`
