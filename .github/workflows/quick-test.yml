@@ -35,6 +35,11 @@ jobs:
       run: |
         cd tronko-assign
         make clean && make
+    - name: Cache BWA-MEM3 (by release and build script)
+      uses: actions/cache@v4
+      with:
+        path: tronko-assign/build/bwa-mem3
+        key: bwa-mem3-v0.14.0-5c1d5e3-clang19-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tronko-assign/scripts/build_bwa_mem3.sh') }}
     - name: Build BWA-MEM3 (the aligner tronko-assign runs; pinned v0.14.0, clang 19)
       run: make -C tronko-assign bwa-mem3
     
