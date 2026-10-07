@@ -3,7 +3,7 @@
 Every data file the tests commit is either derived from the repository's own example dataset,
 `tronko-build/example_datasets/single_tree/` (the Charadriiformes reference: one tree, 1,466
 leaves, `Charadriiformes.fasta` and `reference_tree.txt`), or, under `real/`, public reads from the
-European Nucleotide Archive with production's goldens for them
+European Nucleotide Archive with their goldens
 ([Real-reference read sets](#tronko-assigntestsdatareal-real-reference-read-sets)). The
 references of the real-reference tests are not committed; [`../manifests/`](../manifests/) lists
 them by URL with their SHA-256.
@@ -93,6 +93,6 @@ are `<run>.<spot>` (`dev5k`) or `<run>_<spot>`.
 
 MiFish is `12S_MiFish_U` (primers GTCGGTAAAACTCGTGCCAGC / CATAGTGGGGTATCTAATCCCAGTTTG), FWH is
 `CO1_fwhF2_EPTDr2n` (GGDACWGGWTGAACWGTWTAYCCHCC / CAAACAAATARDGGTATTCGDTY). Beside the reads:
-the goldens, production `tronko-assign` (`71f6ec3`) at one thread built as the pipeline builds it,
+the goldens, `tronko-assign` with F1 removed (production `71f6ec3` with the changes of this series up to it) at one thread, built as the pipeline builds it on x86-64,
 packed with each run's command line and `time -v` record in the set's `goldens.tar.zst` (every file listed with its SHA-256 in `goldens.sha256`), and the set's
 `provenance.txt` ([README](../README.md#real-reference-goldens)).

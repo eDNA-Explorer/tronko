@@ -3,11 +3,10 @@
 These tests pin what `tronko-assign` writes, as the eDNA Explorer pipeline runs it. Every
 integration test runs the binary with the flags the pipeline uses and compares its output, byte
 for byte, with a golden: the output at `--number-of-cores 1` of the commit whose behaviour the
-golden pins. Every fixture golden and the `dev5k` real-reference goldens are the output of the
-commit "bwa: remove the fork's extra primary marking (F1) and its replayed draw", made on x86-64
-([below](#goldens-regenerated-by-removing-f1)); the `dev` and `heldout` real-reference goldens are
-still the output of production `tronko-assign` (`high-perf`, commit `71f6ec3`) and are to be made
-again from that commit. A change that alters any assignment, score digit or row order fails.
+golden pins: production `tronko-assign` (`high-perf`, commit `71f6ec3`) with the determinism
+change, the undefined-behaviour fixes, F1 removed and the zero insert-size spread guarded
+(commit `ef420cf`), made on x86-64 ([below](#goldens-regenerated-by-removing-f1)). A change that
+alters any assignment, score digit or row order fails.
 
 ## Running them
 
@@ -100,8 +99,8 @@ tree, from upstream BWA on the same reads. With F1 removed, the four SAM fields 
 reads (QNAME, FLAG, RNAME, RNEXT) equal those of upstream BWA 0.7.17-r1194 run once per batch.
 
 Every golden whose reads have equally scored hits on different trees changed: 18 of the 21 fixture
-goldens (all but the three four-read goldens of `test_assignment_parity.sh`) and the six `dev5k`
-goldens of each marker (TSV and parquet). The commit that regenerates them lists the rows per
+goldens (all but the three four-read goldens of `test_assignment_parity.sh`) and every
+real-reference golden of MiFish and FWH (`dev5k`, `dev`, `heldout`; TSV and parquet). The commit that regenerates them lists the rows per
 golden; every changed row belongs to a read whose SAM fields differ between the code before and
 after the change, and the primary hits that differ have equal alignment scores.
 
@@ -121,10 +120,11 @@ How they were made, at one thread, on x86-64 (Intel Cascade Lake, Ubuntu 24.04, 
   `../../tests/integration/test_assignment_production_parity.sh` with that script's arguments;
   recorded twice, byte-identical; an aarch64 build (Ubuntu 24.04, gcc 13.3) records the same
   bytes for every fixture golden;
-- real-reference `dev5k` goldens: the pipeline's recipe (below), production's full command line,
-  as `make update-goldens` runs them; `provenance.txt` in each set gives commit, machine, dates and
-  wall times. The `dev` and `heldout` sets were not made again: at one thread a MiFish `dev` or
-  `heldout` paired run takes several hours.
+- real-reference goldens (all three sets): the pipeline's recipe (below), production's full
+  command line, as `make update-goldens` runs them, from the F1 commit; `provenance.txt` in each set
+  gives commit, machine, dates and wall times. No batch of these read sets makes an insert-size
+  estimate, so the zero-spread guard cannot act on them: the guarded build at 64 threads writes
+  every one of them byte for byte.
 
 ## Data layout
 
@@ -173,11 +173,8 @@ record of each golden run). The scripts unpack it into the cache and check every
 <dir>`. One archive per set keeps a pull request's diff small: `goldens.sha256` shows which goldens
 a change touches, and `update-goldens` prints the rows that moved.
 
-The `dev5k` goldens are the output at one thread of the commit that removes F1
-([above](#goldens-regenerated-by-removing-f1)); the `dev` and `heldout` goldens are production's
-(`71f6ec3`). Both are built as the pipeline builds (below, cap 25). The four FWH single-end parquet goldens of `dev` and `heldout` come from the cap-10
-build, which writes the same output on these reads (their `provenance.txt` says how this was
-checked). The references are production's objects of 2023-04-07,
+The goldens are the output at one thread of the code with F1 removed
+([above](#goldens-regenerated-by-removing-f1)), built as the pipeline builds (below, cap 25). The references are production's objects of 2023-04-07,
 `gs://edna-reference-databases/CruxV2/<reference>/2023-04-07/tronko/`: `manifests/<marker>.sha256`
 lists the seven files `tronko-assign` opens (`reference_tree.trkb`, the FASTA and its five BWA
 index files) with their SHA-256. The checksums, not the URLs, identify the files: a copy from
@@ -200,7 +197,7 @@ with `ENABLE_PARQUET=1` for the parquet build. Every run uses production's full 
 |---|---|
 | `test-real` | builds this checkout, runs every case at each of `THREADS`, compares every output with its golden with `cmp`; writes `results.tsv` in the work directory |
 | `verify-branches` | `test-real` on each revision in `BRANCHES` (exported from this repository, built separately), against this checkout's goldens; one summary table, `summary.tsv` |
-| `goldens` | builds `GOLDEN_COMMIT` (default `71f6ec3`), makes every golden again at one thread, compares each with the committed one: `IDENTICAL`, `DIFFER` or `NEW`; fails unless all are identical |
+| `goldens` | builds `GOLDEN_COMMIT` (default `ef420cf`), makes every golden again at one thread, compares each with the committed one: `IDENTICAL`, `DIFFER` or `NEW`; fails unless all are identical |
 | `update-goldens` | the same, and writes every golden that is new or differs into its set's `goldens.tar.zst`, with its run record, rewrites `goldens.sha256`, and prints the rows of each golden that differs; a set whose goldens are all identical is left untouched, so `git status` names exactly the sets that changed |
 
 | Variable | Default | Meaning |
@@ -211,7 +208,7 @@ with `ENABLE_PARQUET=1` for the parquet build. Every run uses production's full 
 | `FORMATS` | `tsv parquet` | parquet needs `tronko-assign/carquet` (`git submodule update --init`) |
 | `THREADS` | `16` | `test-real`, `verify-branches`: thread counts, each must reproduce every golden |
 | `BRANCHES` | none | `verify-branches`: branches or commits |
-| `GOLDEN_COMMIT` | `71f6ec3` | `goldens`, `update-goldens`: the commit the goldens are made from |
+| `GOLDEN_COMMIT` | `ef420cf` | `goldens`, `update-goldens`: the commit the goldens are made from |
 | `TRONKO_REAL_WORK` | a new `mktemp -d` | builds, runs and outputs |
 
 **Thread counts.** Every thread count must reproduce the one-thread goldens; the default is 16,
@@ -225,20 +222,18 @@ and `heldout` 1.3 to 3.8 hours; FWH `dev5k` 8 to 12 minutes, `dev` and `heldout`
 Making every golden again, (a) below, is about 38 hours of one-thread runs; `MARKERS`, `SETS` and
 `CASES` select a part.
 
-### (a) Reproduce every golden from production's single-threaded release
+### (a) Reproduce every golden at one thread
 
 ```
-git fetch origin high-perf                         # production's commit 71f6ec3 must be present
+git fetch origin pr2/04-f1-removed                 # the goldens' commit ef420cf must be present
 git submodule update --init tronko-assign/carquet
 make -C tronko-assign/tests/real goldens MARKERS="mifish fwh" SETS="dev5k dev heldout"
 ```
 
-This exports `71f6ec3` (with its carquet commit) from the repository, builds it plain and parquet
+This exports `ef420cf` (with its carquet commit) from the repository, builds it plain and parquet
 with the pipeline's recipe, runs every marker, set, case and format at `--number-of-cores 1`, and
 compares each output with the committed golden. It prints one line per golden and fails if any
-differs. The `dev5k` goldens are made from the commit that removes F1, so for them pass that
-commit: `make -C tronko-assign/tests/real goldens MARKERS="mifish fwh" SETS=dev5k
-GOLDEN_COMMIT=<commit "bwa: remove the fork's extra primary marking (F1) and its replayed draw">`.
+differs.
 
 ### (b) Verify a branch, or every branch of a series, against the goldens
 
@@ -290,7 +285,7 @@ files. For anyone outside it:
   `bwa index`. List the seven files in a new `manifests/<marker>.sha256`, one
   `<sha256>  gs://<bucket>/<path>` line each; any bucket name will do, because with
   `TRONKO_REAL_MIRROR=<dir>` each file is read from `<dir>/<path>`. Copy a set's read pairs and
-  `reads.json` to `data/real/<marker>/<set>/`, make goldens for it from `71f6ec3` with
+  `reads.json` to `data/real/<marker>/<set>/`, make goldens for it from `ef420cf` with
   `make -C tronko-assign/tests/real update-goldens MARKERS=<marker> SETS=<set>`, and verify changes
   against those.
 - **Build recipe.** The pipeline's recipe is written out in full above and in `real/lib.sh`
@@ -298,7 +293,7 @@ files. For anyone outside it:
 - **Machine.** Any Linux machine with gcc, make, zstd, zlib and enough memory (above). The goldens
   were made on x86-64 (Intel Cascade Lake, Ubuntu 24.04, gcc 13.3). Floating-point results can
   depend on the compiler and CPU architecture; if `make goldens` reports `DIFFER` on another
-  machine, make goldens from `71f6ec3` there (`update-goldens` on a scratch branch) and verify
+  machine, make goldens from `ef420cf` there (`update-goldens` on a scratch branch) and verify
   changes against those.
 - **Reads.** The read pairs are committed; `reads.json` names the public ENA runs they come from.
 
