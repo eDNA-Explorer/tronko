@@ -8,6 +8,8 @@
 #   memfail   mem exits 3                                -> "bwa-mem3 mem failed on batch 1"
 #   dropread  mem's SAM loses read 5's records           -> "gave no record for read 5"
 #   reorder   mem's SAM has read 0's records last        -> "out of input order"
+#   hang      mem waits; tronko-assign is sent SIGTERM   -> ends by SIGTERM, index dropped, temporary
+#                                                           directory removed
 # Input: the first 20 reads of tests/data/assignment/single_4000.fasta on the example reference.
 # Environment: TRONKO_ASSIGN_BIN, TRONKO_BWA_MEM3 (see golden_lib.sh).
 set -uo pipefail
@@ -35,6 +37,7 @@ mode=${FAKE_MODE:-}
 if [[ $1 == version && $mode == version ]]; then echo 0.13.0; exit 0; fi
 if [[ $1 != mem ]]; then exec "$REAL_BWA_MEM3" "$@"; fi
 [[ $mode == memfail ]] && exit 3
+[[ $mode == hang ]] && exec sleep 120
 out=
 args=("$@")
 for ((i = 0; i < ${#args[@]}; i++)); do [[ ${args[i]} == -o ]] && out=${args[i+1]}; done
@@ -105,5 +108,25 @@ expect_failure version "needs BWA-MEM3 0.14.0"
 expect_failure memfail "bwa-mem3 mem failed on batch 1"
 expect_failure dropread "gave no record for read 5"
 expect_failure reorder "out of input order"
+
+# 5. Stopped by SIGTERM while the aligner runs: the process ends by the signal, its staged index is
+# dropped and its temporary directory removed (bwamem3.c, stop_waiter)
+dir=$(mktemp -d "$TMP_DIR/run.XXXXXX")
+mkdir -p "$dir/tmp"
+: >"$FAKE_LOG"
+(cd "$dir" && FAKE_MODE=hang TRONKO_BWA_MEM3=$FAKE TMPDIR=$dir/tmp exec "$ASSIGN" -r -f "$REFERENCE" -w --Cinterval 10 \
+	-s -g "$TMP_DIR/reads.fasta" -a "$FASTA" -6 -o "$dir/out.tsv") >"$dir/log" 2>&1 &
+pid=$!
+for ((i = 0; i < 300; i++)); do grep -q '^ARGS mem' "$FAKE_LOG" && break; sleep 0.1; done
+staged=$(grep -m1 '^ARGS shm /' "$FAKE_LOG" | sed 's|.*/||')
+kill -TERM "$pid"
+wait "$pid"
+RC=$?
+left=$(find "$dir/tmp" -mindepth 1 | head -3)
+if ((RC == 143)) && [[ -n $staged && -z $left ]] && ! "$REAL" shm -l 2>/dev/null | cut -f1 | grep -qx "$staged"; then
+	pass "SIGTERM: ends by the signal, staged index dropped, temporary directory removed"
+else
+	fail "SIGTERM: exit $RC, staged '$staged', left: ${left:-none}, $(tail -2 "$dir/log")"
+fi
 
 ((FAILS == 0)) || { echo "bwa-mem3 checks: $FAILS failure(s)" >&2; exit 1; }

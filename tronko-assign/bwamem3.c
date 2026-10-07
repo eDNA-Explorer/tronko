@@ -22,11 +22,19 @@
  * reaches it through symbolic links named tronko-<pid>-<basename> in its temporary directory, so
  * the shared-memory segment it stages (BWA-MEM3 keys segments by the prefix's basename) cannot be
  * confused with a segment another process staged from a different file of the same name, nor a
- * stale one. */
+ * stale one.
+ *
+ * Clean-up: bwamem3_finish drops the staged index and removes the temporary directory. It runs at
+ * exit (atexit) and when the process is stopped by SIGTERM, SIGINT or SIGHUP: bwamem3_init blocks
+ * those three signals before tronko-assign starts any thread, and one thread of ours waits for
+ * them (sigwait); on one it stops the running aligner, runs bwamem3_finish in ordinary thread
+ * context and ends the process by that signal. A crash (SIGSEGV and the like) still leaves both
+ * behind. */
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pthread.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,8 +84,22 @@ static struct {
 	long batch;
 } A;
 
+/* Stopping by a signal (see the header): the signals, the aligner running now (0 if none), and a
+ * lock that makes bwamem3_finish run once while any other caller waits for it */
+static const int mem3_stop_signals[] = { SIGTERM, SIGINT, SIGHUP };
+static volatile pid_t mem3_child;
+static volatile sig_atomic_t mem3_stopping;
+static pthread_mutex_t mem3_finish_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t mem3_stop_thread;
+
+static void wait_for_stop(void)
+{ /* the signal thread is cleaning up and will end the process by its signal */
+	for (;;) pause();
+}
+
 static void die(const char *fmt, const char *a, const char *b)
 {
+	if (mem3_stopping) wait_for_stop();
 	fprintf(stderr, "tronko-assign: bwa-mem3: ");
 	fprintf(stderr, fmt, a ? a : "", b ? b : "");
 	fprintf(stderr, "\n");
@@ -105,8 +127,19 @@ static void build_envp(void)
 static int run_to(char *const argv[], const char *out_path, const char *err_path)
 {
 	posix_spawn_file_actions_t fa;
+	posix_spawnattr_t at;
+	sigset_t none, stops;
 	pid_t pid;
 	int status, rc;
+	size_t i;
+	/* the child starts with no signal blocked and the stop signals at their defaults */
+	sigemptyset(&none);
+	sigemptyset(&stops);
+	for (i = 0; i < sizeof mem3_stop_signals / sizeof *mem3_stop_signals; i++) sigaddset(&stops, mem3_stop_signals[i]);
+	posix_spawnattr_init(&at);
+	posix_spawnattr_setsigmask(&at, &none);
+	posix_spawnattr_setsigdefault(&at, &stops);
+	posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF);
 	posix_spawn_file_actions_init(&fa);
 	if (err_path)
 		posix_spawn_file_actions_addopen(&fa, STDERR_FILENO, err_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -116,14 +149,17 @@ static int run_to(char *const argv[], const char *out_path, const char *err_path
 		posix_spawn_file_actions_adddup2(&fa, STDERR_FILENO, STDOUT_FILENO);
 	fflush(stdout);
 	fflush(stderr);
-	rc = posix_spawnp(&pid, argv[0], &fa, 0, argv, A.envp);
+	rc = posix_spawnp(&pid, argv[0], &fa, &at, argv, A.envp);
 	posix_spawn_file_actions_destroy(&fa);
+	posix_spawnattr_destroy(&at);
 	if (rc != 0) {
 		fprintf(stderr, "tronko-assign: bwa-mem3: cannot run %s: %s\n", argv[0], strerror(rc));
 		return -1;
 	}
+	if (!mem3_stopping) mem3_child = pid;
 	while (waitpid(pid, &status, 0) < 0)
-		if (errno != EINTR) return -1;
+		if (errno != EINTR) { mem3_child = 0; return -1; }
+	if (mem3_child == pid) mem3_child = 0;
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
@@ -199,6 +235,46 @@ static void index_file(char *dst, size_t size, const char *prefix, const char *s
 	if ((size_t)snprintf(dst, size, "%s.%s", prefix, suffix) >= size) die("path too long: %s.%s", prefix, suffix);
 }
 
+static void *stop_waiter(void *arg)
+{
+	sigset_t set, one;
+	int sig;
+	pid_t child;
+	size_t i;
+	(void)arg;
+	sigemptyset(&set);
+	for (i = 0; i < sizeof mem3_stop_signals / sizeof *mem3_stop_signals; i++) sigaddset(&set, mem3_stop_signals[i]);
+	if (sigwait(&set, &sig) != 0) return 0;
+	mem3_stopping = 1;
+	child = mem3_child;
+	if (child > 0) {
+		kill(child, SIGTERM);
+		waitpid(child, 0, 0);
+	}
+	fprintf(stderr, "tronko-assign: bwa-mem3: stopped by signal %d; dropping the staged index and removing %s\n", sig, A.dir);
+	bwamem3_finish();
+	/* end the process by the signal it received */
+	signal(sig, SIG_DFL);
+	sigemptyset(&one);
+	sigaddset(&one, sig);
+	pthread_sigmask(SIG_UNBLOCK, &one, 0);
+	raise(sig);
+	_exit(128 + sig);
+}
+
+/* Blocks the stop signals in the calling thread (every thread tronko-assign starts later inherits
+ * the mask) and starts the thread that waits for them. */
+static void watch_stop_signals(void)
+{
+	sigset_t set;
+	size_t i;
+	sigemptyset(&set);
+	for (i = 0; i < sizeof mem3_stop_signals / sizeof *mem3_stop_signals; i++) sigaddset(&set, mem3_stop_signals[i]);
+	if (pthread_sigmask(SIG_BLOCK, &set, 0) != 0) die("cannot block the stop signals%s%s", 0, 0);
+	if (pthread_create(&mem3_stop_thread, 0, stop_waiter, 0) != 0) die("cannot start the signal thread%s%s", 0, 0);
+	pthread_detach(mem3_stop_thread);
+}
+
 void bwamem3_init(const char *bin_option, const char *fasta, int threads, int skip_build, int use_shm)
 {
 	char tmpl[PATH_MAX], real[PATH_MAX], src[PATH_MAX], dst[PATH_MAX];
@@ -215,6 +291,7 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 	snprintf(A.dir, sizeof A.dir, "%s", tmpl);
 	A.ready = 1;
 	atexit(bwamem3_finish);
+	watch_stop_signals();
 
 	find_binary(bin_option);
 	check_version();
@@ -249,8 +326,8 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 	}
 	if (use_shm) {
 		char *argv[] = { A.bin, "shm", A.prefix, 0 };
+		A.staged = 1;  /* before staging, so a stop during it still drops what was staged */
 		if (run(argv, 0) != 0) die("`%s shm %s` failed (is /dev/shm large enough?)", A.bin, A.prefix);
-		A.staged = 1;
 	}
 }
 
@@ -270,7 +347,13 @@ void bwamem3_finish(void)
 {
 	char path[PATH_MAX];
 	size_t i;
-	if (!A.ready) return;
+	pthread_mutex_lock(&mem3_finish_lock);
+	if (!A.ready) {
+		pthread_mutex_unlock(&mem3_finish_lock);
+		/* exit() in another thread while the signal thread cleans up: let it end the process */
+		if (mem3_stopping && !pthread_equal(pthread_self(), mem3_stop_thread)) wait_for_stop();
+		return;
+	}
 	A.ready = 0;
 	if (A.staged) {
 		/* BWA-MEM3 can drop only every staged index at once (shm -d), so drop ours only when
@@ -306,6 +389,7 @@ void bwamem3_finish(void)
 	snprintf(path, sizeof path, "%s/batch_2.fa", A.dir); unlink(path);
 	snprintf(path, sizeof path, "%s/batch.fa", A.dir); unlink(path);
 	rmdir(A.dir);
+	pthread_mutex_unlock(&mem3_finish_lock);
 }
 
 /* The read name the vendored BWA gave the aligner: Tronko's name less a trailing "/<digit>"
