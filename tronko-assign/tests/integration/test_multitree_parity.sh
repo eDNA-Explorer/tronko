@@ -36,6 +36,7 @@ for f in "$DATA/paired_2000_1.fasta" "$DATA/paired_2000_2.fasta"; do
 	[[ -f $f ]] || { echo "SKIP: missing fixture file $f"; exit 77; }
 done
 
+mem3_index "$MT/multitree.fasta" || exit 2
 COMMON=(-r -f "$MT/reference_tree.trkb" -a "$MT/multitree.fasta" -w -6 --Cinterval 10)
 GOLDENS=$(golden_dir "$MT/goldens")
 echo "multi-tree fixture: cap $MATCH_CAP, threads $CORES$([[ $RECORD == 1 ]] && echo ', recording goldens')"

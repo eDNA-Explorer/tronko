@@ -25,6 +25,7 @@ for path in "$DATA/reference_tree.trkb" "$DATA/paired_2000_1.fasta" "$DATA/paire
 	[[ -f "$path" ]] || { echo "SKIP: missing fixture $path (set TRONKO_FIXTURE_DIR)"; exit 77; }
 done
 
+mem3_index "$FASTA" || exit 2
 COMMON=(-r -f "$DATA/reference_tree.trkb" -a "$FASTA" -w -6 --Cinterval 10 -L "$LINES")
 echo "multi-batch fixture: cap $MATCH_CAP, threads $CORES$([[ $RECORD == 1 ]] && echo ', recording goldens')"
 
@@ -35,8 +36,9 @@ run_case() {
 	for n in $CORES; do
 		out=$TMP_DIR/$label-c$n.tsv log=$TMP_DIR/$label-c$n.log
 		run_assign "$log" "${COMMON[@]}" --number-of-cores "$n" "$@" -o "$out" || { FAILS=$((FAILS + 1)); continue; }
-		# In paired mode BWA reports its insert-size estimate once per batch.
-		batches=$(grep -c 'mem_pestat.*orientation FF' "$log" || true)
+		# In paired mode the aligner reports its insert-size estimate once per batch (the vendored
+		# BWA as "[M::mem_pestat] ... orientation FF", BWA-MEM3 as "[PE] ... orientation FF").
+		batches=$(grep -c 'orientation FF' "$log" || true)
 		if ((batches < min_batches)); then
 			echo "FAIL: $label ran $batches batches, expected at least $min_batches" >&2
 			FAILS=$((FAILS + 1))

@@ -37,7 +37,8 @@ for f in "$FASTA" "$FASTA.bwt" "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAP
 	"$GAPS/read-content/rc_single.fasta" "$GAPS/prod-names/pn_paired_F.fasta"; do
 	[[ -f $f ]] || { echo "SKIP: missing fixture file $f"; exit 77; }
 done
-stage_mate_rescue "$FASTA" "$FASTA".{amb,ann,bwt,pac,sa} "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/mate-rescue/mr_2.fasta" ||
+mem3_index "$FASTA" || exit 2
+stage_mate_rescue "$FASTA" "$FASTA".{amb,ann,bwt,pac,sa,bwt.2bit.64} "$REFERENCE" "$GAPS/mate-rescue/mr_1.fasta" "$GAPS/mate-rescue/mr_2.fasta" ||
 	{ echo "cannot stage the mate-rescue inputs in $MATE_RESCUE_DIR" >&2; exit 2; }
 
 # case_args <case>: the argument list without --number-of-cores and the output option, in
