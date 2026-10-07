@@ -58,7 +58,8 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_multibatch_parity.sh` | the same pairs at `-L 400` | ten batches per run: what is loaded, estimated and reset per batch |
 | `integration/test_multitree_parity.sh` | `data/multitree/`: three copies of the example tree in one reference | reads with two or three candidate trees: candidate gathering, votes in several trees, the multi-tree LCA |
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
-| `integration/test_bwamem3.sh` | the first 20 single-end reads of the repository fixture | the BWA-MEM3 run itself, through a stand-in `bwa-mem3` that logs its calls: the pinned command line and thread count, BWA-MEM3's environment overrides removed, the index staged once and dropped, `--no-shm`, `--bwa-mem3`, the index built without `-6` and refused when missing with it, and a stop with a message when the version is not 0.14.0, the aligner fails, a read has no record or records come out of order |
+| `integration/test_bwamem3.sh` | the first 20 single-end reads of the repository fixture | the BWA-MEM3 run itself, through a stand-in `bwa-mem3` that logs its calls: the pinned command line and thread count, BWA-MEM3's environment overrides removed, the index staged once and dropped, `--no-shm`, `--bwa-mem3`, the index built without `-6` and refused when missing with it, a stop with a message when the version is not 0.14.0, the aligner fails, a read has no record or records come out of order, and on SIGTERM the staged index dropped and the temporary directory removed |
+| `integration/test_pinned_aligner.sh` | four fixture batches: `mr_paired`, the repository's pairs on the example and on the three-tree reference, `rc_single` | the pinned aligner: BWA-MEM3 gives the stored SAM for each batch, at every thread count (the Tronko fields of every record against `data/pinned-aligner/<case>.fields.tsv`, the whole SAM without header against `<case>.sam.sha256`), so another BWA-MEM3 release, build or SIMD tier cannot change the candidate search unnoticed |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
 | `integration/test_slot_cap.sh` | chimeric reads made from the example reference | a copy built with `MAX_NUM_BWA_MATCHES 2` and AddressSanitizer on reads with three candidate leaves: the SAM parse stops at the last slot and placement reads no further |
 
@@ -148,6 +149,8 @@ tronko-assign/tests/
   data/multitree/goldens[-cap25]/expected_<case>.tsv
   data/gaps/<fixture>/                       reads
   data/gaps/<fixture>/goldens[-cap25]/expected_<case>.tsv
+  data/pinned-aligner/<case>.fields.tsv      the pinned aligner's Tronko fields per fixture batch
+  data/pinned-aligner/<case>.sam.sha256      and the SHA-256 of its whole SAM (test_pinned_aligner.sh)
   data/real/<marker>/<set>/                  real-reference read pairs and goldens (below)
   manifests/<marker>.sha256                  the real references, by URL with SHA-256
   real/                                      Makefile, lib.sh, test-real.sh, verify-branches.sh, make-goldens.sh

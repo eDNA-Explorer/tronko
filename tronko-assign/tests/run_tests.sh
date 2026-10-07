@@ -6,6 +6,7 @@
 #   integration/test_multitree_parity.sh      three-tree fixture (reads with several candidate trees)
 #   integration/test_gap_fixtures.sh          mate rescue, production's command line, read content, read names
 #   integration/test_bwamem3.sh               the BWA-MEM3 run's checks and failures (a stand-in aligner)
+#   integration/test_pinned_aligner.sh        BWA-MEM3 gives the stored SAM on four fixture batches
 #   integration/test_path_options.sh          path options against their buffer sizes
 #   integration/test_slot_cap.sh              candidate slots at cap 2 under AddressSanitizer (~15 s)
 # The golden tests compare tronko-assign's output byte for byte with goldens made at one thread;
@@ -32,6 +33,7 @@ run integration/test_multibatch_parity.sh bash "$HERE/integration/test_multibatc
 run integration/test_multitree_parity.sh bash "$HERE/integration/test_multitree_parity.sh"
 run integration/test_gap_fixtures.sh bash "$HERE/integration/test_gap_fixtures.sh"
 run integration/test_bwamem3.sh bash "$HERE/integration/test_bwamem3.sh"
+run integration/test_pinned_aligner.sh bash "$HERE/integration/test_pinned_aligner.sh"
 run integration/test_path_options.sh bash "$HERE/integration/test_path_options.sh"
 run integration/test_slot_cap.sh bash "$HERE/integration/test_slot_cap.sh"
 exit $fail
