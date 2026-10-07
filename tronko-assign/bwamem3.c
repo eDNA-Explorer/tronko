@@ -301,6 +301,7 @@ void bwamem3_finish(void)
 	snprintf(path, sizeof path, "%s.alt", A.prefix); unlink(path);
 	snprintf(path, sizeof path, "%s/batch.sam", A.dir); unlink(path);
 	snprintf(path, sizeof path, "%s/batch.log", A.dir); unlink(path);
+	snprintf(path, sizeof path, "%s/version.txt", A.dir); unlink(path);
 	snprintf(path, sizeof path, "%s/batch_1.fa", A.dir); unlink(path);
 	snprintf(path, sizeof path, "%s/batch_2.fa", A.dir); unlink(path);
 	snprintf(path, sizeof path, "%s/batch.fa", A.dir); unlink(path);
