@@ -204,12 +204,14 @@ lists the seven files `tronko-assign` opens (`reference_tree.trkb`, the FASTA an
 index files) with their SHA-256. The checksums, not the URLs, identify the files: a copy from
 anywhere passes if its bytes match.
 
-**Not yet adapted to BWA-MEM3.** The manifests list the vendored BWA's index files (`.bwt`, `.sa`
-among them); `tronko-assign` now reads BWA-MEM3's index (`.amb .ann .pac .bwt.2bit.64`), which
-the bucket does not hold. The `.amb`, `.ann` and `.pac` files BWA-MEM3 writes equal the vendored
-BWA's on the fixture references; `.bwt.2bit.64` has to be built (`bwa-mem3 index`; FWH took 130 s
-and 31.83 GiB on an n2-highmem-64). Until `real/` builds or fetches it, these targets fail at the
-first run with "the BWA-MEM3 index file ... is missing".
+**The BWA-MEM3 index.** The manifests list the vendored BWA's index files (`.bwt`, `.sa` among
+them), which production's build reads (`make goldens` builds production). A build whose sources
+hold `bwamem3.c` runs BWA-MEM3, which reads its own index (`.amb .ann .pac .bwt.2bit.64`); the
+bucket does not hold it. `real/lib.sh` (`mem3_index_real`) builds it once from the
+manifest-checked FASTA with `TRONKO_BWA_MEM3` (default `tronko-assign/bwa-mem3`) into the cache,
+`<cache>/bwa-mem3-index/0.14.0/<FASTA SHA-256>/`, beside a link to the FASTA that such a build is
+given with `-a`, and records the index files' SHA-256 there (`index.sha256`). FWH took 130 s and
+31.8 GiB on an n2-highmem-64.
 
 Four targets in `real/Makefile` use them. Each fetches the reference files by URL into a cache
 (`~/.cache/tronko-test-real`, or `TRONKO_REAL_CACHE`), checks each against the manifest when it
