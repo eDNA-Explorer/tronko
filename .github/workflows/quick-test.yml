@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "*" ]
   pull_request:
-    branches: [ main, experimental ]
+    branches: [ main, experimental, high-perf, 'pr2/**' ]
 
 jobs:
   quick-tests:
@@ -21,7 +21,8 @@ jobs:
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     

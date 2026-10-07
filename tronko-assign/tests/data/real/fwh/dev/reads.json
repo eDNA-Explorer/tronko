@@ -1,0 +1,259 @@
+{
+ "marker": "fwh",
+ "set": "dev",
+ "pairs": 30000,
+ "study": {
+  "accession": "PRJNA664693",
+  "secondary_accession": "SRP284209",
+  "title": "Improved freshwater macroinvertebrate detection from environmental DNA through minimized non-target amplification",
+  "center": "University of Duisburg-Essen",
+  "first_public": "2020-09-23",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA664693"
+ },
+ "primers": {
+  "forward": "GGDACWGGWTGAACWGTWTAYCCHCC",
+  "reverse": "CAAACAAATARDGGTATTCGDTY"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "min_length": 100,
+  "drop_N": true,
+  "adapters": [
+   "AGATCGGAAGAGC",
+   "CTGTCTCTTATACACATCT"
+  ],
+  "drop_insert_shorter_than": 100,
+  "cut_at_adapter": true,
+  "seed": 20260923,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "adapter_rule": "the first adapter occurrence in each trimmed read ends the insert; a pair whose insert is shorter than drop_insert_shorter_than in either read is dropped; with cut_at_adapter the reads are cut there",
+  "dereplicate": "exact duplicate pairs (same trimmed forward and reverse sequence) removed across all runs of the set, first occurrence kept",
+  "interleave": "per-run shuffle, round-robin across runs in the order listed"
+ },
+ "runs": [
+  {
+   "run": "SRR12681741",
+   "sample": "SAMN16230048",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 92",
+   "library_name": "fwhF2_EPTDr2n_92",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 267456,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/041/SRR12681741/SRR12681741_1.fastq.gz",
+     "md5": "0f2816ecc1e1c805fc8c15e4f8b7ea73",
+     "bytes": 11445713
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/041/SRR12681741/SRR12681741_2.fastq.gz",
+     "md5": "6d5fff81fc757a677830802092ee1d22",
+     "bytes": 17394095
+    }
+   ]
+  },
+  {
+   "run": "SRR12681772",
+   "sample": "SAMN16230019",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 61",
+   "library_name": "fwhF2_EPTDr2n_61",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 204879,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/072/SRR12681772/SRR12681772_1.fastq.gz",
+     "md5": "31093fd77a3f25131c97d814f0e9ef57",
+     "bytes": 9095648
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/072/SRR12681772/SRR12681772_2.fastq.gz",
+     "md5": "bf4b5811e06e7740dbd231bdeb5830aa",
+     "bytes": 13451548
+    }
+   ]
+  },
+  {
+   "run": "SRR12681755",
+   "sample": "SAMN16230035",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 77",
+   "library_name": "fwhF2_EPTDr2n_77",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 306383,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/055/SRR12681755/SRR12681755_1.fastq.gz",
+     "md5": "00c881c54418eb1850c213ec8ecd3dc0",
+     "bytes": 14975039
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/055/SRR12681755/SRR12681755_2.fastq.gz",
+     "md5": "ccf150318118ebdc59e2c126e26a9f72",
+     "bytes": 19190193
+    }
+   ]
+  },
+  {
+   "run": "SRR12681759",
+   "sample": "SAMN16230031",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 73",
+   "library_name": "fwhF2_EPTDr2n_73",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 341210,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/059/SRR12681759/SRR12681759_1.fastq.gz",
+     "md5": "9de08d2ae15165b979a3f1682cb824e4",
+     "bytes": 16590425
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/059/SRR12681759/SRR12681759_2.fastq.gz",
+     "md5": "17cca2e2c08e8bf03745c4593c6f7d50",
+     "bytes": 21312361
+    }
+   ]
+  },
+  {
+   "run": "SRR12681743",
+   "sample": "SAMN16230046",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 90",
+   "library_name": "fwhF2_EPTDr2n_90",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 514924,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/043/SRR12681743/SRR12681743_1.fastq.gz",
+     "md5": "9ce32be2412c6cfa9b0239a7ec0081bb",
+     "bytes": 21355341
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/043/SRR12681743/SRR12681743_2.fastq.gz",
+     "md5": "7afd6ac8bdb214612596c74ebbb97d4d",
+     "bytes": 26349018
+    }
+   ]
+  },
+  {
+   "run": "SRR12681754",
+   "sample": "SAMN16230036",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 78",
+   "library_name": "fwhF2_EPTDr2n_78",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 155820,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/054/SRR12681754/SRR12681754_1.fastq.gz",
+     "md5": "c504441aded423c561ce8cec03bd7390",
+     "bytes": 7207860
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/054/SRR12681754/SRR12681754_2.fastq.gz",
+     "md5": "f3b5e768bb25c7e0464c1324bea768ff",
+     "bytes": 10368035
+    }
+   ]
+  },
+  {
+   "run": "SRR12681821",
+   "sample": "SAMN16229975",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 15",
+   "library_name": "fwhF2_EPTDr2n_15",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 293316,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/021/SRR12681821/SRR12681821_1.fastq.gz",
+     "md5": "7dc2bf5fa2903900d9d86d445c078af5",
+     "bytes": 14030175
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/021/SRR12681821/SRR12681821_2.fastq.gz",
+     "md5": "dfa361dd68d7d8246fa73412a105b943",
+     "bytes": 19358199
+    }
+   ]
+  },
+  {
+   "run": "SRR12681823",
+   "sample": "SAMN16229973",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 13",
+   "library_name": "fwhF2_EPTDr2n_13",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 311154,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/023/SRR12681823/SRR12681823_1.fastq.gz",
+     "md5": "f15ae2df9558733d317c73d5fe5a17de",
+     "bytes": 17627698
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/023/SRR12681823/SRR12681823_2.fastq.gz",
+     "md5": "e92aa9756938cb38d971fb4ea2ee82fd",
+     "bytes": 23392113
+    }
+   ]
+  },
+  {
+   "run": "SRR12681756",
+   "sample": "SAMN16230034",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 76",
+   "library_name": "fwhF2_EPTDr2n_76",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 420692,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/056/SRR12681756/SRR12681756_1.fastq.gz",
+     "md5": "ef4d91bff1b0fa8eff896b8038d94048",
+     "bytes": 20344698
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/056/SRR12681756/SRR12681756_2.fastq.gz",
+     "md5": "e40be5dfd61dfb6851cc3f64a9ca5d4b",
+     "bytes": 26188396
+    }
+   ]
+  },
+  {
+   "run": "SRR12681752",
+   "sample": "SAMN16230038",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 80",
+   "library_name": "fwhF2_EPTDr2n_80",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 234117,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/052/SRR12681752/SRR12681752_1.fastq.gz",
+     "md5": "18efcfb4ebaf28d2cd5a40b04daf9582",
+     "bytes": 10322224
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/052/SRR12681752/SRR12681752_2.fastq.gz",
+     "md5": "722fa59219fa3faaa78826b6a56472a6",
+     "bytes": 14598513
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "dev_F.fasta.zst": {
+   "sha256": "aad0364a9c8902f3a338754b013b8b60c2fababccb90b35fa7d5daea56b68bbb",
+   "sha256_decompressed": "af9c353bba4077fc93c21cad39b128b8a4d3c29f1c6714fb5cf2eb9b12d06289",
+   "records": 30000
+  },
+  "dev_R.fasta.zst": {
+   "sha256": "2a6e35bdaf2c35862468953eb84df965ce2641ef19a94d3ccd63ec98407d1b84",
+   "sha256_decompressed": "c67e4f57161ae168d1262eb7febb92ac450f802cfbb774ad2d1316d36fd74909",
+   "records": 30000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}

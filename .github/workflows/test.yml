@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, experimental, develop ]
   pull_request:
-    branches: [ main, experimental ]
+    branches: [ main, experimental, high-perf, 'pr2/**' ]
 
 jobs:
   unit-tests:
@@ -12,8 +12,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     
     - name: Install dependencies
       run: |
@@ -22,13 +20,15 @@ jobs:
           build-essential \
           cmake \
           zlib1g-dev \
+          libzstd-dev \
           lcov \
           valgrind
     
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
@@ -74,7 +74,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: recursive
+        fetch-depth: 0
     
     - name: Install dependencies
       run: |
@@ -82,12 +82,14 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind
     
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
@@ -100,6 +102,11 @@ jobs:
       run: |
         cd tronko-assign
         make clean && make
+
+    - name: Build frozen high-perf baseline
+      run: |
+        git worktree add --detach /tmp/tronko-assign-baseline 71f6ec3eed6ca7c0e11de256deb7d19e10d174fc
+        make -C /tmp/tronko-assign-baseline/tronko-assign clean all
     
     - name: Run integration tests
       run: |
@@ -108,9 +115,20 @@ jobs:
         ./test_simple_workflows
     
     - name: Run example dataset tests
+      env:
+        TRONKO_ASSIGN_BASELINE_BIN: /tmp/tronko-assign-baseline/tronko-assign/tronko-assign
       run: |
-        chmod +x test_with_example_data.sh
-        timeout 300 ./test_with_example_data.sh || echo "Test completed (may include expected crashes)"
+        chmod +x tests/integration/test_assignment_parity.sh
+        timeout 300 ./tests/integration/test_assignment_parity.sh
+
+    - name: Golden tests (tronko-assign/tests, one thread)
+      env:
+        # Outputs that depend on bytes BWA reads out of bounds (tronko-assign/tests/README.md):
+        # Ubuntu x86-64 builds cut the SAM text of the three-tree single-end reads, and mate
+        # rescue reads past its score matrix. Fixed, with the goldens regenerated, by a later
+        # pull request of this series (branch pr/03-ub-fixes).
+        TRONKO_TESTS_XFAIL: mt_single_F mt_unpaired_R mr_paired
+      run: make -C tronko-assign/tests test
     
     - name: Memory leak check with Valgrind
       run: |
@@ -130,8 +148,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        submodules: recursive
     
     - name: Install dependencies
       run: |
@@ -139,13 +155,15 @@ jobs:
         sudo apt-get install -y \
           build-essential \
           zlib1g-dev \
+          libzstd-dev \
           valgrind \
           lcov
     
     - name: Setup Unity testing framework
       run: |
         cd tests
-        if [ ! -d "unity" ]; then
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
@@ -180,6 +198,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Setup Unity testing framework
+      run: |
+        cd tests
+        if [ ! -f "unity/src/unity.c" ]; then
+          rm -rf unity
+          git clone https://github.com/ThrowTheSwitch/Unity.git unity
+        fi
+
     - name: Build Docker image
       run: docker build -t tronko:test .
     
@@ -209,7 +235,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential zlib1g-dev time valgrind
+        sudo apt-get install -y build-essential zlib1g-dev libzstd-dev time valgrind
     
     - name: Build optimized binaries
       run: |
