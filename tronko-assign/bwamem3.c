@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
 #include "bwamem3.h"
 #include "sam_parse.h"
@@ -253,6 +254,18 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 	}
 }
 
+/* 1 if the shm listing line names an index staged as tronko-<pid>-... by a process that no longer
+ * exists */
+static int stale_tronko_entry(const char *line)
+{
+	char *end;
+	long pid;
+	if (strncmp(line, "tronko-", 7) != 0) return 0;
+	pid = strtol(line + 7, &end, 10);
+	if (end == line + 7 || *end != '-' || pid <= 0) return 0;
+	return kill((pid_t)pid, 0) != 0 && errno == ESRCH;
+}
+
 void bwamem3_finish(void)
 {
 	char path[PATH_MAX];
@@ -260,8 +273,9 @@ void bwamem3_finish(void)
 	if (!A.ready) return;
 	A.ready = 0;
 	if (A.staged) {
-		/* BWA-MEM3 can drop only every staged index at once (shm -d), so drop ours only when it
-		 * is the only one listed; otherwise leave it and say so. */
+		/* BWA-MEM3 can drop only every staged index at once (shm -d), so drop ours only when
+		 * every other index listed is a tronko-<pid>-* one whose process is gone (a process that
+		 * was killed cannot drop its own); otherwise leave it and say so. */
 		char *list_argv[] = { A.bin, "shm", "-l", 0 }, *drop_argv[] = { A.bin, "shm", "-d", 0 };
 		char *list, *line, *save = 0;
 		const char *name = strrchr(A.prefix, '/') + 1;
@@ -271,7 +285,7 @@ void bwamem3_finish(void)
 			for (line = strtok_r(list, "\n", &save); line; line = strtok_r(0, "\n", &save)) {
 				size_t l = strcspn(line, "\t");
 				if (l == strlen(name) && strncmp(line, name, l) == 0) ours = 1;
-				else if (l > 0) others = 1;
+				else if (l > 0 && !stale_tronko_entry(line)) others = 1;
 			}
 			free(list);
 			if (ours && !others) run(drop_argv, 0);
