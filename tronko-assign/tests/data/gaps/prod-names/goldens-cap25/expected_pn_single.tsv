@@ -58,7 +58,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_56	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-12.895015	2.000000	0.000000	0	1399
 12S_MiFish_U_unpaired_F_57	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-7.256341	2.000000	0.000000	0	1358
 12S_MiFish_U_unpaired_F_58	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Anous;Anous stolidus	-12.895015	2.000000	0.000000	0	1111
-12S_MiFish_U_unpaired_F_59	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-17.490135	2.000000	0.000000	0	7
+12S_MiFish_U_unpaired_F_59	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_60	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna	-12.895015	2.000000	0.000000	0	1182
 12S_MiFish_U_unpaired_F_61	Eukaryota;Chordata;Aves;Charadriiformes;Glareolidae;Cursorius;Cursorius temminckii	-12.895015	2.000000	0.000000	0	1682
 12S_MiFish_U_unpaired_F_62	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula	-12.895015	2.000000	0.000000	0	1132
@@ -261,7 +261,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_259	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula;Sternula albifrons	-12.895015	2.000000	0.000000	0	1161
 12S_MiFish_U_unpaired_F_260	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-12.895015	2.000000	0.000000	0	607
 12S_MiFish_U_unpaired_F_261	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna	-12.895015	2.000000	0.000000	0	1182
-12S_MiFish_U_unpaired_F_262	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-12.895015	2.000000	0.000000	0	684
+12S_MiFish_U_unpaired_F_262	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-17.490135	2.000000	0.000000	0	684
 12S_MiFish_U_unpaired_F_263	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax;Scolopax rusticola	-12.895015	2.000000	0.000000	0	44
 12S_MiFish_U_unpaired_F_264	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Actitis;Actitis hypoleucos	-12.895015	2.000000	0.000000	0	114
 12S_MiFish_U_unpaired_F_265	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-12.895015	2.000000	0.000000	0	1374
@@ -356,7 +356,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_354	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna hirundo	-12.895015	2.000000	0.000000	0	1198
 12S_MiFish_U_unpaired_F_355	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria interpres	-12.895015	2.000000	0.000000	0	386
 12S_MiFish_U_unpaired_F_356	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax;Scolopax rusticola	-12.895015	2.000000	0.000000	0	44
-12S_MiFish_U_unpaired_F_357	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-12.895015	2.000000	0.000000	0	921
+12S_MiFish_U_unpaired_F_357	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-12.895015	3.000000	0.000000	0	921
 12S_MiFish_U_unpaired_F_358	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Coenocorypha	-12.895015	2.000000	0.000000	0	396
 12S_MiFish_U_unpaired_F_359	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus;Larus crassirostris	-12.895015	2.000000	0.000000	0	1373
 12S_MiFish_U_unpaired_F_360	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-12.895015	2.000000	0.000000	0	254
@@ -382,7 +382,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_380	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus indicus	-12.895015	2.000000	0.000000	0	663
 12S_MiFish_U_unpaired_F_381	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alca;Alca torda	-12.895015	2.000000	0.000000	0	1016
 12S_MiFish_U_unpaired_F_382	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius dubius	-12.895015	2.000000	0.000000	0	830
-12S_MiFish_U_unpaired_F_383	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-22.085254	2.000000	0.000000	0	1358
+12S_MiFish_U_unpaired_F_383	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1358
 12S_MiFish_U_unpaired_F_384	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1311
 12S_MiFish_U_unpaired_F_385	Eukaryota;Chordata;Aves;Charadriiformes;Rostratulidae;Rostratula;Rostratula benghalensis	-12.895015	2.000000	0.000000	0	26
 12S_MiFish_U_unpaired_F_386	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cerorhinca;Cerorhinca monocerata	-12.895015	2.000000	0.000000	0	989
@@ -443,7 +443,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_441	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Thinornis;Thinornis rubricollis	-12.895015	2.000000	0.000000	0	826
 12S_MiFish_U_unpaired_F_442	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Thinornis;Thinornis rubricollis	-12.895015	2.000000	0.000000	0	826
 12S_MiFish_U_unpaired_F_443	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-12.884964	3.000000	0.000000	0	870
-12S_MiFish_U_unpaired_F_444	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-12.884964	3.000000	0.000000	0	254
+12S_MiFish_U_unpaired_F_444	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-17.490135	2.000000	0.000000	0	254
 12S_MiFish_U_unpaired_F_445	Eukaryota;Chordata;Aves;Charadriiformes;Haematopodidae;Haematopus;Haematopus bachmani	-12.895015	2.000000	0.000000	0	586
 12S_MiFish_U_unpaired_F_446	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1108
 12S_MiFish_U_unpaired_F_447	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula	-12.895015	2.000000	0.000000	0	1132
@@ -639,9 +639,9 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_637	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax	-12.895015	2.000000	0.000000	0	38
 12S_MiFish_U_unpaired_F_638	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Pluvialis;Pluvialis squatarola	-7.201283	1.000000	0.000000	0	645
 12S_MiFish_U_unpaired_F_639	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax	-12.895015	2.000000	0.000000	0	38
-12S_MiFish_U_unpaired_F_640	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-12.884964	3.000000	0.000000	0	870
+12S_MiFish_U_unpaired_F_640	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-17.490135	2.000000	0.000000	0	870
 12S_MiFish_U_unpaired_F_641	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius	-12.895015	2.000000	0.000000	0	484
-12S_MiFish_U_unpaired_F_642	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alle;Alle alle	-22.085254	2.000000	0.000000	0	1052
+12S_MiFish_U_unpaired_F_642	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alle;Alle alle	-12.874914	4.000000	0.000000	0	1052
 12S_MiFish_U_unpaired_F_643	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Synthliboramphus;Synthliboramphus antiquus	-12.895015	2.000000	0.000000	0	1066
 12S_MiFish_U_unpaired_F_644	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Rynchops;Rynchops niger	-12.895015	2.000000	0.000000	0	1165
 12S_MiFish_U_unpaired_F_645	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Actitis;Actitis macularia	-12.895015	2.000000	0.000000	0	562
@@ -746,7 +746,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_744	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax	-12.895015	2.000000	0.000000	0	38
 12S_MiFish_U_unpaired_F_745	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-12.895015	2.000000	0.000000	0	607
 12S_MiFish_U_unpaired_F_746	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-12.895015	2.000000	0.000000	0	986
-12S_MiFish_U_unpaired_F_747	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa melanoleuca	-18.588747	3.000000	0.000000	0	180
+12S_MiFish_U_unpaired_F_747	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa melanoleuca	-12.895015	2.000000	0.000000	0	180
 12S_MiFish_U_unpaired_F_748	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Actitis;Actitis hypoleucos	-12.895015	2.000000	0.000000	0	114
 12S_MiFish_U_unpaired_F_749	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa lapponica	-12.895015	2.000000	0.000000	0	521
 12S_MiFish_U_unpaired_F_750	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius semipalmatus	-12.895015	2.000000	0.000000	0	794
@@ -861,10 +861,10 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_859	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris pugnax	-12.895015	2.000000	0.000000	0	238
 12S_MiFish_U_unpaired_F_860	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius pallidus	-12.895015	2.000000	0.000000	0	758
 12S_MiFish_U_unpaired_F_861	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alba	-12.895015	2.000000	0.000000	0	304
-12S_MiFish_U_unpaired_F_862	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-12.895015	2.000000	0.000000	0	870
+12S_MiFish_U_unpaired_F_862	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-12.895015	3.000000	0.000000	0	870
 12S_MiFish_U_unpaired_F_863	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa flavipes	-12.895015	2.000000	0.000000	0	206
 12S_MiFish_U_unpaired_F_864	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius longicaudus	-12.894139	2.000000	0.000000	0	909
-12S_MiFish_U_unpaired_F_865	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alca;Alca torda	-17.490135	2.000000	0.000000	0	1016
+12S_MiFish_U_unpaired_F_865	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alca;Alca torda	-12.884964	3.000000	0.000000	0	1016
 12S_MiFish_U_unpaired_F_866	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna hirundo	-12.895015	2.000000	0.000000	0	1198
 12S_MiFish_U_unpaired_F_867	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa melanoleuca	-12.895015	2.000000	0.000000	0	180
 12S_MiFish_U_unpaired_F_868	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-12.895015	2.000000	0.000000	0	116
@@ -1121,7 +1121,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1119	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula cirrhata	-12.895015	2.000000	0.000000	0	1001
 12S_MiFish_U_unpaired_F_1120	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa limosa	-12.895015	2.000000	0.000000	0	505
 12S_MiFish_U_unpaired_F_1121	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Ptychoramphus;Ptychoramphus aleuticus	-12.895015	2.000000	0.000000	0	939
-12S_MiFish_U_unpaired_F_1122	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-17.490135	2.000000	0.000000	0	7
+12S_MiFish_U_unpaired_F_1122	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_1123	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-12.895015	2.000000	0.000000	0	425
 12S_MiFish_U_unpaired_F_1124	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius collaris	-12.895015	2.000000	0.000000	0	729
 12S_MiFish_U_unpaired_F_1125	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa melanoleuca	-12.895015	2.000000	0.000000	0	180
@@ -1228,7 +1228,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1226	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-1.616225	1.000000	0.000000	0	780
 12S_MiFish_U_unpaired_F_1227	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1244
 12S_MiFish_U_unpaired_F_1228	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1109
-12S_MiFish_U_unpaired_F_1229	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula	-12.895015	2.000000	0.000000	0	1126
+12S_MiFish_U_unpaired_F_1229	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula	-12.895015	3.000000	0.000000	0	1126
 12S_MiFish_U_unpaired_F_1230	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris himantopus	-12.895015	2.000000	0.000000	0	341
 12S_MiFish_U_unpaired_F_1231	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius;Numenius tahitiensis	-12.895015	2.000000	0.000000	0	485
 12S_MiFish_U_unpaired_F_1232	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax;Scolopax mira	-12.895015	2.000000	0.000000	0	33
@@ -1379,7 +1379,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1377	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-12.895015	2.000000	0.000000	0	1374
 12S_MiFish_U_unpaired_F_1378	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria interpres	-12.895015	2.000000	0.000000	0	386
 12S_MiFish_U_unpaired_F_1379	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Recurvirostra	-12.895015	2.000000	0.000000	0	597
-12S_MiFish_U_unpaired_F_1380	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-12.884964	3.000000	0.000000	0	254
+12S_MiFish_U_unpaired_F_1380	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-17.490135	2.000000	0.000000	0	254
 12S_MiFish_U_unpaired_F_1381	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria lomvia	-12.895015	2.000000	0.000000	0	1078
 12S_MiFish_U_unpaired_F_1382	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa solitaria	-12.895015	2.000000	0.000000	0	214
 12S_MiFish_U_unpaired_F_1383	Eukaryota;Chordata;Aves;Charadriiformes;Rostratulidae;Nycticryphes;Nycticryphes semicollaris	-12.895015	2.000000	0.000000	0	22
@@ -1456,7 +1456,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1454	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula arctica	-12.895015	2.000000	0.000000	0	975
 12S_MiFish_U_unpaired_F_1455	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris temminckii	-12.895015	2.000000	0.000000	0	254
 12S_MiFish_U_unpaired_F_1456	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus;Larus crassirostris	-12.895015	2.000000	0.000000	0	1373
-12S_MiFish_U_unpaired_F_1457	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-12.874914	4.000000	0.000000	0	1090
+12S_MiFish_U_unpaired_F_1457	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-22.085254	2.000000	0.000000	0	1090
 12S_MiFish_U_unpaired_F_1458	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Chlidonias	-12.895015	2.000000	0.000000	0	1230
 12S_MiFish_U_unpaired_F_1459	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus miles	-12.895015	2.000000	0.000000	0	2754
 12S_MiFish_U_unpaired_F_1460	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-11.796402	2.000000	0.000000	0	1374
@@ -1524,7 +1524,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1522	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria lomvia	-7.201283	1.000000	0.000000	0	1078
 12S_MiFish_U_unpaired_F_1523	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-12.895015	2.000000	0.000000	0	1065
 12S_MiFish_U_unpaired_F_1524	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris fuscicollis	-12.895015	2.000000	0.000000	0	290
-12S_MiFish_U_unpaired_F_1525	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula;Sternula albifrons	-12.895015	2.000000	0.000000	0	1161
+12S_MiFish_U_unpaired_F_1525	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula;Sternula albifrons	-17.490135	2.000000	0.000000	0	1161
 12S_MiFish_U_unpaired_F_1526	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cepphus;Cepphus grylle	-12.895015	2.000000	0.000000	0	1039
 12S_MiFish_U_unpaired_F_1527	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Lymnocryptes;Lymnocryptes minimus	-12.895015	2.000000	0.000000	0	551
 12S_MiFish_U_unpaired_F_1528	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Chlidonias	-12.895015	2.000000	0.000000	0	1230
@@ -1772,7 +1772,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1770	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-12.895015	2.000000	0.000000	0	751
 12S_MiFish_U_unpaired_F_1771	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1358
 12S_MiFish_U_unpaired_F_1772	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius parasiticus	-12.895015	2.000000	0.000000	0	896
-12S_MiFish_U_unpaired_F_1773	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1344
+12S_MiFish_U_unpaired_F_1773	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-17.490135	2.000000	0.000000	0	1344
 12S_MiFish_U_unpaired_F_1774	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Onychoprion	-12.895015	2.000000	0.000000	0	1170
 12S_MiFish_U_unpaired_F_1775	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius pallidus	-12.895015	2.000000	0.000000	0	758
 12S_MiFish_U_unpaired_F_1776	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-12.895015	2.000000	0.000000	0	607
@@ -1948,7 +1948,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_1946	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa glareola	-12.895015	2.000000	0.000000	0	131
 12S_MiFish_U_unpaired_F_1947	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alpina	-12.714391	2.000000	0.000000	0	311
 12S_MiFish_U_unpaired_F_1948	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius semipalmatus	-12.895015	2.000000	0.000000	0	794
-12S_MiFish_U_unpaired_F_1949	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius longicaudus	-12.884964	3.000000	0.000000	0	909
+12S_MiFish_U_unpaired_F_1949	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius longicaudus	-17.490135	2.000000	0.000000	0	909
 12S_MiFish_U_unpaired_F_1950	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-12.895015	2.000000	0.000000	0	116
 12S_MiFish_U_unpaired_F_1951	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternula	-12.895015	2.000000	0.000000	0	1132
 12S_MiFish_U_unpaired_F_1952	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna	-12.895015	2.000000	0.000000	0	1179
@@ -2391,7 +2391,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_2389	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius modestus	-12.895015	2.000000	0.000000	0	847
 12S_MiFish_U_unpaired_F_2390	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Ptychoramphus;Ptychoramphus aleuticus	-12.895015	2.000000	0.000000	0	939
 12S_MiFish_U_unpaired_F_2391	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius parasiticus	-12.895015	2.000000	0.000000	0	896
-12S_MiFish_U_unpaired_F_2392	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-17.490135	2.000000	0.000000	0	7
+12S_MiFish_U_unpaired_F_2392	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_2393	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa lapponica	-12.895015	2.000000	0.000000	0	515
 12S_MiFish_U_unpaired_F_2394	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna	-12.895015	2.000000	0.000000	0	1192
 12S_MiFish_U_unpaired_F_2395	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae	-12.895015	2.000000	0.000000	0	601
@@ -2632,7 +2632,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_2630	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius	-12.895015	2.000000	0.000000	0	469
 12S_MiFish_U_unpaired_F_2631	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-12.895015	2.000000	0.000000	0	766
 12S_MiFish_U_unpaired_F_2632	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-12.895015	2.000000	0.000000	0	986
-12S_MiFish_U_unpaired_F_2633	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
+12S_MiFish_U_unpaired_F_2633	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-17.490135	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_2634	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius;Numenius phaeopus	-12.895015	2.000000	0.000000	0	499
 12S_MiFish_U_unpaired_F_2635	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa limosa	-12.895015	2.000000	0.000000	0	505
 12S_MiFish_U_unpaired_F_2636	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax	-12.895015	2.000000	0.000000	0	59
@@ -2717,7 +2717,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_2715	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cepphus;Cepphus grylle	-12.895015	2.000000	0.000000	0	1039
 12S_MiFish_U_unpaired_F_2716	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1257
 12S_MiFish_U_unpaired_F_2717	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-12.895015	2.000000	0.000000	0	425
-12S_MiFish_U_unpaired_F_2718	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-17.490135	2.000000	0.000000	0	684
+12S_MiFish_U_unpaired_F_2718	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-12.895015	2.000000	0.000000	0	684
 12S_MiFish_U_unpaired_F_2719	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Synthliboramphus;Synthliboramphus antiquus	-12.895015	2.000000	0.000000	0	1066
 12S_MiFish_U_unpaired_F_2720	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-12.895015	2.000000	0.000000	0	116
 12S_MiFish_U_unpaired_F_2721	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1244
@@ -3022,7 +3022,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_3020	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alba	-12.895015	2.000000	0.000000	0	305
 12S_MiFish_U_unpaired_F_3021	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax	-12.895015	2.000000	0.000000	0	59
 12S_MiFish_U_unpaired_F_3022	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae	-12.895015	2.000000	0.000000	0	624
-12S_MiFish_U_unpaired_F_3023	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius parasiticus	-11.796402	2.000000	0.000000	0	896
+12S_MiFish_U_unpaired_F_3023	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius	-7.191232	1.000000	0.000000	0	897
 12S_MiFish_U_unpaired_F_3024	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius wilsonia	-12.895015	2.000000	0.000000	0	725
 12S_MiFish_U_unpaired_F_3025	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1244
 12S_MiFish_U_unpaired_F_3026	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria lomvia	-12.895015	2.000000	0.000000	0	1078
@@ -3279,7 +3279,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_3277	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-12.895015	2.000000	0.000000	0	766
 12S_MiFish_U_unpaired_F_3278	Eukaryota;Chordata;Aves;Charadriiformes;Haematopodidae;Haematopus	-12.895015	2.000000	0.000000	0	570
 12S_MiFish_U_unpaired_F_3279	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1244
-12S_MiFish_U_unpaired_F_3280	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa limosa	-17.490135	2.000000	0.000000	0	505
+12S_MiFish_U_unpaired_F_3280	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limosa;Limosa limosa	-12.884964	3.000000	0.000000	0	505
 12S_MiFish_U_unpaired_F_3281	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius semipalmatus	-12.895015	2.000000	0.000000	0	794
 12S_MiFish_U_unpaired_F_3282	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris minuta	-12.895015	2.000000	0.000000	0	331
 12S_MiFish_U_unpaired_F_3283	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula cirrhata	-12.895015	2.000000	0.000000	0	1001
@@ -3605,7 +3605,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_3603	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius parasiticus	-12.895015	2.000000	0.000000	0	896
 12S_MiFish_U_unpaired_F_3604	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-12.895015	2.000000	0.000000	0	766
 12S_MiFish_U_unpaired_F_3605	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Hydroprogne;Hydroprogne caspia	-12.895015	2.000000	0.000000	0	1286
-12S_MiFish_U_unpaired_F_3606	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
+12S_MiFish_U_unpaired_F_3606	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-17.490135	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_3607	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa solitaria	-12.895015	2.000000	0.000000	0	214
 12S_MiFish_U_unpaired_F_3608	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius dubius	-12.895015	2.000000	0.000000	0	830
 12S_MiFish_U_unpaired_F_3609	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula arctica	-12.895015	2.000000	0.000000	0	975
@@ -3906,7 +3906,7 @@ Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node
 12S_MiFish_U_unpaired_F_3904	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius hiaticula	-12.895015	2.000000	0.000000	0	819
 12S_MiFish_U_unpaired_F_3905	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-12.895015	2.000000	0.000000	0	7
 12S_MiFish_U_unpaired_F_3906	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-12.895015	2.000000	0.000000	0	607
-12S_MiFish_U_unpaired_F_3907	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna paradisaea	-17.490135	2.000000	0.000000	0	1183
+12S_MiFish_U_unpaired_F_3907	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna paradisaea	-12.895015	2.000000	0.000000	0	1183
 12S_MiFish_U_unpaired_F_3908	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-12.895015	2.000000	0.000000	0	1358
 12S_MiFish_U_unpaired_F_3909	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Actitis;Actitis macularia	-12.895015	2.000000	0.000000	0	562
 12S_MiFish_U_unpaired_F_3910	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa solitaria	-12.895015	2.000000	0.000000	0	214
