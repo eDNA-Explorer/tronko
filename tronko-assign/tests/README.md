@@ -155,6 +155,16 @@ The fixtures above are small. The real-reference tests run production's own refe
 (5,000 pairs), `dev` and `heldout` (30,000 pairs each, from two other studies). The read pairs and
 the goldens are in the repository; the references are fetched by URL and checked by checksum.
 
+Six more markers, the ones whose reads reach mate rescue, have one read set each, `ba100k`: 100,000
+public pairs (four batches of 25,000, the read sets of the before-after speed runs) for
+`16sbacteria` (`16S_Bacteria`), `18seuk` (`18S_Euk`), `vert12s` (`vert12S`), `its2plants`
+(`ITS2_Plants`), `co1metazoa` (`CO1_Metazoa`) and `its1fungi` (`ITS1_Fungi`). They are the only sets
+on which mate rescue runs and the only ones with more than two batches, so they cover the
+mate-rescue fix and the batch boundaries. One-thread golden runs took 8:32 to 45:52 (m:ss) each and 7.37 to
+47.19 GiB peak resident memory (`provenance.txt` of each set). Their goldens, like the `dev5k` ones, are the output
+at one thread of the code with F1 removed. MiFish has no `ba100k` set: a one-thread MiFish run of
+100,000 pairs takes about 7 hours.
+
 ```
 tronko-assign/tests/data/real/<marker>/<set>/
     <set>_F.fasta.zst, <set>_R.fasta.zst   the read pairs, compressed as the pipeline writes them
@@ -202,8 +212,8 @@ with `ENABLE_PARQUET=1` for the parquet build. Every run uses production's full 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MARKERS` | `mifish` | `mifish`, `fwh` |
-| `SETS` | `dev5k` | `dev5k`, `dev`, `heldout` |
+| `MARKERS` | `mifish` | `mifish`, `fwh`, `16sbacteria`, `18seuk`, `vert12s`, `its2plants`, `co1metazoa`, `its1fungi` |
+| `SETS` | `dev5k` | `dev5k`, `dev`, `heldout` (MiFish, FWH); `ba100k` (the six markers above) |
 | `CASES` | `paired unpF unpR` | read modes: paired (`-p -z`), unpaired forward (`-s`), unpaired reverse (`-s -v`) |
 | `FORMATS` | `tsv parquet` | parquet needs `tronko-assign/carquet` (`git submodule update --init`) |
 | `THREADS` | `16` | `test-real`, `verify-branches`: thread counts, each must reproduce every golden |
