@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker 18seuk (18S_Euk): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/18seuk/.
+106ccb945905690ee77d39db74093da43a4cd13dfa6966c3a862ffbb2489ab31  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta
+897568a9a9f682d646b6a54505401d81a856bf50ba57710ae43252d8e88976ba  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta.amb
+9efc87da5eab0eac75e19dbf787b4a3379217193bc75809dab0e3e783a83f07b  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta.ann
+0169adfe9ecd34b0ff9c2a4c9e6b44781291e43ea5b71142b022a1b4f45011ee  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta.bwt
+d8ed0dc15d10ec65766175358b36d9b05b4648c9d8f7ed9c43e186d9ca9cb319  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta.pac
+fc3d41ab8e9e07087b83c1493ccf8886fd694a156ce7443b2d80361108f82f48  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/18S_Euk.fasta.sa
+49ec82c0b001ec9d0e1e457b778a747cb21714e56094fccdd2932668949f837f  gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/reference_tree.trkb

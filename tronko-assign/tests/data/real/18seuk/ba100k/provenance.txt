@@ -1,0 +1,35 @@
+tronko-assign/tests/data/real/18seuk/ba100k: real-reference goldens of tronko-assign with F1 removed (step-2 goldens)
+
+reference:   18S_Euk (production's reference files of 2023-04-07; manifest tronko-assign/tests/manifests/18seuk.sha256)
+             each of the seven files checked on the run machine against the production object
+             gs://edna-reference-databases/CruxV2/18S_Euk/2023-04-07/tronko/<file>: size and MD5 equal
+read set:    ba100k, 100000 pairs (four batches of 25,000); ba100k_F.fasta.zst and ba100k_R.fasta.zst (zstd -3 --no-check)
+             the before-after read set of this marker, the same bytes; sources and builder in reads.json
+commit:      eDNA-Explorer/tronko branch pr2/04-f1-removed, code of commit ef420cf "bwa: take a zero insert-size spread as no deviation, as BWA-MEM3 does" (production 71f6ec3 with the determinism change, the undefined-behaviour fixes, F1 removed and N1; tronko-assign sources outside tests/ unchanged since)
+build:       the eDNA Explorer pipeline's recipe (as in tronko-assign/tests/real/lib.sh, build_pipeline):
+               cd tronko-assign
+               sed -i 's/#define MAX_NUM_BWA_MATCHES 10/#define MAX_NUM_BWA_MATCHES 25/' global.h
+               make CC="gcc -O3 -fcommon -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion"                   # TSV (-o)
+               make ENABLE_PARQUET=1 CC="gcc -O3 -fcommon -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion"  # parquet (--parquet)
+             (the same two binaries as the step-2 goldens of mifish and fwh)
+cap:         MAX_NUM_BWA_MATCHES 25, as production builds
+threads:     --number-of-cores 1
+machine:     GCE n2-highmem-64 av-markers-tronko, Intel Cascade Lake (Intel(R) Xeon(R) CPU @ 2.80GHz), 64 vCPU, 512 GB;
+             Ubuntu 24.04, gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1); other runs shared the machine
+date:        Wed 2026-10-07 13:31 to Wed 2026-10-07 14:22 PDT
+made by:     aligner-options implementation strand B2b (Claude agent for chondl), with the functions of
+             tronko-assign/tests/real/lib.sh (run_case, pack_goldens) as make update-goldens uses them
+
+command lines: production's full command line with the committed .fasta.zst reads, -R -T --tsv-log <file> -V2,
+and -o (TSV) or --parquet; each golden's command line and time -v record are in provenance/ in goldens.tar.zst.
+
+wall time and peak resident memory of each golden run (time -v):
+  18seuk_paired.tsv: 21:46.77 (h:mm:ss or m:ss), 17860984 kB
+  18seuk_paired.parquet: 20:12.65 (h:mm:ss or m:ss), 17873460 kB
+  18seuk_unpF.tsv: 11:54.64 (h:mm:ss or m:ss), 17541856 kB
+  18seuk_unpF.parquet: 10:01.05 (h:mm:ss or m:ss), 17552284 kB
+  18seuk_unpR.tsv: 10:13.26 (h:mm:ss or m:ss), 17355164 kB
+  18seuk_unpR.parquet: 9:06.97 (h:mm:ss or m:ss), 17366548 kB
+
+read sources: reads.json in this directory (study and run accessions, ENA files with MD5, primers, trimming
+rules, and built_by: the script and commit that built the set).
