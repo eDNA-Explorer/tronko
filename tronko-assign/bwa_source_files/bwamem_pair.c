@@ -228,7 +228,11 @@ int mem_pair(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac, cons
 				//printf("%d: %lld\n", k, dist);
 				if (dist > pes[dir].high) break;
 				if (dist < pes[dir].low)  continue;
-				ns = (dist - pes[dir].avg) / pes[dir].std;
+				/* When the batch's insert-size estimate has a standard deviation of 0 (every pair the
+				 * same spacing), every candidate here has dist == avg and ns is 0/0: NaN, whose
+				 * conversion to int below is undefined behaviour (in practice q = 0 for every pair).
+				 * Take ns = 0, the limit, as BWA-MEM3 does (bwamem_pair.cpp, commit c47de17). */
+				ns = pes[dir].std > 0. ? (dist - pes[dir].avg) / pes[dir].std : 0.;
 				q = (int)((v.a[i].y>>32) + (v.a[k].y>>32) + .721 * log(2. * erfc(fabs(ns) * M_SQRT1_2)) * opt->a + .499); // .721 = 1/log(4)
 				if (q < 0) q = 0;
 				p = kv_pushp(pair64_t, u);

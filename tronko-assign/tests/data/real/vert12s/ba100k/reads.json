@@ -1,0 +1,5020 @@
+{
+ "marker": "vert12s",
+ "production_marker": "vert12S",
+ "set": "ba100k",
+ "purpose": "before-and-after timing of tronko-assign, paired mode (results/before-after/PLAN.md section 5)",
+ "pairs": 100000,
+ "target_pairs": 100000,
+ "shortfall": 0,
+ "study": [
+  {
+   "accession": "PRJNA993283",
+   "secondary_accession": "SRP449998",
+   "title": "Santa Monica Mountains samples from soil and lagoon sediment Raw sequence reads",
+   "center": "University California Santa Cruz",
+   "first_public": "2024-05-11",
+   "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA993283"
+  },
+  {
+   "accession": "PRJNA941072",
+   "secondary_accession": "SRP446529",
+   "title": "Oasis water, sediment, and soil samples from Southern California Targeted loci environmental",
+   "center": "University California Santa Cruz",
+   "first_public": "2023-03-12",
+   "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA941072"
+  }
+ ],
+ "primers": {
+  "forward": "TAGAACAGGCTCCTCTAG",
+  "reverse": "TTAGATACCCCACTATGC"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "min_length": 50,
+  "drop_N": true,
+  "adapters": [
+   "AGATCGGAAGAGC",
+   "CTGTCTCTTATACACATCT"
+  ],
+  "drop_insert_shorter_than": 50,
+  "cut_at_adapter": true,
+  "seed": 20260923,
+  "interleave": "per-run shuffle, round-robin across runs in the order listed",
+  "max_primer_offset": 8,
+  "insert_end": "fastp-style: read overlap, or adapter found by any 12-base piece",
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "dereplicate": "exact duplicate pairs (same trimmed forward and reverse sequence) removed across all runs of the set, first occurrence kept"
+ },
+ "runs": [
+  {
+   "run": "SRR25316607",
+   "study": "PRJNA993283",
+   "label": "K0453_LC_S2 lagoon sediment",
+   "sample": "SAMN36395505",
+   "sample_alias": "K0453_LC_S2",
+   "sample_title": "K0453_LC_S2",
+   "library_name": "K0453_LC_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 385830,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/007/SRR25316607/SRR25316607_1.fastq.gz",
+     "md5": "fc28e3eb3e7bf267228c8a5879faf740",
+     "bytes": 26814337
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/007/SRR25316607/SRR25316607_2.fastq.gz",
+     "md5": "fa21666a17b6fee8f9be3f1f223eacfa",
+     "bytes": 29540556
+    }
+   ],
+   "trim": {
+    "pairs_in": 385830,
+    "no_primer": 353411,
+    "overlap_found": 32230,
+    "adapter_cut": 32409,
+    "short": 27992,
+    "kept": 4392,
+    "has_N": 35
+   },
+   "usable_pairs": 4392,
+   "unique_within_run": 1131,
+   "within_run_dup_rate": 0.7425,
+   "records_in_set": 752,
+   "duplicates_skipped_while_filling": 3640
+  },
+  {
+   "run": "SRR25316608",
+   "study": "PRJNA993283",
+   "label": "K0454_LA_S2 lagoon sediment",
+   "sample": "SAMN36395504",
+   "sample_alias": "K0454_LA_S2",
+   "sample_title": "K0454_LA_S2",
+   "library_name": "K0454_LA_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 293772,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/008/SRR25316608/SRR25316608_1.fastq.gz",
+     "md5": "cbe8d48db2fcba1f90bf5fed18b3efdb",
+     "bytes": 22190355
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/008/SRR25316608/SRR25316608_2.fastq.gz",
+     "md5": "b008f75698c1ef7849a5413cd1be7c09",
+     "bytes": 25935393
+    }
+   ],
+   "trim": {
+    "pairs_in": 293772,
+    "no_primer": 271167,
+    "overlap_found": 21955,
+    "adapter_cut": 22587,
+    "short": 19401,
+    "kept": 3170,
+    "has_N": 34
+   },
+   "usable_pairs": 3170,
+   "unique_within_run": 1478,
+   "within_run_dup_rate": 0.5338,
+   "records_in_set": 1094,
+   "duplicates_skipped_while_filling": 2076
+  },
+  {
+   "run": "SRR25316630",
+   "study": "PRJNA993283",
+   "label": "K0479_LA_S2 lagoon sediment",
+   "sample": "SAMN36395485",
+   "sample_alias": "K0479_LA_S2",
+   "sample_title": "K0479_LA_S2",
+   "library_name": "K0479_LA_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 302303,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/030/SRR25316630/SRR25316630_1.fastq.gz",
+     "md5": "2fda2c24af8b078e8f3c85f3e542774f",
+     "bytes": 24245134
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/030/SRR25316630/SRR25316630_2.fastq.gz",
+     "md5": "0da7809618e3ae2e82bab094027483f1",
+     "bytes": 25446570
+    }
+   ],
+   "trim": {
+    "pairs_in": 302303,
+    "no_primer": 279355,
+    "overlap_found": 22825,
+    "adapter_cut": 22942,
+    "short": 22527,
+    "kept": 397,
+    "has_N": 24
+   },
+   "usable_pairs": 397,
+   "unique_within_run": 148,
+   "within_run_dup_rate": 0.6272,
+   "records_in_set": 96,
+   "duplicates_skipped_while_filling": 301
+  },
+  {
+   "run": "SRR25316633",
+   "study": "PRJNA993283",
+   "label": "K0540_C3 lagoon sediment",
+   "sample": "SAMN36395482",
+   "sample_alias": "K0540_C3",
+   "sample_title": "K0540_C3",
+   "library_name": "K0540_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 260420,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/033/SRR25316633/SRR25316633_1.fastq.gz",
+     "md5": "cf2675f4c4f7ec93c61e294c47feb434",
+     "bytes": 18967502
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/033/SRR25316633/SRR25316633_2.fastq.gz",
+     "md5": "ce047ee7497dd227597c629ea4fdc20a",
+     "bytes": 20277528
+    }
+   ],
+   "trim": {
+    "pairs_in": 260420,
+    "no_primer": 228471,
+    "overlap_found": 31804,
+    "adapter_cut": 31938,
+    "short": 25524,
+    "kept": 6377,
+    "has_N": 48
+   },
+   "usable_pairs": 6377,
+   "unique_within_run": 1461,
+   "within_run_dup_rate": 0.7709,
+   "records_in_set": 980,
+   "duplicates_skipped_while_filling": 5397
+  },
+  {
+   "run": "SRR25316616",
+   "study": "PRJNA993283",
+   "label": "K0502_M8 soil unburned",
+   "sample": "SAMN36395415",
+   "sample_alias": "K0502_M8",
+   "sample_title": "K0502_M8",
+   "library_name": "K0502_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 402117,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/016/SRR25316616/SRR25316616_1.fastq.gz",
+     "md5": "1579cceaeac503245d57eb84e4748308",
+     "bytes": 31669805
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/016/SRR25316616/SRR25316616_2.fastq.gz",
+     "md5": "727d777a2fa115c8a8cd0dc9d2a5ad09",
+     "bytes": 33308526
+    }
+   ],
+   "trim": {
+    "pairs_in": 402117,
+    "no_primer": 395674,
+    "overlap_found": 6411,
+    "adapter_cut": 6443,
+    "short": 4261,
+    "kept": 2164,
+    "has_N": 18
+   },
+   "usable_pairs": 2164,
+   "unique_within_run": 566,
+   "within_run_dup_rate": 0.7384,
+   "records_in_set": 464,
+   "duplicates_skipped_while_filling": 1700
+  },
+  {
+   "run": "SRR25316674",
+   "study": "PRJNA993283",
+   "label": "K0508_A1 soil low burn",
+   "sample": "SAMN36395434",
+   "sample_alias": "K0508_A1",
+   "sample_title": "K0508_A1",
+   "library_name": "K0508_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 308908,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/074/SRR25316674/SRR25316674_1.fastq.gz",
+     "md5": "e1b4faab93f72882767a9857f4b9233a",
+     "bytes": 21949304
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/074/SRR25316674/SRR25316674_2.fastq.gz",
+     "md5": "7e3beb4214e849be1e7cd950a48f4485",
+     "bytes": 23057461
+    }
+   ],
+   "trim": {
+    "pairs_in": 308908,
+    "no_primer": 289582,
+    "overlap_found": 19264,
+    "adapter_cut": 19317,
+    "short": 18390,
+    "kept": 920,
+    "has_N": 16
+   },
+   "usable_pairs": 920,
+   "unique_within_run": 274,
+   "within_run_dup_rate": 0.7022,
+   "records_in_set": 146,
+   "duplicates_skipped_while_filling": 774
+  },
+  {
+   "run": "SRR25316671",
+   "study": "PRJNA993283",
+   "label": "K0508_L7 soil burned",
+   "sample": "SAMN36395431",
+   "sample_alias": "K0508_L7",
+   "sample_title": "K0508_L7",
+   "library_name": "K0508_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 317559,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/071/SRR25316671/SRR25316671_1.fastq.gz",
+     "md5": "05f97178348a4edecb5814c48beaf98e",
+     "bytes": 25106372
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/071/SRR25316671/SRR25316671_2.fastq.gz",
+     "md5": "850a2e1538af5a6dbe709e3464f92e77",
+     "bytes": 26329199
+    }
+   ],
+   "trim": {
+    "pairs_in": 317559,
+    "no_primer": 273111,
+    "overlap_found": 44195,
+    "adapter_cut": 44439,
+    "short": 41744,
+    "kept": 2657,
+    "has_N": 47
+   },
+   "usable_pairs": 2657,
+   "unique_within_run": 738,
+   "within_run_dup_rate": 0.7222,
+   "records_in_set": 471,
+   "duplicates_skipped_while_filling": 2186
+  },
+  {
+   "run": "SRR25316653",
+   "study": "PRJNA993283",
+   "label": "K0537_M8 sediment unburned",
+   "sample": "SAMN36395463",
+   "sample_alias": "K0537_M8",
+   "sample_title": "K0537_M8",
+   "library_name": "K0537_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 393438,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/053/SRR25316653/SRR25316653_1.fastq.gz",
+     "md5": "32c3bf7f03b6346eb4bf35b9c07c0bc6",
+     "bytes": 26568657
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/053/SRR25316653/SRR25316653_2.fastq.gz",
+     "md5": "64743ebbb57e451f344e9a6fe05ff59f",
+     "bytes": 28694514
+    }
+   ],
+   "trim": {
+    "pairs_in": 393438,
+    "no_primer": 358036,
+    "overlap_found": 35221,
+    "adapter_cut": 35390,
+    "short": 32136,
+    "kept": 3221,
+    "has_N": 45
+   },
+   "usable_pairs": 3221,
+   "unique_within_run": 826,
+   "within_run_dup_rate": 0.7436,
+   "records_in_set": 512,
+   "duplicates_skipped_while_filling": 2709
+  },
+  {
+   "run": "SRR25316655",
+   "study": "PRJNA993283",
+   "label": "K0538_A1 sediment low burn",
+   "sample": "SAMN36395461",
+   "sample_alias": "K0538_A1",
+   "sample_title": "K0538_A1",
+   "library_name": "K0538_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 332333,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/055/SRR25316655/SRR25316655_1.fastq.gz",
+     "md5": "1cecb23c3b1d3638c9280d533c98a4a0",
+     "bytes": 26817885
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/055/SRR25316655/SRR25316655_2.fastq.gz",
+     "md5": "5ce96316a5f35c9aed5a37a218679628",
+     "bytes": 28468499
+    }
+   ],
+   "trim": {
+    "pairs_in": 332333,
+    "no_primer": 298931,
+    "overlap_found": 33152,
+    "adapter_cut": 33383,
+    "short": 32027,
+    "kept": 1340,
+    "has_N": 35
+   },
+   "usable_pairs": 1340,
+   "unique_within_run": 517,
+   "within_run_dup_rate": 0.6142,
+   "records_in_set": 344,
+   "duplicates_skipped_while_filling": 996
+  },
+  {
+   "run": "SRR25316667",
+   "study": "PRJNA993283",
+   "label": "K0697_A1 sediment severe burn",
+   "sample": "SAMN36395452",
+   "sample_alias": "K0697_A1",
+   "sample_title": "K0697_A1",
+   "library_name": "K0697_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 336226,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/067/SRR25316667/SRR25316667_1.fastq.gz",
+     "md5": "0f9e6de9056bac1a24fb3a5c2ab01994",
+     "bytes": 23533722
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/067/SRR25316667/SRR25316667_2.fastq.gz",
+     "md5": "d6067a1b63bb18f092bc95cbf48d6027",
+     "bytes": 25665145
+    }
+   ],
+   "trim": {
+    "pairs_in": 336226,
+    "no_primer": 313261,
+    "overlap_found": 22851,
+    "adapter_cut": 22958,
+    "short": 19722,
+    "kept": 3203,
+    "has_N": 40
+   },
+   "usable_pairs": 3203,
+   "unique_within_run": 771,
+   "within_run_dup_rate": 0.7593,
+   "records_in_set": 463,
+   "duplicates_skipped_while_filling": 2740
+  },
+  {
+   "run": "SRR25316606",
+   "study": "PRJNA993283",
+   "label": "K0482_LA_S2 sediment lagoon",
+   "sample": "SAMN36395493",
+   "sample_alias": "K0482_LA_S2",
+   "sample_title": "K0482_LA_S2",
+   "library_name": "K0482_LA_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 255509,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/006/SRR25316606/SRR25316606_1.fastq.gz",
+     "md5": "bee500f7f90024dd219b8b9a5e462ffc",
+     "bytes": 18571866
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/006/SRR25316606/SRR25316606_2.fastq.gz",
+     "md5": "7849fecbf1f8cb035d6c60bc41e35b3b",
+     "bytes": 19692313
+    }
+   ],
+   "trim": {
+    "pairs_in": 255509,
+    "no_primer": 248338,
+    "overlap_found": 7151,
+    "adapter_cut": 7171,
+    "short": 6375,
+    "kept": 790,
+    "has_N": 6
+   },
+   "usable_pairs": 790,
+   "unique_within_run": 218,
+   "within_run_dup_rate": 0.7241,
+   "records_in_set": 118,
+   "duplicates_skipped_while_filling": 672
+  },
+  {
+   "run": "SRR25316609",
+   "study": "PRJNA993283",
+   "label": "K0454_LB_S2 sediment lagoon",
+   "sample": "SAMN36395503",
+   "sample_alias": "K0454_LB_S2",
+   "sample_title": "K0454_LB_S2",
+   "library_name": "K0454_LB_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 592616,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/009/SRR25316609/SRR25316609_1.fastq.gz",
+     "md5": "d1208d39cd750fb88e060e8b16927ff1",
+     "bytes": 46340802
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/009/SRR25316609/SRR25316609_2.fastq.gz",
+     "md5": "7f918795f5fc751b4f851703bf8c3691",
+     "bytes": 48275892
+    }
+   ],
+   "trim": {
+    "pairs_in": 592616,
+    "no_primer": 544239,
+    "overlap_found": 48110,
+    "adapter_cut": 48364,
+    "short": 46800,
+    "kept": 1523,
+    "has_N": 54
+   },
+   "usable_pairs": 1523,
+   "unique_within_run": 452,
+   "within_run_dup_rate": 0.7032,
+   "records_in_set": 280,
+   "duplicates_skipped_while_filling": 1243
+  },
+  {
+   "run": "SRR25316610",
+   "study": "PRJNA993283",
+   "label": "K0460_LA_S1 sediment lagoon",
+   "sample": "SAMN36395502",
+   "sample_alias": "K0460_LA_S1",
+   "sample_title": "K0460_LA_S1",
+   "library_name": "K0460_LA_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 330952,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/010/SRR25316610/SRR25316610_1.fastq.gz",
+     "md5": "3c569793fd93282f6e8b9ae8a1e7382d",
+     "bytes": 23979406
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/010/SRR25316610/SRR25316610_2.fastq.gz",
+     "md5": "669da9dff072ec6c3538f4da6d8bb459",
+     "bytes": 25817092
+    }
+   ],
+   "trim": {
+    "pairs_in": 330952,
+    "no_primer": 299424,
+    "overlap_found": 31344,
+    "adapter_cut": 31511,
+    "kept": 9942,
+    "short": 21512,
+    "has_N": 74
+   },
+   "usable_pairs": 9942,
+   "unique_within_run": 2165,
+   "within_run_dup_rate": 0.7822,
+   "records_in_set": 1370,
+   "duplicates_skipped_while_filling": 8572
+  },
+  {
+   "run": "SRR25316611",
+   "study": "PRJNA993283",
+   "label": "K0460_LB_S1 sediment lagoon",
+   "sample": "SAMN36395501",
+   "sample_alias": "K0460_LB_S1",
+   "sample_title": "K0460_LB_S1",
+   "library_name": "K0460_LB_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 279012,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/011/SRR25316611/SRR25316611_1.fastq.gz",
+     "md5": "337d4c6f9284daa970f2894a8f3dd0e0",
+     "bytes": 22571873
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/011/SRR25316611/SRR25316611_2.fastq.gz",
+     "md5": "8b64929797a25b7d12e406022238ad6b",
+     "bytes": 23768581
+    }
+   ],
+   "trim": {
+    "pairs_in": 279012,
+    "no_primer": 251591,
+    "overlap_found": 27289,
+    "adapter_cut": 27411,
+    "short": 26100,
+    "kept": 1291,
+    "has_N": 30
+   },
+   "usable_pairs": 1291,
+   "unique_within_run": 379,
+   "within_run_dup_rate": 0.7064,
+   "records_in_set": 225,
+   "duplicates_skipped_while_filling": 1066
+  },
+  {
+   "run": "SRR25316612",
+   "study": "PRJNA993283",
+   "label": "K0460_LB_S2 sediment lagoon",
+   "sample": "SAMN36395500",
+   "sample_alias": "K0460_LB_S2",
+   "sample_title": "K0460_LB_S2",
+   "library_name": "K0460_LB_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 282554,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/012/SRR25316612/SRR25316612_1.fastq.gz",
+     "md5": "b15dcd10ce6d1fc39ffedb54b8ee0a54",
+     "bytes": 21675090
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/012/SRR25316612/SRR25316612_2.fastq.gz",
+     "md5": "a4ca702d79a9ffba36ec528f6d24f628",
+     "bytes": 23138168
+    }
+   ],
+   "trim": {
+    "pairs_in": 282554,
+    "no_primer": 254212,
+    "overlap_found": 28184,
+    "adapter_cut": 28328,
+    "kept": 3343,
+    "short": 24964,
+    "has_N": 35
+   },
+   "usable_pairs": 3343,
+   "unique_within_run": 1012,
+   "within_run_dup_rate": 0.6973,
+   "records_in_set": 687,
+   "duplicates_skipped_while_filling": 2656
+  },
+  {
+   "run": "SRR25316613",
+   "study": "PRJNA993283",
+   "label": "K0460_LC_S1 sediment lagoon",
+   "sample": "SAMN36395499",
+   "sample_alias": "K0460_LC_S1",
+   "sample_title": "K0460_LC_S1",
+   "library_name": "K0460_LC_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 137127,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/013/SRR25316613/SRR25316613_1.fastq.gz",
+     "md5": "f0407e94f9940fc11c5d1f47cc5aa238",
+     "bytes": 10145189
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/013/SRR25316613/SRR25316613_2.fastq.gz",
+     "md5": "1ab874ecf90471024ee9006127830c00",
+     "bytes": 10457294
+    }
+   ],
+   "trim": {
+    "pairs_in": 137127,
+    "no_primer": 137051,
+    "overlap_found": 75,
+    "adapter_cut": 76,
+    "short": 70,
+    "kept": 6
+   },
+   "usable_pairs": 6,
+   "unique_within_run": 3,
+   "within_run_dup_rate": 0.5,
+   "records_in_set": 2,
+   "duplicates_skipped_while_filling": 4
+  },
+  {
+   "run": "SRR25316614",
+   "study": "PRJNA993283",
+   "label": "K0469_LA_S2 sediment lagoon",
+   "sample": "SAMN36395497",
+   "sample_alias": "K0469_LA_S2",
+   "sample_title": "K0469_LA_S2",
+   "library_name": "K0469_LA_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 352980,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/014/SRR25316614/SRR25316614_1.fastq.gz",
+     "md5": "e0856ab4f37e3b8334527f4af3f1eda8",
+     "bytes": 27359539
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/014/SRR25316614/SRR25316614_2.fastq.gz",
+     "md5": "15ee4e8da46f3dd1fecadf2996621f56",
+     "bytes": 28587049
+    }
+   ],
+   "trim": {
+    "pairs_in": 352980,
+    "no_primer": 317349,
+    "overlap_found": 35485,
+    "adapter_cut": 35617,
+    "short": 29591,
+    "kept": 5992,
+    "has_N": 48
+   },
+   "usable_pairs": 5992,
+   "unique_within_run": 1505,
+   "within_run_dup_rate": 0.7488,
+   "records_in_set": 932,
+   "duplicates_skipped_while_filling": 5060
+  },
+  {
+   "run": "SRR25316615",
+   "study": "PRJNA993283",
+   "label": "K0469_LB_S1 sediment lagoon",
+   "sample": "SAMN36395496",
+   "sample_alias": "K0469_LB_S1",
+   "sample_title": "K0469_LB_S1",
+   "library_name": "K0469_LB_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 146509,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/015/SRR25316615/SRR25316615_1.fastq.gz",
+     "md5": "0a14ea5bdf9b9f4a72a43d4e3589b678",
+     "bytes": 11940623
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/015/SRR25316615/SRR25316615_2.fastq.gz",
+     "md5": "819085919baa9069681f7d10ad35df6d",
+     "bytes": 12286536
+    }
+   ],
+   "trim": {
+    "pairs_in": 146509,
+    "no_primer": 140299,
+    "overlap_found": 6175,
+    "adapter_cut": 6209,
+    "short": 5590,
+    "kept": 613,
+    "has_N": 7
+   },
+   "usable_pairs": 613,
+   "unique_within_run": 271,
+   "within_run_dup_rate": 0.5579,
+   "records_in_set": 163,
+   "duplicates_skipped_while_filling": 450
+  },
+  {
+   "run": "SRR25316617",
+   "study": "PRJNA993283",
+   "label": "K0479_LC_S2 sediment lagoon",
+   "sample": "SAMN36395495",
+   "sample_alias": "K0479_LC_S2",
+   "sample_title": "K0479_LC_S2",
+   "library_name": "K0479_LC_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 324697,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/017/SRR25316617/SRR25316617_1.fastq.gz",
+     "md5": "6163c3d4f8620391365a65d4165dbb9a",
+     "bytes": 23114421
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/017/SRR25316617/SRR25316617_2.fastq.gz",
+     "md5": "35343d1f4e8c749e01b09693245b31d0",
+     "bytes": 25537696
+    }
+   ],
+   "trim": {
+    "pairs_in": 324697,
+    "no_primer": 277936,
+    "overlap_found": 46491,
+    "adapter_cut": 46748,
+    "short": 44450,
+    "kept": 2248,
+    "has_N": 63
+   },
+   "usable_pairs": 2248,
+   "unique_within_run": 598,
+   "within_run_dup_rate": 0.734,
+   "records_in_set": 359,
+   "duplicates_skipped_while_filling": 1889
+  },
+  {
+   "run": "SRR25316618",
+   "study": "PRJNA993283",
+   "label": "K0481_LA_S1 sediment lagoon",
+   "sample": "SAMN36395494",
+   "sample_alias": "K0481_LA_S1",
+   "sample_title": "K0481_LA_S1",
+   "library_name": "K0481_LA_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 317268,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/018/SRR25316618/SRR25316618_1.fastq.gz",
+     "md5": "5a49657ee9cdb651d1c5a287afcafff9",
+     "bytes": 23417682
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/018/SRR25316618/SRR25316618_2.fastq.gz",
+     "md5": "0e08ccc0670fbf090c56e4694351f1a8",
+     "bytes": 24910820
+    }
+   ],
+   "trim": {
+    "pairs_in": 317268,
+    "no_primer": 293245,
+    "overlap_found": 23892,
+    "adapter_cut": 24018,
+    "short": 22405,
+    "kept": 1583,
+    "has_N": 35
+   },
+   "usable_pairs": 1583,
+   "unique_within_run": 436,
+   "within_run_dup_rate": 0.7246,
+   "records_in_set": 240,
+   "duplicates_skipped_while_filling": 1343
+  },
+  {
+   "run": "SRR25316619",
+   "study": "PRJNA993283",
+   "label": "K0482_LB_S1 sediment lagoon",
+   "sample": "SAMN36395492",
+   "sample_alias": "K0482_LB_S1",
+   "sample_title": "K0482_LB_S1",
+   "library_name": "K0482_LB_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 172037,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/019/SRR25316619/SRR25316619_1.fastq.gz",
+     "md5": "97f4d2b84160322fdf27b5889ea91d95",
+     "bytes": 13380667
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/019/SRR25316619/SRR25316619_2.fastq.gz",
+     "md5": "60dc73a4b7b5c57c04e16916efa5a7b9",
+     "bytes": 13939274
+    }
+   ],
+   "trim": {
+    "pairs_in": 172037,
+    "no_primer": 162768,
+    "overlap_found": 9244,
+    "adapter_cut": 9264,
+    "short": 6989,
+    "kept": 2270,
+    "has_N": 10
+   },
+   "usable_pairs": 2270,
+   "unique_within_run": 839,
+   "within_run_dup_rate": 0.6304,
+   "records_in_set": 649,
+   "duplicates_skipped_while_filling": 1621
+  },
+  {
+   "run": "SRR25316620",
+   "study": "PRJNA993283",
+   "label": "K0487_LA_S1 sediment lagoon",
+   "sample": "SAMN36395491",
+   "sample_alias": "K0487_LA_S1",
+   "sample_title": "K0487_LA_S1",
+   "library_name": "K0487_LA_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 254311,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/020/SRR25316620/SRR25316620_1.fastq.gz",
+     "md5": "e34f1088cac6929a6ee018f058c3cf6a",
+     "bytes": 19473634
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/020/SRR25316620/SRR25316620_2.fastq.gz",
+     "md5": "aa8545ca0b3f5451eb765e6ade1744c9",
+     "bytes": 20562520
+    }
+   ],
+   "trim": {
+    "pairs_in": 254311,
+    "no_primer": 234154,
+    "overlap_found": 19957,
+    "adapter_cut": 20148,
+    "short": 18827,
+    "kept": 1306,
+    "has_N": 24
+   },
+   "usable_pairs": 1306,
+   "unique_within_run": 434,
+   "within_run_dup_rate": 0.6677,
+   "records_in_set": 293,
+   "duplicates_skipped_while_filling": 1013
+  },
+  {
+   "run": "SRR25316621",
+   "study": "PRJNA993283",
+   "label": "K0824_A1 sediment lagoon",
+   "sample": "SAMN36395471",
+   "sample_alias": "K0824_A1",
+   "sample_title": "K0824_A1",
+   "library_name": "K0824_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 40004,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/021/SRR25316621/SRR25316621_1.fastq.gz",
+     "md5": "a2954dc03ece2c2bb99d31322cef5ccf",
+     "bytes": 3066231
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/021/SRR25316621/SRR25316621_2.fastq.gz",
+     "md5": "689614fc52245f5d395e45e994b0ed8d",
+     "bytes": 3101660
+    }
+   ],
+   "trim": {
+    "pairs_in": 40004,
+    "no_primer": 37856,
+    "overlap_found": 2122,
+    "adapter_cut": 2143,
+    "short": 1396,
+    "kept": 747,
+    "has_N": 5
+   },
+   "usable_pairs": 747,
+   "unique_within_run": 369,
+   "within_run_dup_rate": 0.506,
+   "records_in_set": 244,
+   "duplicates_skipped_while_filling": 503
+  },
+  {
+   "run": "SRR25316622",
+   "study": "PRJNA993283",
+   "label": "K0537_A1 sediment unburned",
+   "sample": "SAMN36395470",
+   "sample_alias": "K0537_A1",
+   "sample_title": "K0537_A1",
+   "library_name": "K0537_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 183530,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/022/SRR25316622/SRR25316622_1.fastq.gz",
+     "md5": "85414a3eb24164cb5d68fb266576a183",
+     "bytes": 13914880
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/022/SRR25316622/SRR25316622_2.fastq.gz",
+     "md5": "b4758c51a46c78a1a4ae14c7b89e65ff",
+     "bytes": 14648367
+    }
+   ],
+   "trim": {
+    "pairs_in": 183530,
+    "no_primer": 167773,
+    "overlap_found": 15722,
+    "adapter_cut": 15755,
+    "short": 15190,
+    "kept": 553,
+    "has_N": 14
+   },
+   "usable_pairs": 553,
+   "unique_within_run": 178,
+   "within_run_dup_rate": 0.6781,
+   "records_in_set": 155,
+   "duplicates_skipped_while_filling": 398
+  },
+  {
+   "run": "SRR25316623",
+   "study": "PRJNA993283",
+   "label": "K0537_B2 sediment low burn",
+   "sample": "SAMN36395469",
+   "sample_alias": "K0537_B2",
+   "sample_title": "K0537_B2",
+   "library_name": "K0537_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 351798,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/023/SRR25316623/SRR25316623_1.fastq.gz",
+     "md5": "fdfcfb8cac85b43f33ce4377a8e647b4",
+     "bytes": 23568862
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/023/SRR25316623/SRR25316623_2.fastq.gz",
+     "md5": "11c071d7733d1a5df645e02bc2ff06a4",
+     "bytes": 26142405
+    }
+   ],
+   "trim": {
+    "pairs_in": 351798,
+    "no_primer": 325668,
+    "overlap_found": 25984,
+    "adapter_cut": 26121,
+    "short": 20021,
+    "kept": 6057,
+    "has_N": 52
+   },
+   "usable_pairs": 6057,
+   "unique_within_run": 1309,
+   "within_run_dup_rate": 0.7839,
+   "records_in_set": 890,
+   "duplicates_skipped_while_filling": 5167
+  },
+  {
+   "run": "SRR25316624",
+   "study": "PRJNA993283",
+   "label": "K0491_LB_S2 sediment lagoon",
+   "sample": "SAMN36395490",
+   "sample_alias": "K0491_LB_S2",
+   "sample_title": "K0491_LB_S2",
+   "library_name": "K0491_LB_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 284854,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/024/SRR25316624/SRR25316624_1.fastq.gz",
+     "md5": "4564b2da899d2145a09126ec31bb1e18",
+     "bytes": 22109135
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/024/SRR25316624/SRR25316624_2.fastq.gz",
+     "md5": "070deebe2ef7728005cb230726d38a41",
+     "bytes": 22475524
+    }
+   ],
+   "trim": {
+    "pairs_in": 284854,
+    "overlap_found": 16428,
+    "adapter_cut": 16495,
+    "has_N": 22,
+    "no_primer": 268354,
+    "short": 11685,
+    "kept": 4793
+   },
+   "usable_pairs": 4793,
+   "unique_within_run": 1607,
+   "within_run_dup_rate": 0.6647,
+   "records_in_set": 1157,
+   "duplicates_skipped_while_filling": 3636
+  },
+  {
+   "run": "SRR25316625",
+   "study": "PRJNA993283",
+   "label": "K0493_LC_S2 sediment lagoon",
+   "sample": "SAMN36395489",
+   "sample_alias": "K0493_LC_S2",
+   "sample_title": "K0493_LC_S2",
+   "library_name": "K0493_LC_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 85704,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/025/SRR25316625/SRR25316625_1.fastq.gz",
+     "md5": "1d796eb3193ace5c9978f408f020323a",
+     "bytes": 6717316
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/025/SRR25316625/SRR25316625_2.fastq.gz",
+     "md5": "ec16e25644eaaf778364aa135068d690",
+     "bytes": 6858012
+    }
+   ],
+   "trim": {
+    "pairs_in": 85704,
+    "no_primer": 77518,
+    "overlap_found": 8134,
+    "adapter_cut": 8183,
+    "short": 7090,
+    "kept": 1091,
+    "has_N": 5
+   },
+   "usable_pairs": 1091,
+   "unique_within_run": 484,
+   "within_run_dup_rate": 0.5564,
+   "records_in_set": 324,
+   "duplicates_skipped_while_filling": 767
+  },
+  {
+   "run": "SRR25316626",
+   "study": "PRJNA993283",
+   "label": "K0494_LA_S1 sediment lagoon",
+   "sample": "SAMN36395488",
+   "sample_alias": "K0494_LA_S1",
+   "sample_title": "K0494_LA_S1",
+   "library_name": "K0494_LA_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 474517,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/026/SRR25316626/SRR25316626_1.fastq.gz",
+     "md5": "6e97e7ad366d09d4c5003227b7c79988",
+     "bytes": 36689198
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/026/SRR25316626/SRR25316626_2.fastq.gz",
+     "md5": "d18971d1511c7dd3d0f148ec07c44eda",
+     "bytes": 38613769
+    }
+   ],
+   "trim": {
+    "pairs_in": 474517,
+    "no_primer": 436409,
+    "overlap_found": 37905,
+    "adapter_cut": 38088,
+    "has_N": 64,
+    "short": 33845,
+    "kept": 4199
+   },
+   "usable_pairs": 4199,
+   "unique_within_run": 1042,
+   "within_run_dup_rate": 0.7518,
+   "records_in_set": 668,
+   "duplicates_skipped_while_filling": 3531
+  },
+  {
+   "run": "SRR25316627",
+   "study": "PRJNA993283",
+   "label": "K0982_LB_S1 sediment lagoon",
+   "sample": "SAMN36395487",
+   "sample_alias": "K0982_LB_S1",
+   "sample_title": "K0982_LB_S1",
+   "library_name": "K0982_LB_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 121439,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/027/SRR25316627/SRR25316627_1.fastq.gz",
+     "md5": "cd7073dae7a7bdee9b389df6ff592017",
+     "bytes": 9564764
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/027/SRR25316627/SRR25316627_2.fastq.gz",
+     "md5": "6408c6716078e334fcb6dd1d6848d286",
+     "bytes": 9708342
+    }
+   ],
+   "trim": {
+    "pairs_in": 121439,
+    "no_primer": 112202,
+    "overlap_found": 9213,
+    "adapter_cut": 9236,
+    "short": 7527,
+    "kept": 1701,
+    "has_N": 9
+   },
+   "usable_pairs": 1701,
+   "unique_within_run": 656,
+   "within_run_dup_rate": 0.6143,
+   "records_in_set": 420,
+   "duplicates_skipped_while_filling": 1281
+  },
+  {
+   "run": "SRR25316628",
+   "study": "PRJNA993283",
+   "label": "K0457_LC_S2 sediment lagoon",
+   "sample": "SAMN36395486",
+   "sample_alias": "K0457_LC_S2",
+   "sample_title": "K0457_LC_S2",
+   "library_name": "K0457_LC_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 206020,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/028/SRR25316628/SRR25316628_1.fastq.gz",
+     "md5": "691f212964b4ec6cf849832433480891",
+     "bytes": 14099784
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/028/SRR25316628/SRR25316628_2.fastq.gz",
+     "md5": "b0f3fa08068348877dcd1582ae0cf061",
+     "bytes": 14423535
+    }
+   ],
+   "trim": {
+    "pairs_in": 206020,
+    "overlap_found": 11664,
+    "adapter_cut": 11716,
+    "short": 10126,
+    "no_primer": 194299,
+    "kept": 1581,
+    "has_N": 14
+   },
+   "usable_pairs": 1581,
+   "unique_within_run": 501,
+   "within_run_dup_rate": 0.6831,
+   "records_in_set": 292,
+   "duplicates_skipped_while_filling": 1289
+  },
+  {
+   "run": "SRR25316629",
+   "study": "PRJNA993283",
+   "label": "K0511_B2 soil moderate burn",
+   "sample": "SAMN36395414",
+   "sample_alias": "K0511_B2",
+   "sample_title": "K0511_B2",
+   "library_name": "K0511_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 168517,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/029/SRR25316629/SRR25316629_1.fastq.gz",
+     "md5": "c476d7f6cea14c4d57c4b5f26d59f142",
+     "bytes": 12739579
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/029/SRR25316629/SRR25316629_2.fastq.gz",
+     "md5": "be44ccfa644204b207d933d43ddbb60c",
+     "bytes": 13183549
+    }
+   ],
+   "trim": {
+    "pairs_in": 168517,
+    "no_primer": 156825,
+    "overlap_found": 11655,
+    "adapter_cut": 11692,
+    "short": 10599,
+    "kept": 1081,
+    "has_N": 12
+   },
+   "usable_pairs": 1081,
+   "unique_within_run": 351,
+   "within_run_dup_rate": 0.6753,
+   "records_in_set": 201,
+   "duplicates_skipped_while_filling": 880
+  },
+  {
+   "run": "SRR25316631",
+   "study": "PRJNA993283",
+   "label": "K0494_LB_S2 sediment lagoon",
+   "sample": "SAMN36395484",
+   "sample_alias": "K0494_LB_S2",
+   "sample_title": "K0494_LB_S2",
+   "library_name": "K0494_LB_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 186409,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/031/SRR25316631/SRR25316631_1.fastq.gz",
+     "md5": "6c9cf907d26be06dad3ee293abd1a353",
+     "bytes": 15182783
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/031/SRR25316631/SRR25316631_2.fastq.gz",
+     "md5": "a446d88bdbe708e62f0daa0e49d55eb4",
+     "bytes": 15987627
+    }
+   ],
+   "trim": {
+    "pairs_in": 186409,
+    "overlap_found": 7457,
+    "adapter_cut": 7469,
+    "short": 6813,
+    "no_primer": 178940,
+    "kept": 645,
+    "has_N": 11
+   },
+   "usable_pairs": 645,
+   "unique_within_run": 232,
+   "within_run_dup_rate": 0.6403,
+   "records_in_set": 127,
+   "duplicates_skipped_while_filling": 518
+  },
+  {
+   "run": "SRR25316632",
+   "study": "PRJNA993283",
+   "label": "K0540_A1 sediment lagoon",
+   "sample": "SAMN36395483",
+   "sample_alias": "K0540_A1",
+   "sample_title": "K0540_A1",
+   "library_name": "K0540_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 262758,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/032/SRR25316632/SRR25316632_1.fastq.gz",
+     "md5": "5b934a6fcde20777696a6e504553d8b3",
+     "bytes": 18318279
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/032/SRR25316632/SRR25316632_2.fastq.gz",
+     "md5": "49c0f8c9063ba083db8898415d6e283c",
+     "bytes": 19162754
+    }
+   ],
+   "trim": {
+    "pairs_in": 262758,
+    "no_primer": 262757,
+    "adapter_cut": 1,
+    "short": 1
+   },
+   "usable_pairs": 0,
+   "unique_within_run": 0,
+   "within_run_dup_rate": null,
+   "records_in_set": 0,
+   "duplicates_skipped_while_filling": 0
+  },
+  {
+   "run": "SRR25316634",
+   "study": "PRJNA993283",
+   "label": "K0540_G5 sediment lagoon",
+   "sample": "SAMN36395481",
+   "sample_alias": "K0540_G5",
+   "sample_title": "K0540_G5",
+   "library_name": "K0540_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 288521,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/034/SRR25316634/SRR25316634_1.fastq.gz",
+     "md5": "ea3404c7c3da1cc86e610130afec1117",
+     "bytes": 22000477
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/034/SRR25316634/SRR25316634_2.fastq.gz",
+     "md5": "2c21827320b7aa81e91f8c800a93849e",
+     "bytes": 23101391
+    }
+   ],
+   "trim": {
+    "pairs_in": 288521,
+    "no_primer": 266128,
+    "overlap_found": 22310,
+    "adapter_cut": 22391,
+    "short": 17937,
+    "kept": 4411,
+    "has_N": 45
+   },
+   "usable_pairs": 4411,
+   "unique_within_run": 920,
+   "within_run_dup_rate": 0.7914,
+   "records_in_set": 538,
+   "duplicates_skipped_while_filling": 3873
+  },
+  {
+   "run": "SRR25316635",
+   "study": "PRJNA993283",
+   "label": "K0540_K6 sediment lagoon",
+   "sample": "SAMN36395480",
+   "sample_alias": "K0540_K6",
+   "sample_title": "K0540_K6",
+   "library_name": "K0540_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 392429,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/035/SRR25316635/SRR25316635_1.fastq.gz",
+     "md5": "3c4fb61b712bcc742dbb8f9f8d3b1620",
+     "bytes": 30478230
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/035/SRR25316635/SRR25316635_2.fastq.gz",
+     "md5": "0e121671c85ccd5eb37e48961f63623d",
+     "bytes": 32160591
+    }
+   ],
+   "trim": {
+    "pairs_in": 392429,
+    "no_primer": 350970,
+    "overlap_found": 38936,
+    "adapter_cut": 39272,
+    "kept": 30116,
+    "short": 11174,
+    "has_N": 169
+   },
+   "usable_pairs": 30116,
+   "unique_within_run": 11997,
+   "within_run_dup_rate": 0.6016,
+   "records_in_set": 2515,
+   "duplicates_skipped_while_filling": 3180
+  },
+  {
+   "run": "SRR25316636",
+   "study": "PRJNA993283",
+   "label": "K0540_L7 sediment lagoon",
+   "sample": "SAMN36395479",
+   "sample_alias": "K0540_L7",
+   "sample_title": "K0540_L7",
+   "library_name": "K0540_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 324517,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/036/SRR25316636/SRR25316636_1.fastq.gz",
+     "md5": "4378cdd23efe7af0b7103d8fcecbfa8f",
+     "bytes": 25942903
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/036/SRR25316636/SRR25316636_2.fastq.gz",
+     "md5": "9ccf14ba76e5e47b67b22cec293f35c5",
+     "bytes": 26690978
+    }
+   ],
+   "trim": {
+    "pairs_in": 324517,
+    "overlap_found": 22954,
+    "adapter_cut": 23040,
+    "short": 20987,
+    "no_primer": 301471,
+    "kept": 2026,
+    "has_N": 33
+   },
+   "usable_pairs": 2026,
+   "unique_within_run": 581,
+   "within_run_dup_rate": 0.7132,
+   "records_in_set": 440,
+   "duplicates_skipped_while_filling": 1586
+  },
+  {
+   "run": "SRR25316637",
+   "study": "PRJNA993283",
+   "label": "K0465_LB_S1 sediment lagoon",
+   "sample": "SAMN36395498",
+   "sample_alias": "K0465_LB_S1",
+   "sample_title": "K0465_LB_S1",
+   "library_name": "K0465_LB_S1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 522781,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/037/SRR25316637/SRR25316637_1.fastq.gz",
+     "md5": "c8f816fb58b2be6273b1f95d8c784aab",
+     "bytes": 42406860
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/037/SRR25316637/SRR25316637_2.fastq.gz",
+     "md5": "6ded124c6a43e988b4dac6809259a105",
+     "bytes": 44150674
+    }
+   ],
+   "trim": {
+    "pairs_in": 522781,
+    "no_primer": 490867,
+    "overlap_found": 31607,
+    "adapter_cut": 31898,
+    "short": 30246,
+    "kept": 1626,
+    "has_N": 42
+   },
+   "usable_pairs": 1626,
+   "unique_within_run": 516,
+   "within_run_dup_rate": 0.6827,
+   "records_in_set": 363,
+   "duplicates_skipped_while_filling": 1263
+  },
+  {
+   "run": "SRR25316638",
+   "study": "PRJNA993283",
+   "label": "K0763_L7 sediment lagoon",
+   "sample": "SAMN36395476",
+   "sample_alias": "K0763_L7",
+   "sample_title": "K0763_L7",
+   "library_name": "K0763_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 14003,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/038/SRR25316638/SRR25316638_1.fastq.gz",
+     "md5": "98d728e484f9ef8a5892dc3540e47d92",
+     "bytes": 1090350
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/038/SRR25316638/SRR25316638_2.fastq.gz",
+     "md5": "7d19b3378404e35837ef0e5a82a06e75",
+     "bytes": 1135838
+    }
+   ],
+   "trim": {
+    "pairs_in": 14003,
+    "no_primer": 12060,
+    "overlap_found": 1934,
+    "adapter_cut": 1942,
+    "short": 1812,
+    "kept": 128,
+    "has_N": 3
+   },
+   "usable_pairs": 128,
+   "unique_within_run": 65,
+   "within_run_dup_rate": 0.4922,
+   "records_in_set": 36,
+   "duplicates_skipped_while_filling": 92
+  },
+  {
+   "run": "SRR25316639",
+   "study": "PRJNA993283",
+   "label": "K0531_C3 soil unburned",
+   "sample": "SAMN36395413",
+   "sample_alias": "K0531_C3",
+   "sample_title": "K0531_C3",
+   "library_name": "K0531_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 284532,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/039/SRR25316639/SRR25316639_1.fastq.gz",
+     "md5": "f39e814e0e427c57355d350ac7206766",
+     "bytes": 20958569
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/039/SRR25316639/SRR25316639_2.fastq.gz",
+     "md5": "f5ad4086f2b1cd246896d820ab77403e",
+     "bytes": 22036600
+    }
+   ],
+   "trim": {
+    "pairs_in": 284532,
+    "no_primer": 284530,
+    "overlap_found": 2,
+    "adapter_cut": 2,
+    "kept": 2
+   },
+   "usable_pairs": 2,
+   "unique_within_run": 2,
+   "within_run_dup_rate": 0.0,
+   "records_in_set": 1,
+   "duplicates_skipped_while_filling": 1
+  },
+  {
+   "run": "SRR25316640",
+   "study": "PRJNA993283",
+   "label": "K0770_A1 sediment lagoon",
+   "sample": "SAMN36395475",
+   "sample_alias": "K0770_A1",
+   "sample_title": "K0770_A1",
+   "library_name": "K0770_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 19,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/040/SRR25316640/SRR25316640_1.fastq.gz",
+     "md5": "97b28bb59254a95b64620f54d683d5ca",
+     "bytes": 4274
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/040/SRR25316640/SRR25316640_2.fastq.gz",
+     "md5": "75716dac08fb552ad65c2b22305193e7",
+     "bytes": 4823
+    }
+   ],
+   "trim": {
+    "pairs_in": 19,
+    "no_primer": 17,
+    "overlap_found": 2,
+    "adapter_cut": 2,
+    "short": 2
+   },
+   "usable_pairs": 0,
+   "unique_within_run": 0,
+   "within_run_dup_rate": null,
+   "records_in_set": 0,
+   "duplicates_skipped_while_filling": 0
+  },
+  {
+   "run": "SRR25316641",
+   "study": "PRJNA993283",
+   "label": "K0770_G5 sediment lagoon",
+   "sample": "SAMN36395474",
+   "sample_alias": "K0770_G5",
+   "sample_title": "K0770_G5",
+   "library_name": "K0770_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 57295,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/041/SRR25316641/SRR25316641_1.fastq.gz",
+     "md5": "1c2410a85445d24982bd29f4aba65f48",
+     "bytes": 4302833
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/041/SRR25316641/SRR25316641_2.fastq.gz",
+     "md5": "0ecdc903ba51418b6f8e7ce5abc3e1f6",
+     "bytes": 4555683
+    }
+   ],
+   "trim": {
+    "pairs_in": 57295,
+    "no_primer": 56372,
+    "overlap_found": 918,
+    "adapter_cut": 923,
+    "short": 904,
+    "kept": 18,
+    "has_N": 1
+   },
+   "usable_pairs": 18,
+   "unique_within_run": 10,
+   "within_run_dup_rate": 0.4444,
+   "records_in_set": 6,
+   "duplicates_skipped_while_filling": 12
+  },
+  {
+   "run": "SRR25316642",
+   "study": "PRJNA993283",
+   "label": "K0770_L7 sediment lagoon",
+   "sample": "SAMN36395473",
+   "sample_alias": "K0770_L7",
+   "sample_title": "K0770_L7",
+   "library_name": "K0770_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 100012,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/042/SRR25316642/SRR25316642_1.fastq.gz",
+     "md5": "cfc8e53355dbb4ec988ffb79fde67054",
+     "bytes": 7811208
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/042/SRR25316642/SRR25316642_2.fastq.gz",
+     "md5": "83283ee5eb1460842c9407275192890b",
+     "bytes": 8014926
+    }
+   ],
+   "trim": {
+    "pairs_in": 100012,
+    "no_primer": 91406,
+    "overlap_found": 8569,
+    "adapter_cut": 8605,
+    "short": 6774,
+    "kept": 1815,
+    "has_N": 17
+   },
+   "usable_pairs": 1815,
+   "unique_within_run": 530,
+   "within_run_dup_rate": 0.708,
+   "records_in_set": 326,
+   "duplicates_skipped_while_filling": 1489
+  },
+  {
+   "run": "SRR25316643",
+   "study": "PRJNA993283",
+   "label": "K0807_A1 sediment lagoon",
+   "sample": "SAMN36395472",
+   "sample_alias": "K0807_A1",
+   "sample_title": "K0807_A1",
+   "library_name": "K0807_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 465960,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/043/SRR25316643/SRR25316643_1.fastq.gz",
+     "md5": "ca8a9aa625577b174e2efd45ff5a6374",
+     "bytes": 34841142
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/043/SRR25316643/SRR25316643_2.fastq.gz",
+     "md5": "b9f05773d40373650695a27009680a03",
+     "bytes": 36438845
+    }
+   ],
+   "trim": {
+    "pairs_in": 465960,
+    "overlap_found": 42311,
+    "adapter_cut": 42531,
+    "has_N": 79,
+    "no_primer": 423412,
+    "short": 34505,
+    "kept": 7964
+   },
+   "usable_pairs": 7964,
+   "unique_within_run": 1827,
+   "within_run_dup_rate": 0.7706,
+   "records_in_set": 1214,
+   "duplicates_skipped_while_filling": 6750
+  },
+  {
+   "run": "SRR25316644",
+   "study": "PRJNA993283",
+   "label": "K0707_B2 sediment unburned",
+   "sample": "SAMN36395451",
+   "sample_alias": "K0707_B2",
+   "sample_title": "K0707_B2",
+   "library_name": "K0707_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 90283,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/044/SRR25316644/SRR25316644_1.fastq.gz",
+     "md5": "b40dfe4781781270bef14a97388675e7",
+     "bytes": 6819826
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/044/SRR25316644/SRR25316644_2.fastq.gz",
+     "md5": "87645307ece80930b035b7f77013895e",
+     "bytes": 6851946
+    }
+   ],
+   "trim": {
+    "pairs_in": 90283,
+    "overlap_found": 4737,
+    "adapter_cut": 4752,
+    "short": 3786,
+    "no_primer": 85528,
+    "kept": 966,
+    "has_N": 3
+   },
+   "usable_pairs": 966,
+   "unique_within_run": 461,
+   "within_run_dup_rate": 0.5228,
+   "records_in_set": 336,
+   "duplicates_skipped_while_filling": 630
+  },
+  {
+   "run": "SRR25316645",
+   "study": "PRJNA993283",
+   "label": "K0707_E4 sediment low burn",
+   "sample": "SAMN36395450",
+   "sample_alias": "K0707_E4",
+   "sample_title": "K0707_E4",
+   "library_name": "K0707_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 219625,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/045/SRR25316645/SRR25316645_1.fastq.gz",
+     "md5": "af35e12680d892e848df72d1540cdcf8",
+     "bytes": 16755957
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/045/SRR25316645/SRR25316645_2.fastq.gz",
+     "md5": "a917e4004189e949ad92239cd375519b",
+     "bytes": 18263472
+    }
+   ],
+   "trim": {
+    "pairs_in": 219625,
+    "no_primer": 202717,
+    "overlap_found": 16816,
+    "adapter_cut": 16904,
+    "short": 16294,
+    "kept": 599,
+    "has_N": 15
+   },
+   "usable_pairs": 599,
+   "unique_within_run": 199,
+   "within_run_dup_rate": 0.6678,
+   "records_in_set": 112,
+   "duplicates_skipped_while_filling": 487
+  },
+  {
+   "run": "SRR25316646",
+   "study": "PRJNA993283",
+   "label": "K0742_C3 sediment unburned",
+   "sample": "SAMN36395449",
+   "sample_alias": "K0742_C3",
+   "sample_title": "K0742_C3",
+   "library_name": "K0742_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 189274,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/046/SRR25316646/SRR25316646_1.fastq.gz",
+     "md5": "85ddedc2ebc4c4461cb0c274a37e83a2",
+     "bytes": 14894302
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/046/SRR25316646/SRR25316646_2.fastq.gz",
+     "md5": "f28afc1356ba5268b5cfc9ccf3f703bf",
+     "bytes": 15397139
+    }
+   ],
+   "trim": {
+    "pairs_in": 189274,
+    "no_primer": 179033,
+    "overlap_found": 10154,
+    "adapter_cut": 10240,
+    "short": 9234,
+    "kept": 994,
+    "has_N": 13
+   },
+   "usable_pairs": 994,
+   "unique_within_run": 420,
+   "within_run_dup_rate": 0.5775,
+   "records_in_set": 295,
+   "duplicates_skipped_while_filling": 699
+  },
+  {
+   "run": "SRR25316647",
+   "study": "PRJNA993283",
+   "label": "K0537_C3 sediment unburned",
+   "sample": "SAMN36395468",
+   "sample_alias": "K0537_C3",
+   "sample_title": "K0537_C3",
+   "library_name": "K0537_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 276894,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/047/SRR25316647/SRR25316647_1.fastq.gz",
+     "md5": "681fb5296414cfd0854e9821f7c01281",
+     "bytes": 22064851
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/047/SRR25316647/SRR25316647_2.fastq.gz",
+     "md5": "224aaac4519b3f6bd4b686cba7eeb139",
+     "bytes": 23647307
+    }
+   ],
+   "trim": {
+    "pairs_in": 276894,
+    "no_primer": 259315,
+    "overlap_found": 17500,
+    "adapter_cut": 17569,
+    "short": 13110,
+    "kept": 4423,
+    "has_N": 46
+   },
+   "usable_pairs": 4423,
+   "unique_within_run": 1238,
+   "within_run_dup_rate": 0.7201,
+   "records_in_set": 926,
+   "duplicates_skipped_while_filling": 3497
+  },
+  {
+   "run": "SRR25316648",
+   "study": "PRJNA993283",
+   "label": "K0537_E4 sediment unburned",
+   "sample": "SAMN36395467",
+   "sample_alias": "K0537_E4",
+   "sample_title": "K0537_E4",
+   "library_name": "K0537_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 148769,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/048/SRR25316648/SRR25316648_1.fastq.gz",
+     "md5": "abcbd0500315ad592c2eba51e522c97b",
+     "bytes": 11932617
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/048/SRR25316648/SRR25316648_2.fastq.gz",
+     "md5": "09addb6a3d578d6839dd1b27399aa7c4",
+     "bytes": 12334649
+    }
+   ],
+   "trim": {
+    "pairs_in": 148769,
+    "no_primer": 136345,
+    "overlap_found": 12356,
+    "adapter_cut": 12418,
+    "short": 11476,
+    "kept": 940,
+    "has_N": 8
+   },
+   "usable_pairs": 940,
+   "unique_within_run": 371,
+   "within_run_dup_rate": 0.6053,
+   "records_in_set": 230,
+   "duplicates_skipped_while_filling": 710
+  },
+  {
+   "run": "SRR25316649",
+   "study": "PRJNA993283",
+   "label": "K0537_G5 sediment unburned",
+   "sample": "SAMN36395466",
+   "sample_alias": "K0537_G5",
+   "sample_title": "K0537_G5",
+   "library_name": "K0537_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 196910,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/049/SRR25316649/SRR25316649_1.fastq.gz",
+     "md5": "1682d7463999e30562d497b2df33903f",
+     "bytes": 14081551
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/049/SRR25316649/SRR25316649_2.fastq.gz",
+     "md5": "dabd74135e2583a42943a17b96afe38f",
+     "bytes": 17268753
+    }
+   ],
+   "trim": {
+    "pairs_in": 196910,
+    "no_primer": 185988,
+    "overlap_found": 10431,
+    "adapter_cut": 10908,
+    "short": 8594,
+    "kept": 2313,
+    "has_N": 15
+   },
+   "usable_pairs": 2313,
+   "unique_within_run": 1347,
+   "within_run_dup_rate": 0.4176,
+   "records_in_set": 1061,
+   "duplicates_skipped_while_filling": 1252
+  },
+  {
+   "run": "SRR25316650",
+   "study": "PRJNA993283",
+   "label": "K0531_K6 soil unburned",
+   "sample": "SAMN36395412",
+   "sample_alias": "K0531_K6",
+   "sample_title": "K0531_K6",
+   "library_name": "K0531_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 240516,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/050/SRR25316650/SRR25316650_1.fastq.gz",
+     "md5": "9758125fc2534c8acdf0b5f149d3aa68",
+     "bytes": 17527799
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/050/SRR25316650/SRR25316650_2.fastq.gz",
+     "md5": "22ae1e9bf8f35b0ebea6a004ba7f3ba6",
+     "bytes": 19470045
+    }
+   ],
+   "trim": {
+    "pairs_in": 240516,
+    "no_primer": 220549,
+    "overlap_found": 19891,
+    "adapter_cut": 19963,
+    "short": 17247,
+    "kept": 2687,
+    "has_N": 33
+   },
+   "usable_pairs": 2687,
+   "unique_within_run": 772,
+   "within_run_dup_rate": 0.7127,
+   "records_in_set": 489,
+   "duplicates_skipped_while_filling": 2198
+  },
+  {
+   "run": "SRR25316651",
+   "study": "PRJNA993283",
+   "label": "K0537_K6 sediment low burn",
+   "sample": "SAMN36395465",
+   "sample_alias": "K0537_K6",
+   "sample_title": "K0537_K6",
+   "library_name": "K0537_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 293056,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/051/SRR25316651/SRR25316651_1.fastq.gz",
+     "md5": "c836d9a5fb6933f296ef21161e30b190",
+     "bytes": 23774545
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/051/SRR25316651/SRR25316651_2.fastq.gz",
+     "md5": "8c69438621f52100a75fe066b37e1df4",
+     "bytes": 25328992
+    }
+   ],
+   "trim": {
+    "pairs_in": 293056,
+    "no_primer": 251002,
+    "overlap_found": 41859,
+    "adapter_cut": 42036,
+    "short": 34923,
+    "kept": 7071,
+    "has_N": 60
+   },
+   "usable_pairs": 7071,
+   "unique_within_run": 1866,
+   "within_run_dup_rate": 0.7361,
+   "records_in_set": 1302,
+   "duplicates_skipped_while_filling": 5769
+  },
+  {
+   "run": "SRR25316652",
+   "study": "PRJNA993283",
+   "label": "K0537_L7 sediment low burn",
+   "sample": "SAMN36395464",
+   "sample_alias": "K0537_L7",
+   "sample_title": "K0537_L7",
+   "library_name": "K0537_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 139632,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/052/SRR25316652/SRR25316652_1.fastq.gz",
+     "md5": "493b7ad5b7ba88a0fcaac3e490f9b986",
+     "bytes": 10834102
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/052/SRR25316652/SRR25316652_2.fastq.gz",
+     "md5": "838f1bbf5f962827b1de86d69d99211f",
+     "bytes": 11128002
+    }
+   ],
+   "trim": {
+    "pairs_in": 139632,
+    "no_primer": 132896,
+    "overlap_found": 6714,
+    "adapter_cut": 6734,
+    "short": 5233,
+    "kept": 1494,
+    "has_N": 9
+   },
+   "usable_pairs": 1494,
+   "unique_within_run": 566,
+   "within_run_dup_rate": 0.6212,
+   "records_in_set": 384,
+   "duplicates_skipped_while_filling": 1110
+  },
+  {
+   "run": "SRR25316654",
+   "study": "PRJNA993283",
+   "label": "K0537_T9 sediment unburned",
+   "sample": "SAMN36395462",
+   "sample_alias": "K0537_T9",
+   "sample_title": "K0537_T9",
+   "library_name": "K0537_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 323866,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/054/SRR25316654/SRR25316654_1.fastq.gz",
+     "md5": "240ab6d92372c8edad71db200cd116b8",
+     "bytes": 23840120
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/054/SRR25316654/SRR25316654_2.fastq.gz",
+     "md5": "a7f2e6f6e9b9018cbfa46f21f61749f4",
+     "bytes": 26004781
+    }
+   ],
+   "trim": {
+    "pairs_in": 323866,
+    "no_primer": 299745,
+    "overlap_found": 23983,
+    "adapter_cut": 24111,
+    "has_N": 60,
+    "short": 18590,
+    "kept": 5471
+   },
+   "usable_pairs": 5471,
+   "unique_within_run": 1111,
+   "within_run_dup_rate": 0.7969,
+   "records_in_set": 674,
+   "duplicates_skipped_while_filling": 4797
+  },
+  {
+   "run": "SRR25316656",
+   "study": "PRJNA993283",
+   "label": "K0538_B2 sediment severe burn",
+   "sample": "SAMN36395460",
+   "sample_alias": "K0538_B2",
+   "sample_title": "K0538_B2",
+   "library_name": "K0538_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 67686,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/056/SRR25316656/SRR25316656_1.fastq.gz",
+     "md5": "7963ef0dcb363378f68a124adf9851e4",
+     "bytes": 5198813
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/056/SRR25316656/SRR25316656_2.fastq.gz",
+     "md5": "ccf2dd9a594de0bf9a84707b7c4af18f",
+     "bytes": 5244526
+    }
+   ],
+   "trim": {
+    "pairs_in": 67686,
+    "overlap_found": 4882,
+    "adapter_cut": 4899,
+    "has_N": 6,
+    "no_primer": 62785,
+    "short": 4222,
+    "kept": 673
+   },
+   "usable_pairs": 673,
+   "unique_within_run": 312,
+   "within_run_dup_rate": 0.5364,
+   "records_in_set": 196,
+   "duplicates_skipped_while_filling": 477
+  },
+  {
+   "run": "SRR25316657",
+   "study": "PRJNA993283",
+   "label": "K0538_E4 sediment low burn",
+   "sample": "SAMN36395459",
+   "sample_alias": "K0538_E4",
+   "sample_title": "K0538_E4",
+   "library_name": "K0538_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 164301,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/057/SRR25316657/SRR25316657_1.fastq.gz",
+     "md5": "8abf7066302b87e7dc8606a3b68da31a",
+     "bytes": 12810208
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/057/SRR25316657/SRR25316657_2.fastq.gz",
+     "md5": "d92c3b7b4a9450882ad253b2d407ea18",
+     "bytes": 13441129
+    }
+   ],
+   "trim": {
+    "pairs_in": 164301,
+    "no_primer": 138882,
+    "overlap_found": 25250,
+    "adapter_cut": 25413,
+    "short": 24270,
+    "kept": 1124,
+    "has_N": 25
+   },
+   "usable_pairs": 1124,
+   "unique_within_run": 392,
+   "within_run_dup_rate": 0.6512,
+   "records_in_set": 258,
+   "duplicates_skipped_while_filling": 866
+  },
+  {
+   "run": "SRR25316658",
+   "study": "PRJNA993283",
+   "label": "K0538_K6 sediment unburned",
+   "sample": "SAMN36395458",
+   "sample_alias": "K0538_K6",
+   "sample_title": "K0538_K6",
+   "library_name": "K0538_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 176993,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/058/SRR25316658/SRR25316658_1.fastq.gz",
+     "md5": "ab1c33cd18819f6a0fd182d8fc95f8b0",
+     "bytes": 12837587
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/058/SRR25316658/SRR25316658_2.fastq.gz",
+     "md5": "2493d3df11cc0bd3f93a3e7e64b6d146",
+     "bytes": 13830014
+    }
+   ],
+   "trim": {
+    "pairs_in": 176993,
+    "no_primer": 142990,
+    "overlap_found": 33868,
+    "adapter_cut": 33995,
+    "short": 33129,
+    "kept": 840,
+    "has_N": 34
+   },
+   "usable_pairs": 840,
+   "unique_within_run": 317,
+   "within_run_dup_rate": 0.6226,
+   "records_in_set": 239,
+   "duplicates_skipped_while_filling": 601
+  },
+  {
+   "run": "SRR25316659",
+   "study": "PRJNA993283",
+   "label": "K0702_E4 sediment lagoon",
+   "sample": "SAMN36395478",
+   "sample_alias": "K0702_E4",
+   "sample_title": "K0702_E4",
+   "library_name": "K0702_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 121152,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/059/SRR25316659/SRR25316659_1.fastq.gz",
+     "md5": "98abd611dd9e4df6a71dd1a342892b4c",
+     "bytes": 9604455
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/059/SRR25316659/SRR25316659_2.fastq.gz",
+     "md5": "d47c7b51165ff7e2a72cebd16c50ee09",
+     "bytes": 10041396
+    }
+   ],
+   "trim": {
+    "pairs_in": 121152,
+    "no_primer": 111825,
+    "overlap_found": 9283,
+    "adapter_cut": 9326,
+    "short": 8446,
+    "kept": 868,
+    "has_N": 13
+   },
+   "usable_pairs": 868,
+   "unique_within_run": 344,
+   "within_run_dup_rate": 0.6037,
+   "records_in_set": 224,
+   "duplicates_skipped_while_filling": 644
+  },
+  {
+   "run": "SRR25316660",
+   "study": "PRJNA993283",
+   "label": "K0702_G5 sediment lagoon",
+   "sample": "SAMN36395477",
+   "sample_alias": "K0702_G5",
+   "sample_title": "K0702_G5",
+   "library_name": "K0702_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 294222,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/060/SRR25316660/SRR25316660_1.fastq.gz",
+     "md5": "dcb555a4bbaff47c8abe568c206f5d2d",
+     "bytes": 22356923
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/060/SRR25316660/SRR25316660_2.fastq.gz",
+     "md5": "f24c2ccbfef342fde386345e10e39c65",
+     "bytes": 23903798
+    }
+   ],
+   "trim": {
+    "pairs_in": 294222,
+    "no_primer": 280330,
+    "overlap_found": 13804,
+    "adapter_cut": 13887,
+    "short": 13373,
+    "has_N": 23,
+    "kept": 496
+   },
+   "usable_pairs": 496,
+   "unique_within_run": 192,
+   "within_run_dup_rate": 0.6129,
+   "records_in_set": 120,
+   "duplicates_skipped_while_filling": 376
+  },
+  {
+   "run": "SRR25316661",
+   "study": "PRJNA993283",
+   "label": "K0538_L7 sediment unburned",
+   "sample": "SAMN36395457",
+   "sample_alias": "K0538_L7",
+   "sample_title": "K0538_L7",
+   "library_name": "K0538_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 215940,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/061/SRR25316661/SRR25316661_1.fastq.gz",
+     "md5": "1075eea468477430758ea3529651e7e1",
+     "bytes": 15524740
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/061/SRR25316661/SRR25316661_2.fastq.gz",
+     "md5": "b0a9a35281164d413df2b1f6bb30ffba",
+     "bytes": 16310354
+    }
+   ],
+   "trim": {
+    "pairs_in": 215940,
+    "no_primer": 178587,
+    "overlap_found": 37148,
+    "adapter_cut": 37335,
+    "kept": 2273,
+    "short": 35033,
+    "has_N": 47
+   },
+   "usable_pairs": 2273,
+   "unique_within_run": 647,
+   "within_run_dup_rate": 0.7154,
+   "records_in_set": 375,
+   "duplicates_skipped_while_filling": 1898
+  },
+  {
+   "run": "SRR25316662",
+   "study": "PRJNA993283",
+   "label": "K0538_T9 sediment low burn",
+   "sample": "SAMN36395456",
+   "sample_alias": "K0538_T9",
+   "sample_title": "K0538_T9",
+   "library_name": "K0538_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 329468,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/062/SRR25316662/SRR25316662_1.fastq.gz",
+     "md5": "b81f6f4a08c2a1fadbdd18a03edf2672",
+     "bytes": 26357989
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/062/SRR25316662/SRR25316662_2.fastq.gz",
+     "md5": "80a5b6eedc37488dc5ecda306898582b",
+     "bytes": 28432457
+    }
+   ],
+   "trim": {
+    "pairs_in": 329468,
+    "overlap_found": 28385,
+    "adapter_cut": 28507,
+    "short": 28320,
+    "no_primer": 300953,
+    "kept": 174,
+    "has_N": 21
+   },
+   "usable_pairs": 174,
+   "unique_within_run": 77,
+   "within_run_dup_rate": 0.5575,
+   "records_in_set": 42,
+   "duplicates_skipped_while_filling": 132
+  },
+  {
+   "run": "SRR25316664",
+   "study": "PRJNA993283",
+   "label": "K0693_C3 sediment low burn",
+   "sample": "SAMN36395455",
+   "sample_alias": "K0693_C3",
+   "sample_title": "K0693_C3",
+   "library_name": "K0693_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 214662,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/064/SRR25316664/SRR25316664_1.fastq.gz",
+     "md5": "0751c4f899c6ed53f9647f79d1bfee09",
+     "bytes": 15871671
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/064/SRR25316664/SRR25316664_2.fastq.gz",
+     "md5": "3e446952e8258ad2d0388b50ffee0198",
+     "bytes": 16416000
+    }
+   ],
+   "trim": {
+    "pairs_in": 214662,
+    "no_primer": 202577,
+    "overlap_found": 12046,
+    "adapter_cut": 12084,
+    "short": 10818,
+    "kept": 1251,
+    "has_N": 16
+   },
+   "usable_pairs": 1251,
+   "unique_within_run": 390,
+   "within_run_dup_rate": 0.6882,
+   "records_in_set": 223,
+   "duplicates_skipped_while_filling": 1028
+  },
+  {
+   "run": "SRR25316665",
+   "study": "PRJNA993283",
+   "label": "K0693_L7 sediment moderate burn",
+   "sample": "SAMN36395454",
+   "sample_alias": "K0693_L7",
+   "sample_title": "K0693_L7",
+   "library_name": "K0693_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 56581,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/065/SRR25316665/SRR25316665_1.fastq.gz",
+     "md5": "552e0cef6fec0ceb13655c2f626bad2b",
+     "bytes": 4453497
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/065/SRR25316665/SRR25316665_2.fastq.gz",
+     "md5": "a8ddb273f1f0c7cebb260aa7cebecd07",
+     "bytes": 4697015
+    }
+   ],
+   "trim": {
+    "pairs_in": 56581,
+    "no_primer": 49810,
+    "overlap_found": 6660,
+    "adapter_cut": 6728,
+    "short": 6498,
+    "kept": 265,
+    "has_N": 8
+   },
+   "usable_pairs": 265,
+   "unique_within_run": 147,
+   "within_run_dup_rate": 0.4453,
+   "records_in_set": 122,
+   "duplicates_skipped_while_filling": 143
+  },
+  {
+   "run": "SRR25316666",
+   "study": "PRJNA993283",
+   "label": "K0695_M8 sediment low burn",
+   "sample": "SAMN36395453",
+   "sample_alias": "K0695_M8",
+   "sample_title": "K0695_M8",
+   "library_name": "K0695_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 316823,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/066/SRR25316666/SRR25316666_1.fastq.gz",
+     "md5": "5700bf795fb5a7cbf18e598099b6ff15",
+     "bytes": 24201482
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/066/SRR25316666/SRR25316666_2.fastq.gz",
+     "md5": "121ee9052aa3a277e95a229ed7b11bb1",
+     "bytes": 25997728
+    }
+   ],
+   "trim": {
+    "pairs_in": 316823,
+    "no_primer": 293155,
+    "overlap_found": 23570,
+    "adapter_cut": 23658,
+    "has_N": 30,
+    "short": 20932,
+    "kept": 2706
+   },
+   "usable_pairs": 2706,
+   "unique_within_run": 743,
+   "within_run_dup_rate": 0.7254,
+   "records_in_set": 520,
+   "duplicates_skipped_while_filling": 2186
+  },
+  {
+   "run": "SRR25316668",
+   "study": "PRJNA993283",
+   "label": "K0821_C3 sediment lagoon",
+   "sample": "SAMN36395448",
+   "sample_alias": "K0821_C3",
+   "sample_title": "K0821_C3",
+   "library_name": "K0821_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 150065,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/068/SRR25316668/SRR25316668_1.fastq.gz",
+     "md5": "80eb84978e2406893e5bce1cba3f349f",
+     "bytes": 11590336
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/068/SRR25316668/SRR25316668_2.fastq.gz",
+     "md5": "de7aac8e24351cd59cccbeb68b2b561f",
+     "bytes": 11813052
+    }
+   ],
+   "trim": {
+    "pairs_in": 150065,
+    "no_primer": 133416,
+    "overlap_found": 16605,
+    "adapter_cut": 16645,
+    "short": 15263,
+    "kept": 1363,
+    "has_N": 23
+   },
+   "usable_pairs": 1363,
+   "unique_within_run": 439,
+   "within_run_dup_rate": 0.6779,
+   "records_in_set": 269,
+   "duplicates_skipped_while_filling": 1094
+  },
+  {
+   "run": "SRR25316669",
+   "study": "PRJNA993283",
+   "label": "K0532_E4 soil unburned",
+   "sample": "SAMN36395429",
+   "sample_alias": "K0532_E4",
+   "sample_title": "K0532_E4",
+   "library_name": "K0532_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 178098,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/069/SRR25316669/SRR25316669_1.fastq.gz",
+     "md5": "e2311049ee1b828f333bbe7e1bc8328c",
+     "bytes": 12546919
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/069/SRR25316669/SRR25316669_2.fastq.gz",
+     "md5": "eeb3baaf26ae1f3771874267016bc4a8",
+     "bytes": 13020752
+    }
+   ],
+   "trim": {
+    "pairs_in": 178098,
+    "no_primer": 165498,
+    "overlap_found": 12494,
+    "adapter_cut": 12595,
+    "short": 11982,
+    "kept": 604,
+    "has_N": 14
+   },
+   "usable_pairs": 604,
+   "unique_within_run": 248,
+   "within_run_dup_rate": 0.5894,
+   "records_in_set": 150,
+   "duplicates_skipped_while_filling": 454
+  },
+  {
+   "run": "SRR25316670",
+   "study": "PRJNA993283",
+   "label": "K0531_L7 soil unburned",
+   "sample": "SAMN36395430",
+   "sample_alias": "K0531_L7",
+   "sample_title": "K0531_L7",
+   "library_name": "K0531_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 184761,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/070/SRR25316670/SRR25316670_1.fastq.gz",
+     "md5": "2d5832428264d91fd1bfc886c0788da1",
+     "bytes": 15033506
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/070/SRR25316670/SRR25316670_2.fastq.gz",
+     "md5": "170e43259b5c83b66774dcd40ad4ac6f",
+     "bytes": 15475211
+    }
+   ],
+   "trim": {
+    "pairs_in": 184761,
+    "no_primer": 171870,
+    "overlap_found": 12855,
+    "adapter_cut": 12888,
+    "short": 11804,
+    "kept": 1074,
+    "has_N": 13
+   },
+   "usable_pairs": 1074,
+   "unique_within_run": 321,
+   "within_run_dup_rate": 0.7011,
+   "records_in_set": 182,
+   "duplicates_skipped_while_filling": 892
+  },
+  {
+   "run": "SRR25316672",
+   "study": "PRJNA993283",
+   "label": "K0501_G5 soil unburned",
+   "sample": "SAMN36395432",
+   "sample_alias": "K0501_G5",
+   "sample_title": "K0501_G5",
+   "library_name": "K0501_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 261096,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/072/SRR25316672/SRR25316672_1.fastq.gz",
+     "md5": "cdb25e832bad10189d3da71b558b9929",
+     "bytes": 19728633
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/072/SRR25316672/SRR25316672_2.fastq.gz",
+     "md5": "cbd75cc72b8803bace0250b366b7f4e9",
+     "bytes": 21003163
+    }
+   ],
+   "trim": {
+    "pairs_in": 261096,
+    "no_primer": 238900,
+    "overlap_found": 22110,
+    "adapter_cut": 22187,
+    "short": 21121,
+    "kept": 1053,
+    "has_N": 22
+   },
+   "usable_pairs": 1053,
+   "unique_within_run": 349,
+   "within_run_dup_rate": 0.6686,
+   "records_in_set": 235,
+   "duplicates_skipped_while_filling": 818
+  },
+  {
+   "run": "SRR25316673",
+   "study": "PRJNA993283",
+   "label": "K0508_C3 soil low burn",
+   "sample": "SAMN36395433",
+   "sample_alias": "K0508_C3",
+   "sample_title": "K0508_C3",
+   "library_name": "K0508_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 297808,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/073/SRR25316673/SRR25316673_1.fastq.gz",
+     "md5": "32dceb718860b3bdcc466ac7c0afb34b",
+     "bytes": 22916144
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/073/SRR25316673/SRR25316673_2.fastq.gz",
+     "md5": "4f227f80f77c4d423a404d581ba185ed",
+     "bytes": 24996827
+    }
+   ],
+   "trim": {
+    "pairs_in": 297808,
+    "no_primer": 268728,
+    "overlap_found": 28906,
+    "adapter_cut": 29075,
+    "short": 27122,
+    "kept": 1911,
+    "has_N": 47
+   },
+   "usable_pairs": 1911,
+   "unique_within_run": 557,
+   "within_run_dup_rate": 0.7085,
+   "records_in_set": 363,
+   "duplicates_skipped_while_filling": 1548
+  },
+  {
+   "run": "SRR25316675",
+   "study": "PRJNA993283",
+   "label": "K0503_K6 soil burned",
+   "sample": "SAMN36395435",
+   "sample_alias": "K0503_K6",
+   "sample_title": "K0503_K6",
+   "library_name": "K0503_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 38381,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/075/SRR25316675/SRR25316675_1.fastq.gz",
+     "md5": "cc9ddf42bf4df76554a31c1e2627eada",
+     "bytes": 2869124
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/075/SRR25316675/SRR25316675_2.fastq.gz",
+     "md5": "bf23e9c1e6f6b71acc8822d205e6a93b",
+     "bytes": 2784649
+    }
+   ],
+   "trim": {
+    "pairs_in": 38381,
+    "no_primer": 35956,
+    "overlap_found": 2406,
+    "adapter_cut": 2424,
+    "short": 2292,
+    "kept": 131,
+    "has_N": 2
+   },
+   "usable_pairs": 131,
+   "unique_within_run": 79,
+   "within_run_dup_rate": 0.3969,
+   "records_in_set": 55,
+   "duplicates_skipped_while_filling": 76
+  },
+  {
+   "run": "SRR25316677",
+   "study": "PRJNA993283",
+   "label": "K0502_C3 soil unburned",
+   "sample": "SAMN36395436",
+   "sample_alias": "K0502_C3",
+   "sample_title": "K0502_C3",
+   "library_name": "K0502_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 403043,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/077/SRR25316677/SRR25316677_1.fastq.gz",
+     "md5": "8d20b87ff29c840f8498c7ace4aeeef4",
+     "bytes": 30907419
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/077/SRR25316677/SRR25316677_2.fastq.gz",
+     "md5": "55477f39e38c88375d8eda20f00800f3",
+     "bytes": 32125505
+    }
+   ],
+   "trim": {
+    "pairs_in": 403043,
+    "no_primer": 324383,
+    "overlap_found": 78272,
+    "adapter_cut": 78633,
+    "short": 70796,
+    "kept": 7763,
+    "has_N": 101
+   },
+   "usable_pairs": 7763,
+   "unique_within_run": 1688,
+   "within_run_dup_rate": 0.7826,
+   "records_in_set": 1186,
+   "duplicates_skipped_while_filling": 6577
+  },
+  {
+   "run": "SRR25316678",
+   "study": "PRJNA993283",
+   "label": "K0824_L7 sediment lagoon",
+   "sample": "SAMN36395437",
+   "sample_alias": "K0824_L7",
+   "sample_title": "K0824_L7",
+   "library_name": "K0824_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 301456,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/078/SRR25316678/SRR25316678_1.fastq.gz",
+     "md5": "29ebdcfa1bb74e5858150e518e2a8741",
+     "bytes": 24285259
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/078/SRR25316678/SRR25316678_2.fastq.gz",
+     "md5": "306d741f75d9df7222e75fb19ef11454",
+     "bytes": 25131297
+    }
+   ],
+   "trim": {
+    "pairs_in": 301456,
+    "no_primer": 280762,
+    "overlap_found": 20587,
+    "adapter_cut": 20688,
+    "short": 19528,
+    "kept": 1140,
+    "has_N": 26
+   },
+   "usable_pairs": 1140,
+   "unique_within_run": 320,
+   "within_run_dup_rate": 0.7193,
+   "records_in_set": 173,
+   "duplicates_skipped_while_filling": 967
+  },
+  {
+   "run": "SRR25316679",
+   "study": "PRJNA993283",
+   "label": "K0823_E4 sediment lagoon",
+   "sample": "SAMN36395438",
+   "sample_alias": "K0823_E4",
+   "sample_title": "K0823_E4",
+   "library_name": "K0823_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 340641,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/079/SRR25316679/SRR25316679_1.fastq.gz",
+     "md5": "b5a4edc6d2700d11d0447fccff642c7a",
+     "bytes": 26137630
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/079/SRR25316679/SRR25316679_2.fastq.gz",
+     "md5": "3b13d560962ba07b9dfbaaa08b9afd89",
+     "bytes": 27701530
+    }
+   ],
+   "trim": {
+    "pairs_in": 340641,
+    "no_primer": 307092,
+    "overlap_found": 33435,
+    "adapter_cut": 33543,
+    "short": 28142,
+    "kept": 5352,
+    "has_N": 55
+   },
+   "usable_pairs": 5352,
+   "unique_within_run": 1336,
+   "within_run_dup_rate": 0.7504,
+   "records_in_set": 982,
+   "duplicates_skipped_while_filling": 4370
+  },
+  {
+   "run": "SRR25316680",
+   "study": "PRJNA993283",
+   "label": "K0821_G5 sediment lagoon",
+   "sample": "SAMN36395439",
+   "sample_alias": "K0821_G5",
+   "sample_title": "K0821_G5",
+   "library_name": "K0821_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 264860,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/080/SRR25316680/SRR25316680_1.fastq.gz",
+     "md5": "cb8dcdc5725832d03a7c8761405b83e7",
+     "bytes": 21373648
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/080/SRR25316680/SRR25316680_2.fastq.gz",
+     "md5": "acbee9dd0ecfe181fde4900c09301034",
+     "bytes": 23070611
+    }
+   ],
+   "trim": {
+    "pairs_in": 264860,
+    "no_primer": 245150,
+    "overlap_found": 19241,
+    "adapter_cut": 19336,
+    "short": 15582,
+    "kept": 4095,
+    "has_N": 33
+   },
+   "usable_pairs": 4095,
+   "unique_within_run": 1221,
+   "within_run_dup_rate": 0.7018,
+   "records_in_set": 853,
+   "duplicates_skipped_while_filling": 3242
+  },
+  {
+   "run": "SRR25316681",
+   "study": "PRJNA993283",
+   "label": "K0823_M8 sediment lagoon",
+   "sample": "SAMN36395440",
+   "sample_alias": "K0823_M8",
+   "sample_title": "K0823_M8",
+   "library_name": "K0823_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 340423,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/081/SRR25316681/SRR25316681_1.fastq.gz",
+     "md5": "b55aecee8fbdbc079fc24063b7223137",
+     "bytes": 26517428
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/081/SRR25316681/SRR25316681_2.fastq.gz",
+     "md5": "0a5d19392547ba6dfe91cf58f27e58f6",
+     "bytes": 27059497
+    }
+   ],
+   "trim": {
+    "pairs_in": 340423,
+    "no_primer": 290327,
+    "overlap_found": 49911,
+    "adapter_cut": 50085,
+    "short": 49000,
+    "kept": 1031,
+    "has_N": 65
+   },
+   "usable_pairs": 1031,
+   "unique_within_run": 334,
+   "within_run_dup_rate": 0.676,
+   "records_in_set": 192,
+   "duplicates_skipped_while_filling": 839
+  },
+  {
+   "run": "SRR25316682",
+   "study": "PRJNA993283",
+   "label": "K0823_C3 sediment lagoon",
+   "sample": "SAMN36395441",
+   "sample_alias": "K0823_C3",
+   "sample_title": "K0823_C3",
+   "library_name": "K0823_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 285911,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/082/SRR25316682/SRR25316682_1.fastq.gz",
+     "md5": "92ffa58527d95a287015528f406a6f23",
+     "bytes": 23131065
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/082/SRR25316682/SRR25316682_2.fastq.gz",
+     "md5": "194304b0e0961139ff53d65038f432db",
+     "bytes": 24593927
+    }
+   ],
+   "trim": {
+    "pairs_in": 285911,
+    "no_primer": 254091,
+    "overlap_found": 31638,
+    "adapter_cut": 31797,
+    "short": 28971,
+    "kept": 2804,
+    "has_N": 45
+   },
+   "usable_pairs": 2804,
+   "unique_within_run": 797,
+   "within_run_dup_rate": 0.7158,
+   "records_in_set": 537,
+   "duplicates_skipped_while_filling": 2267
+  },
+  {
+   "run": "SRR25316683",
+   "study": "PRJNA993283",
+   "label": "K0823_B2 sediment lagoon",
+   "sample": "SAMN36395442",
+   "sample_alias": "K0823_B2",
+   "sample_title": "K0823_B2",
+   "library_name": "K0823_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 368558,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/083/SRR25316683/SRR25316683_1.fastq.gz",
+     "md5": "a681e9c8fa123eabb50c9cab94752a25",
+     "bytes": 28114896
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/083/SRR25316683/SRR25316683_2.fastq.gz",
+     "md5": "eb570ef3622d0ad9faf75423f1ebc2f8",
+     "bytes": 29514756
+    }
+   ],
+   "trim": {
+    "pairs_in": 368558,
+    "no_primer": 323657,
+    "overlap_found": 44690,
+    "adapter_cut": 44884,
+    "short": 35373,
+    "kept": 9463,
+    "has_N": 65
+   },
+   "usable_pairs": 9463,
+   "unique_within_run": 2348,
+   "within_run_dup_rate": 0.7519,
+   "records_in_set": 1776,
+   "duplicates_skipped_while_filling": 7687
+  },
+  {
+   "run": "SRR25316684",
+   "study": "PRJNA993283",
+   "label": "K0822_M8 sediment lagoon",
+   "sample": "SAMN36395443",
+   "sample_alias": "K0822_M8",
+   "sample_title": "K0822_M8",
+   "library_name": "K0822_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 262083,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/084/SRR25316684/SRR25316684_1.fastq.gz",
+     "md5": "c853fdcef3ae57d5d28ebcfa35826db0",
+     "bytes": 20912722
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/084/SRR25316684/SRR25316684_2.fastq.gz",
+     "md5": "6df05bfc3c931aa4e9df14b23c9bb2ba",
+     "bytes": 22714004
+    }
+   ],
+   "trim": {
+    "pairs_in": 262083,
+    "no_primer": 231245,
+    "overlap_found": 30711,
+    "adapter_cut": 30833,
+    "short": 28118,
+    "kept": 2681,
+    "has_N": 39
+   },
+   "usable_pairs": 2681,
+   "unique_within_run": 693,
+   "within_run_dup_rate": 0.7415,
+   "records_in_set": 396,
+   "duplicates_skipped_while_filling": 2285
+  },
+  {
+   "run": "SRR25316685",
+   "study": "PRJNA993283",
+   "label": "K0822_E4 sediment lagoon",
+   "sample": "SAMN36395444",
+   "sample_alias": "K0822_E4",
+   "sample_title": "K0822_E4",
+   "library_name": "K0822_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 172484,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/085/SRR25316685/SRR25316685_1.fastq.gz",
+     "md5": "16c1650e2ed7b376fe3386ad7553a214",
+     "bytes": 13507754
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/085/SRR25316685/SRR25316685_2.fastq.gz",
+     "md5": "50ece444e8c0d37a91ab42423723c774",
+     "bytes": 13348492
+    }
+   ],
+   "trim": {
+    "pairs_in": 172484,
+    "no_primer": 158260,
+    "overlap_found": 14184,
+    "adapter_cut": 14221,
+    "short": 11677,
+    "kept": 2533,
+    "has_N": 14
+   },
+   "usable_pairs": 2533,
+   "unique_within_run": 994,
+   "within_run_dup_rate": 0.6076,
+   "records_in_set": 791,
+   "duplicates_skipped_while_filling": 1742
+  },
+  {
+   "run": "SRR25316686",
+   "study": "PRJNA993283",
+   "label": "K0821_M8 sediment lagoon",
+   "sample": "SAMN36395445",
+   "sample_alias": "K0821_M8",
+   "sample_title": "K0821_M8",
+   "library_name": "K0821_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 240707,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/086/SRR25316686/SRR25316686_1.fastq.gz",
+     "md5": "c828be42e0e4be334974f13f608f0c9c",
+     "bytes": 19487626
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/086/SRR25316686/SRR25316686_2.fastq.gz",
+     "md5": "ba2f4b9ce4d9b64db6397f464456c029",
+     "bytes": 19453181
+    }
+   ],
+   "trim": {
+    "pairs_in": 240707,
+    "no_primer": 222297,
+    "overlap_found": 18352,
+    "adapter_cut": 18407,
+    "short": 17344,
+    "kept": 1042,
+    "has_N": 24
+   },
+   "usable_pairs": 1042,
+   "unique_within_run": 296,
+   "within_run_dup_rate": 0.7159,
+   "records_in_set": 159,
+   "duplicates_skipped_while_filling": 883
+  },
+  {
+   "run": "SRR25316688",
+   "study": "PRJNA993283",
+   "label": "K0821_L7 sediment lagoon",
+   "sample": "SAMN36395446",
+   "sample_alias": "K0821_L7",
+   "sample_title": "K0821_L7",
+   "library_name": "K0821_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 96876,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/088/SRR25316688/SRR25316688_1.fastq.gz",
+     "md5": "4a89886492f049be0d91e10817e5e14d",
+     "bytes": 7476833
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/088/SRR25316688/SRR25316688_2.fastq.gz",
+     "md5": "ea016232d11f790a27aa8ead700ce05e",
+     "bytes": 8093588
+    }
+   ],
+   "trim": {
+    "pairs_in": 96876,
+    "no_primer": 86816,
+    "overlap_found": 9982,
+    "adapter_cut": 10057,
+    "kept": 3372,
+    "short": 6665,
+    "has_N": 23
+   },
+   "usable_pairs": 3372,
+   "unique_within_run": 825,
+   "within_run_dup_rate": 0.7553,
+   "records_in_set": 499,
+   "duplicates_skipped_while_filling": 2873
+  },
+  {
+   "run": "SRR25316689",
+   "study": "PRJNA993283",
+   "label": "K0821_K6 sediment lagoon",
+   "sample": "SAMN36395447",
+   "sample_alias": "K0821_K6",
+   "sample_title": "K0821_K6",
+   "library_name": "K0821_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 385756,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/089/SRR25316689/SRR25316689_1.fastq.gz",
+     "md5": "7661a430a09a831a7f6db2df779279b9",
+     "bytes": 29895375
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/089/SRR25316689/SRR25316689_2.fastq.gz",
+     "md5": "32069ce3781d3c51881fcf3760f5d62e",
+     "bytes": 30531237
+    }
+   ],
+   "trim": {
+    "pairs_in": 385756,
+    "no_primer": 312003,
+    "overlap_found": 73518,
+    "adapter_cut": 73738,
+    "short": 55138,
+    "kept": 18460,
+    "has_N": 155
+   },
+   "usable_pairs": 18460,
+   "unique_within_run": 3677,
+   "within_run_dup_rate": 0.8008,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 12632
+  },
+  {
+   "run": "SRR25316691",
+   "study": "PRJNA993283",
+   "label": "K0546_C3 soil unburned",
+   "sample": "SAMN36395426",
+   "sample_alias": "K0546_C3",
+   "sample_title": "K0546_C3",
+   "library_name": "K0546_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 309733,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/091/SRR25316691/SRR25316691_1.fastq.gz",
+     "md5": "60a80a5f78bf8d006bbc5d407e0829dd",
+     "bytes": 22993768
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/091/SRR25316691/SRR25316691_2.fastq.gz",
+     "md5": "a0c268bee71c780b0f4957b5f0ea9ddf",
+     "bytes": 24550721
+    }
+   ],
+   "trim": {
+    "pairs_in": 309733,
+    "no_primer": 278513,
+    "overlap_found": 31036,
+    "adapter_cut": 31215,
+    "short": 28979,
+    "kept": 2207,
+    "has_N": 34
+   },
+   "usable_pairs": 2207,
+   "unique_within_run": 643,
+   "within_run_dup_rate": 0.7087,
+   "records_in_set": 397,
+   "duplicates_skipped_while_filling": 1810
+  },
+  {
+   "run": "SRR25316692",
+   "study": "PRJNA993283",
+   "label": "K0533_T9 soil unburned",
+   "sample": "SAMN36395427",
+   "sample_alias": "K0533_T9",
+   "sample_title": "K0533_T9",
+   "library_name": "K0533_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 189134,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/092/SRR25316692/SRR25316692_1.fastq.gz",
+     "md5": "8c00754d564d6f58a543affbe866757a",
+     "bytes": 13154006
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/092/SRR25316692/SRR25316692_2.fastq.gz",
+     "md5": "49ffccd7756d4deb23e1fe5952a5a3f4",
+     "bytes": 14003936
+    }
+   ],
+   "trim": {
+    "pairs_in": 189134,
+    "no_primer": 175103,
+    "overlap_found": 13961,
+    "adapter_cut": 14020,
+    "short": 9325,
+    "kept": 4677,
+    "has_N": 29
+   },
+   "usable_pairs": 4677,
+   "unique_within_run": 1387,
+   "within_run_dup_rate": 0.7034,
+   "records_in_set": 924,
+   "duplicates_skipped_while_filling": 3753
+  },
+  {
+   "run": "SRR25316693",
+   "study": "PRJNA993283",
+   "label": "K0532_K6 soil low burn",
+   "sample": "SAMN36395428",
+   "sample_alias": "K0532_K6",
+   "sample_title": "K0532_K6",
+   "library_name": "K0532_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 251769,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/093/SRR25316693/SRR25316693_1.fastq.gz",
+     "md5": "4fe3092c673d0de3222c476f795a89dd",
+     "bytes": 20072825
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/093/SRR25316693/SRR25316693_2.fastq.gz",
+     "md5": "bb5dc541128beced6d503d81b302a68d",
+     "bytes": 21415186
+    }
+   ],
+   "trim": {
+    "pairs_in": 251769,
+    "no_primer": 231619,
+    "overlap_found": 19952,
+    "adapter_cut": 20136,
+    "short": 19795,
+    "kept": 338,
+    "has_N": 17
+   },
+   "usable_pairs": 338,
+   "unique_within_run": 149,
+   "within_run_dup_rate": 0.5592,
+   "records_in_set": 122,
+   "duplicates_skipped_while_filling": 216
+  },
+  {
+   "run": "SRR25316694",
+   "study": "PRJNA993283",
+   "label": "K0546_L7 soil unburned",
+   "sample": "SAMN36395425",
+   "sample_alias": "K0546_L7",
+   "sample_title": "K0546_L7",
+   "library_name": "K0546_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 284170,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/094/SRR25316694/SRR25316694_1.fastq.gz",
+     "md5": "f74ef44555112f25d89b7adcb8c72113",
+     "bytes": 21737969
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/094/SRR25316694/SRR25316694_2.fastq.gz",
+     "md5": "395f204765fd0c49feabb68ac45ff5d3",
+     "bytes": 23327255
+    }
+   ],
+   "trim": {
+    "pairs_in": 284170,
+    "no_primer": 259874,
+    "overlap_found": 24162,
+    "adapter_cut": 24289,
+    "short": 19124,
+    "kept": 5128,
+    "has_N": 44
+   },
+   "usable_pairs": 5128,
+   "unique_within_run": 1322,
+   "within_run_dup_rate": 0.7422,
+   "records_in_set": 852,
+   "duplicates_skipped_while_filling": 4276
+  },
+  {
+   "run": "SRR25316695",
+   "study": "PRJNA993283",
+   "label": "K0547_A1 soil unburned",
+   "sample": "SAMN36395424",
+   "sample_alias": "K0547_A1",
+   "sample_title": "K0547_A1",
+   "library_name": "K0547_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 425504,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/095/SRR25316695/SRR25316695_1.fastq.gz",
+     "md5": "134e27bc021e268814054aefbaa8cb73",
+     "bytes": 29289397
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/095/SRR25316695/SRR25316695_2.fastq.gz",
+     "md5": "6812aee8b27e36b492759c8ad72bf116",
+     "bytes": 32403464
+    }
+   ],
+   "trim": {
+    "pairs_in": 425504,
+    "no_primer": 406860,
+    "overlap_found": 18565,
+    "adapter_cut": 18641,
+    "short": 16091,
+    "kept": 2533,
+    "has_N": 20
+   },
+   "usable_pairs": 2533,
+   "unique_within_run": 630,
+   "within_run_dup_rate": 0.7513,
+   "records_in_set": 386,
+   "duplicates_skipped_while_filling": 2147
+  },
+  {
+   "run": "SRR25316696",
+   "study": "PRJNA993283",
+   "label": "K0547_B2 soil moderate burn",
+   "sample": "SAMN36395423",
+   "sample_alias": "K0547_B2",
+   "sample_title": "K0547_B2",
+   "library_name": "K0547_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 385464,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/096/SRR25316696/SRR25316696_1.fastq.gz",
+     "md5": "25e53ba19ffe1b9519a80051533d48ef",
+     "bytes": 27234312
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/096/SRR25316696/SRR25316696_2.fastq.gz",
+     "md5": "48d2d726fb0e7b6f33b1d22e9c2fbf08",
+     "bytes": 29797288
+    }
+   ],
+   "trim": {
+    "pairs_in": 385464,
+    "no_primer": 359864,
+    "overlap_found": 25454,
+    "adapter_cut": 25588,
+    "short": 23913,
+    "kept": 1657,
+    "has_N": 30
+   },
+   "usable_pairs": 1657,
+   "unique_within_run": 529,
+   "within_run_dup_rate": 0.6807,
+   "records_in_set": 373,
+   "duplicates_skipped_while_filling": 1284
+  },
+  {
+   "run": "SRR25316697",
+   "study": "PRJNA993283",
+   "label": "K0547_C3 soil moderate burn",
+   "sample": "SAMN36395422",
+   "sample_alias": "K0547_C3",
+   "sample_title": "K0547_C3",
+   "library_name": "K0547_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 333736,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/097/SRR25316697/SRR25316697_1.fastq.gz",
+     "md5": "30358386fd23d8a5efdaa8d6f3bda700",
+     "bytes": 24807139
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/097/SRR25316697/SRR25316697_2.fastq.gz",
+     "md5": "21cf529fae76645cec0538d661edacc5",
+     "bytes": 26026932
+    }
+   ],
+   "trim": {
+    "pairs_in": 333736,
+    "no_primer": 304100,
+    "overlap_found": 29514,
+    "adapter_cut": 29630,
+    "short": 28735,
+    "kept": 861,
+    "has_N": 40
+   },
+   "usable_pairs": 861,
+   "unique_within_run": 263,
+   "within_run_dup_rate": 0.6945,
+   "records_in_set": 163,
+   "duplicates_skipped_while_filling": 698
+  },
+  {
+   "run": "SRR25316698",
+   "study": "PRJNA993283",
+   "label": "K0547_G5 soil moderate burn",
+   "sample": "SAMN36395421",
+   "sample_alias": "K0547_G5",
+   "sample_title": "K0547_G5",
+   "library_name": "K0547_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 51659,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/098/SRR25316698/SRR25316698_1.fastq.gz",
+     "md5": "6577c4129dea168c4fc30c1c376ecad8",
+     "bytes": 3711248
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/098/SRR25316698/SRR25316698_2.fastq.gz",
+     "md5": "c077637078f038a0d2cc26f60bd91775",
+     "bytes": 3376337
+    }
+   ],
+   "trim": {
+    "pairs_in": 51659,
+    "no_primer": 50639,
+    "overlap_found": 1017,
+    "adapter_cut": 1020,
+    "short": 774,
+    "kept": 246
+   },
+   "usable_pairs": 246,
+   "unique_within_run": 158,
+   "within_run_dup_rate": 0.3577,
+   "records_in_set": 129,
+   "duplicates_skipped_while_filling": 117
+  },
+  {
+   "run": "SRR25316699",
+   "study": "PRJNA993283",
+   "label": "K0548_A1 soil low burn",
+   "sample": "SAMN36395420",
+   "sample_alias": "K0548_A1",
+   "sample_title": "K0548_A1",
+   "library_name": "K0548_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 383008,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/099/SRR25316699/SRR25316699_1.fastq.gz",
+     "md5": "91c9af4566104cb737a805e309311e6f",
+     "bytes": 28612234
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/099/SRR25316699/SRR25316699_2.fastq.gz",
+     "md5": "4c4c66669e7ead3e4e8b384d982e6eab",
+     "bytes": 31486015
+    }
+   ],
+   "trim": {
+    "pairs_in": 383008,
+    "no_primer": 347383,
+    "overlap_found": 35441,
+    "adapter_cut": 35618,
+    "short": 31872,
+    "kept": 3708,
+    "has_N": 45
+   },
+   "usable_pairs": 3708,
+   "unique_within_run": 1009,
+   "within_run_dup_rate": 0.7279,
+   "records_in_set": 616,
+   "duplicates_skipped_while_filling": 3092
+  },
+  {
+   "run": "SRR25316700",
+   "study": "PRJNA993283",
+   "label": "K0548_B2 soil unburned",
+   "sample": "SAMN36395419",
+   "sample_alias": "K0548_B2",
+   "sample_title": "K0548_B2",
+   "library_name": "K0548_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 87388,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/000/SRR25316700/SRR25316700_1.fastq.gz",
+     "md5": "baf74b564c5ffc5c7e163f6990f62f61",
+     "bytes": 6417346
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/000/SRR25316700/SRR25316700_2.fastq.gz",
+     "md5": "7d778cd3e4c796ccb1c9a8dbd254c368",
+     "bytes": 6504585
+    }
+   ],
+   "trim": {
+    "pairs_in": 87388,
+    "overlap_found": 2717,
+    "adapter_cut": 2748,
+    "short": 2181,
+    "no_primer": 84639,
+    "kept": 566,
+    "has_N": 2
+   },
+   "usable_pairs": 566,
+   "unique_within_run": 286,
+   "within_run_dup_rate": 0.4947,
+   "records_in_set": 184,
+   "duplicates_skipped_while_filling": 382
+  },
+  {
+   "run": "SRR25316701",
+   "study": "PRJNA993283",
+   "label": "K0548_G5 soil burned",
+   "sample": "SAMN36395418",
+   "sample_alias": "K0548_G5",
+   "sample_title": "K0548_G5",
+   "library_name": "K0548_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 434418,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/001/SRR25316701/SRR25316701_1.fastq.gz",
+     "md5": "74d3100edb0692068ce63da5f9fa3f48",
+     "bytes": 35453069
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/001/SRR25316701/SRR25316701_2.fastq.gz",
+     "md5": "49783b0bccae851378de5a0e761c0e05",
+     "bytes": 37187287
+    }
+   ],
+   "trim": {
+    "pairs_in": 434418,
+    "no_primer": 395943,
+    "overlap_found": 38190,
+    "adapter_cut": 38450,
+    "short": 36244,
+    "kept": 2189,
+    "has_N": 42
+   },
+   "usable_pairs": 2189,
+   "unique_within_run": 631,
+   "within_run_dup_rate": 0.7117,
+   "records_in_set": 422,
+   "duplicates_skipped_while_filling": 1767
+  },
+  {
+   "run": "SRR25316702",
+   "study": "PRJNA993283",
+   "label": "K0549_T9 soil severe burn",
+   "sample": "SAMN36395417",
+   "sample_alias": "K0549_T9",
+   "sample_title": "K0549_T9",
+   "library_name": "K0549_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 1407451,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/002/SRR25316702/SRR25316702_1.fastq.gz",
+     "md5": "6560bef1e0092a33728374f776aa0a90",
+     "bytes": 108096175
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/002/SRR25316702/SRR25316702_2.fastq.gz",
+     "md5": "d1010771f68fce162eba3fefb0678918",
+     "bytes": 115488488
+    }
+   ],
+   "trim": {
+    "pairs_in": 1407451,
+    "no_primer": 1283066,
+    "overlap_found": 123669,
+    "adapter_cut": 124308,
+    "short": 116026,
+    "kept": 8254,
+    "has_N": 105
+   },
+   "usable_pairs": 8254,
+   "unique_within_run": 1942,
+   "within_run_dup_rate": 0.7647,
+   "records_in_set": 1305,
+   "duplicates_skipped_while_filling": 6949
+  },
+  {
+   "run": "SRR25316703",
+   "study": "PRJNA993283",
+   "label": "K0453_LA_S2 sediment lagoon",
+   "sample": "SAMN36395506",
+   "sample_alias": "K0453_LA_S2",
+   "sample_title": "K0453_LA_S2",
+   "library_name": "K0453_LA_S2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 115251,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/003/SRR25316703/SRR25316703_1.fastq.gz",
+     "md5": "754dfb2662f3c3b6bc984c81662adeae",
+     "bytes": 8672892
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/003/SRR25316703/SRR25316703_2.fastq.gz",
+     "md5": "6443ff032850b0d79bbd6d42d3d52f5d",
+     "bytes": 9171694
+    }
+   ],
+   "trim": {
+    "pairs_in": 115251,
+    "no_primer": 106597,
+    "overlap_found": 8575,
+    "adapter_cut": 8599,
+    "short": 7016,
+    "kept": 1625,
+    "has_N": 13
+   },
+   "usable_pairs": 1625,
+   "unique_within_run": 550,
+   "within_run_dup_rate": 0.6615,
+   "records_in_set": 338,
+   "duplicates_skipped_while_filling": 1287
+  },
+  {
+   "run": "SRR25316704",
+   "study": "PRJNA993283",
+   "label": "K0550_A1 soil unburned",
+   "sample": "SAMN36395416",
+   "sample_alias": "K0550_A1",
+   "sample_title": "K0550_A1",
+   "library_name": "K0550_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 333239,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/004/SRR25316704/SRR25316704_1.fastq.gz",
+     "md5": "7301918e52e03dead8f2a3271f8bbba6",
+     "bytes": 26059524
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR253/004/SRR25316704/SRR25316704_2.fastq.gz",
+     "md5": "d3e597ae68dbd4002bb58c72667010dd",
+     "bytes": 27421955
+    }
+   ],
+   "trim": {
+    "pairs_in": 333239,
+    "overlap_found": 27529,
+    "adapter_cut": 27693,
+    "short": 27252,
+    "no_primer": 305531,
+    "kept": 430,
+    "has_N": 26
+   },
+   "usable_pairs": 430,
+   "unique_within_run": 187,
+   "within_run_dup_rate": 0.5651,
+   "records_in_set": 120,
+   "duplicates_skipped_while_filling": 310
+  },
+  {
+   "run": "SRR25071077",
+   "study": "PRJNA941072",
+   "label": "K0832_K6 sediment 2020-06-01",
+   "sample": "SAMN33588933",
+   "sample_alias": "K0832_K6",
+   "sample_title": "CALeDNA_K0832_K6",
+   "library_name": "CALeDNA_K0832_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 600059,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/077/SRR25071077/SRR25071077_1.fastq.gz",
+     "md5": "e211e356e2ab771bab0c72b15458218d",
+     "bytes": 24367920
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/077/SRR25071077/SRR25071077_2.fastq.gz",
+     "md5": "8214d7f9893776a6f2a9df695df096f1",
+     "bytes": 27093081
+    }
+   ],
+   "trim": {
+    "pairs_in": 600059,
+    "no_primer": 551481,
+    "overlap_found": 48257,
+    "adapter_cut": 48551,
+    "kept": 15576,
+    "short": 32944,
+    "has_N": 58
+   },
+   "usable_pairs": 15576,
+   "unique_within_run": 3147,
+   "within_run_dup_rate": 0.798,
+   "records_in_set": 2435,
+   "duplicates_skipped_while_filling": 13141
+  },
+  {
+   "run": "SRR25071184",
+   "study": "PRJNA941072",
+   "label": "K0613_K6 sediment 2020-06-01",
+   "sample": "SAMN33588908",
+   "sample_alias": "K0613_K6",
+   "sample_title": "CALeDNA_K0613_K6",
+   "library_name": "CALeDNA_K0613_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 665723,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/084/SRR25071184/SRR25071184_1.fastq.gz",
+     "md5": "419038fef60261c095381c77219cd6ec",
+     "bytes": 28790259
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/084/SRR25071184/SRR25071184_2.fastq.gz",
+     "md5": "afbe9543c1af81731139dbcdb956127a",
+     "bytes": 30806625
+    }
+   ],
+   "trim": {
+    "pairs_in": 665723,
+    "overlap_found": 56920,
+    "adapter_cut": 57129,
+    "kept": 29490,
+    "no_primer": 608551,
+    "short": 27622,
+    "has_N": 60
+   },
+   "usable_pairs": 29490,
+   "unique_within_run": 4175,
+   "within_run_dup_rate": 0.8584,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 16252
+  },
+  {
+   "run": "SRR25071251",
+   "study": "PRJNA941072",
+   "label": "K0717_K6 sediment 2020-06-01",
+   "sample": "SAMN33588953",
+   "sample_alias": "K0717_K6",
+   "sample_title": "CALeDNA_K0717_K6",
+   "library_name": "CALeDNA_K0717_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 554023,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/051/SRR25071251/SRR25071251_1.fastq.gz",
+     "md5": "936719b3ff8b4a59dd7487876e2e712c",
+     "bytes": 20798484
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/051/SRR25071251/SRR25071251_2.fastq.gz",
+     "md5": "2badd4fcb28f8c7c45a65a49b490030e",
+     "bytes": 21761964
+    }
+   ],
+   "trim": {
+    "pairs_in": 554023,
+    "no_primer": 511245,
+    "overlap_found": 42514,
+    "adapter_cut": 42758,
+    "short": 26323,
+    "kept": 16399,
+    "has_N": 56
+   },
+   "usable_pairs": 16399,
+   "unique_within_run": 3143,
+   "within_run_dup_rate": 0.8083,
+   "records_in_set": 2422,
+   "duplicates_skipped_while_filling": 13977
+  },
+  {
+   "run": "SRR25071285",
+   "study": "PRJNA941072",
+   "label": "K0712_A1 sediment 2020-06-01",
+   "sample": "SAMN33588948",
+   "sample_alias": "K0712_A1",
+   "sample_title": "CALeDNA_K0712_A1",
+   "library_name": "CALeDNA_K0712_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 417426,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/085/SRR25071285/SRR25071285_1.fastq.gz",
+     "md5": "7f5c42081a1d13bb42e5d125cabf51e9",
+     "bytes": 18369363
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/085/SRR25071285/SRR25071285_2.fastq.gz",
+     "md5": "b3da60641730e6ffeac38431e1e76629",
+     "bytes": 20271059
+    }
+   ],
+   "trim": {
+    "pairs_in": 417426,
+    "no_primer": 375995,
+    "overlap_found": 41184,
+    "adapter_cut": 41400,
+    "short": 33088,
+    "kept": 8301,
+    "has_N": 42
+   },
+   "usable_pairs": 8301,
+   "unique_within_run": 1671,
+   "within_run_dup_rate": 0.7987,
+   "records_in_set": 1084,
+   "duplicates_skipped_while_filling": 7217
+  },
+  {
+   "run": "SRR25071249",
+   "study": "PRJNA941072",
+   "label": "K0718_B2 sediment 2020-06-01",
+   "sample": "SAMN33588955",
+   "sample_alias": "K0718_B2",
+   "sample_title": "CALeDNA_K0718_B2",
+   "library_name": "CALeDNA_K0718_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 570671,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/049/SRR25071249/SRR25071249_1.fastq.gz",
+     "md5": "18abd78ceb5352dde085ec92f6960bda",
+     "bytes": 26532030
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/049/SRR25071249/SRR25071249_2.fastq.gz",
+     "md5": "d6788d696b7ff8550ffc43713a3bc725",
+     "bytes": 27950698
+    }
+   ],
+   "trim": {
+    "pairs_in": 570671,
+    "no_primer": 527208,
+    "overlap_found": 43244,
+    "adapter_cut": 43429,
+    "kept": 32854,
+    "short": 10554,
+    "has_N": 55
+   },
+   "usable_pairs": 32854,
+   "unique_within_run": 5440,
+   "within_run_dup_rate": 0.8344,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 16816
+  },
+  {
+   "run": "SRR25071270",
+   "study": "PRJNA941072",
+   "label": "K0603_M8 soil 2020-12-01",
+   "sample": "SAMN33589006",
+   "sample_alias": "K0603_M8",
+   "sample_title": "CALeDNA_K0603_M8",
+   "library_name": "CALeDNA_K0603_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 317596,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/070/SRR25071270/SRR25071270_1.fastq.gz",
+     "md5": "c8e33f1178c5bf74fefd403c39c06529",
+     "bytes": 12637695
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/070/SRR25071270/SRR25071270_2.fastq.gz",
+     "md5": "b39ff5a975e5b637a35b8ef8a50a0aed",
+     "bytes": 13398880
+    }
+   ],
+   "trim": {
+    "pairs_in": 317596,
+    "overlap_found": 18569,
+    "adapter_cut": 18775,
+    "short": 15645,
+    "no_primer": 298795,
+    "kept": 3143,
+    "has_N": 13
+   },
+   "usable_pairs": 3143,
+   "unique_within_run": 1096,
+   "within_run_dup_rate": 0.6513,
+   "records_in_set": 877,
+   "duplicates_skipped_while_filling": 2266
+  },
+  {
+   "run": "SRR25071263",
+   "study": "PRJNA941072",
+   "label": "K0607_E4 sediment 2020-12-01",
+   "sample": "SAMN33588998",
+   "sample_alias": "K0607_E4",
+   "sample_title": "CALeDNA_K0607_E4",
+   "library_name": "CALeDNA_K0607_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 360106,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/063/SRR25071263/SRR25071263_1.fastq.gz",
+     "md5": "45ec4273a6ca70ed05659fc24cf2c45f",
+     "bytes": 16824278
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/063/SRR25071263/SRR25071263_2.fastq.gz",
+     "md5": "59fcbd880f6397ac4537ae3ea58e733e",
+     "bytes": 17464407
+    }
+   ],
+   "trim": {
+    "pairs_in": 360106,
+    "no_primer": 332797,
+    "overlap_found": 27111,
+    "adapter_cut": 27285,
+    "short": 22923,
+    "kept": 4374,
+    "has_N": 12
+   },
+   "usable_pairs": 4374,
+   "unique_within_run": 1153,
+   "within_run_dup_rate": 0.7364,
+   "records_in_set": 1083,
+   "duplicates_skipped_while_filling": 3291
+  },
+  {
+   "run": "SRR25071227",
+   "study": "PRJNA941072",
+   "label": "K0836_G5 sediment 2020-06-01",
+   "sample": "SAMN33588934",
+   "sample_alias": "K0836_G5",
+   "sample_title": "CALeDNA_K0836_G5",
+   "library_name": "CALeDNA_K0836_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 652590,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/027/SRR25071227/SRR25071227_1.fastq.gz",
+     "md5": "98e3a9b48a9f962e29b1fc26d6fff78d",
+     "bytes": 33372555
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/027/SRR25071227/SRR25071227_2.fastq.gz",
+     "md5": "5aa50d1687bbeddff8b417278bd910ea",
+     "bytes": 33326241
+    }
+   ],
+   "trim": {
+    "pairs_in": 652590,
+    "no_primer": 604535,
+    "overlap_found": 47752,
+    "adapter_cut": 47996,
+    "kept": 22352,
+    "short": 25632,
+    "has_N": 71
+   },
+   "usable_pairs": 22352,
+   "unique_within_run": 3398,
+   "within_run_dup_rate": 0.848,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 18760
+  },
+  {
+   "run": "SRR25071091",
+   "study": "PRJNA941072",
+   "label": "K0514_B2 sediment 2020-06-01",
+   "sample": "SAMN33588942",
+   "sample_alias": "K0514_B2",
+   "sample_title": "CALeDNA_K0514_B2",
+   "library_name": "CALeDNA_K0514_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 573831,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/091/SRR25071091/SRR25071091_1.fastq.gz",
+     "md5": "00bb3e7fc2096a92b30f94171882d3aa",
+     "bytes": 22581568
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/091/SRR25071091/SRR25071091_2.fastq.gz",
+     "md5": "fd551f6173ea3339654e2c0e6e992259",
+     "bytes": 23951625
+    }
+   ],
+   "trim": {
+    "pairs_in": 573831,
+    "overlap_found": 28795,
+    "adapter_cut": 28902,
+    "short": 27192,
+    "no_primer": 544923,
+    "kept": 1690,
+    "has_N": 26
+   },
+   "usable_pairs": 1690,
+   "unique_within_run": 461,
+   "within_run_dup_rate": 0.7272,
+   "records_in_set": 326,
+   "duplicates_skipped_while_filling": 1364
+  },
+  {
+   "run": "SRR25071110",
+   "study": "PRJNA941072",
+   "label": "K0601_T9 sediment 2020-12-01",
+   "sample": "SAMN33588996",
+   "sample_alias": "K0601_T9",
+   "sample_title": "CALeDNA_K0601_T9",
+   "library_name": "CALeDNA_K0601_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 348998,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/010/SRR25071110/SRR25071110_1.fastq.gz",
+     "md5": "daab3edf0d53555d46db117b8df78639",
+     "bytes": 14051978
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/010/SRR25071110/SRR25071110_2.fastq.gz",
+     "md5": "7fec0871b58882bd5e3af81979722d17",
+     "bytes": 14796048
+    }
+   ],
+   "trim": {
+    "pairs_in": 348998,
+    "no_primer": 333279,
+    "overlap_found": 15521,
+    "adapter_cut": 15702,
+    "short": 15674,
+    "has_N": 7,
+    "kept": 38
+   },
+   "usable_pairs": 38,
+   "unique_within_run": 34,
+   "within_run_dup_rate": 0.1053,
+   "records_in_set": 34,
+   "duplicates_skipped_while_filling": 4
+  },
+  {
+   "run": "SRR25071128",
+   "study": "PRJNA941072",
+   "label": "K0515_L7 sediment 2020-06-01",
+   "sample": "SAMN33588947",
+   "sample_alias": "K0515_L7",
+   "sample_title": "CALeDNA_K0515_L7",
+   "library_name": "CALeDNA_K0515_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 617760,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/028/SRR25071128/SRR25071128_1.fastq.gz",
+     "md5": "d106b0f6176ad82554fe150a6f0a97bd",
+     "bytes": 30614312
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/028/SRR25071128/SRR25071128_2.fastq.gz",
+     "md5": "ee5adb38f363627e984aaa077869bc06",
+     "bytes": 31669327
+    }
+   ],
+   "trim": {
+    "pairs_in": 617760,
+    "no_primer": 579208,
+    "overlap_found": 38316,
+    "adapter_cut": 38512,
+    "kept": 15583,
+    "short": 22926,
+    "has_N": 43
+   },
+   "usable_pairs": 15583,
+   "unique_within_run": 2674,
+   "within_run_dup_rate": 0.8284,
+   "records_in_set": 2185,
+   "duplicates_skipped_while_filling": 13398
+  },
+  {
+   "run": "SRR25071247",
+   "study": "PRJNA941072",
+   "label": "K0719_K6 sediment 2020-06-01",
+   "sample": "SAMN33588923",
+   "sample_alias": "K0719_K6",
+   "sample_title": "CALeDNA_K0719_K6",
+   "library_name": "CALeDNA_K0719_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 667086,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/047/SRR25071247/SRR25071247_1.fastq.gz",
+     "md5": "4157cfc8c60970550c587f931eaf8edd",
+     "bytes": 31319961
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/047/SRR25071247/SRR25071247_2.fastq.gz",
+     "md5": "474a15ec73da4c0a64853a180878c7ec",
+     "bytes": 32238109
+    }
+   ],
+   "trim": {
+    "pairs_in": 667086,
+    "no_primer": 629184,
+    "overlap_found": 37772,
+    "adapter_cut": 37890,
+    "short": 30587,
+    "kept": 7278,
+    "has_N": 37
+   },
+   "usable_pairs": 7278,
+   "unique_within_run": 1580,
+   "within_run_dup_rate": 0.7829,
+   "records_in_set": 1200,
+   "duplicates_skipped_while_filling": 6078
+  },
+  {
+   "run": "SRR25071096",
+   "study": "PRJNA941072",
+   "label": "K0617_L7 sediment 2020-06-01",
+   "sample": "SAMN33588917",
+   "sample_alias": "K0617_L7",
+   "sample_title": "CALeDNA_K0617_L7",
+   "library_name": "CALeDNA_K0617_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 584519,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/096/SRR25071096/SRR25071096_1.fastq.gz",
+     "md5": "3c1d2d303ba0d5163010ab53e9e919c9",
+     "bytes": 26273759
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/096/SRR25071096/SRR25071096_2.fastq.gz",
+     "md5": "45d383048e3f5860344447a9685ad4d9",
+     "bytes": 28179501
+    }
+   ],
+   "trim": {
+    "pairs_in": 584519,
+    "no_primer": 544940,
+    "overlap_found": 39370,
+    "adapter_cut": 39530,
+    "short": 34091,
+    "kept": 5449,
+    "has_N": 39
+   },
+   "usable_pairs": 5449,
+   "unique_within_run": 1142,
+   "within_run_dup_rate": 0.7904,
+   "records_in_set": 878,
+   "duplicates_skipped_while_filling": 4571
+  },
+  {
+   "run": "SRR25071279",
+   "study": "PRJNA941072",
+   "label": "K0714_T9 sediment 2020-06-01",
+   "sample": "SAMN33588922",
+   "sample_alias": "K0714_T9",
+   "sample_title": "CALeDNA_K0714_T9",
+   "library_name": "CALeDNA_K0714_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 584728,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/079/SRR25071279/SRR25071279_1.fastq.gz",
+     "md5": "d302786bd33ed079ffd8865ee5f38b2e",
+     "bytes": 25879545
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/079/SRR25071279/SRR25071279_2.fastq.gz",
+     "md5": "a9ce9df03cf4d6f6447fedb6b0b41e63",
+     "bytes": 26858473
+    }
+   ],
+   "trim": {
+    "pairs_in": 584728,
+    "no_primer": 556540,
+    "overlap_found": 27997,
+    "adapter_cut": 28157,
+    "short": 18522,
+    "kept": 9644,
+    "has_N": 22
+   },
+   "usable_pairs": 9644,
+   "unique_within_run": 2064,
+   "within_run_dup_rate": 0.786,
+   "records_in_set": 1593,
+   "duplicates_skipped_while_filling": 8051
+  },
+  {
+   "run": "SRR25071253",
+   "study": "PRJNA941072",
+   "label": "K0716_B2 sediment 2020-06-01",
+   "sample": "SAMN33588951",
+   "sample_alias": "K0716_B2",
+   "sample_title": "CALeDNA_K0716_B2",
+   "library_name": "CALeDNA_K0716_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 544411,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/053/SRR25071253/SRR25071253_1.fastq.gz",
+     "md5": "df99f31a8b78d73949dcebefc4c2e920",
+     "bytes": 21292580
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/053/SRR25071253/SRR25071253_2.fastq.gz",
+     "md5": "20284432341117023ac43d6fcc8f94a7",
+     "bytes": 22396479
+    }
+   ],
+   "trim": {
+    "pairs_in": 544411,
+    "no_primer": 519298,
+    "overlap_found": 24980,
+    "adapter_cut": 25103,
+    "short": 20182,
+    "kept": 4908,
+    "has_N": 23
+   },
+   "usable_pairs": 4908,
+   "unique_within_run": 1179,
+   "within_run_dup_rate": 0.7598,
+   "records_in_set": 727,
+   "duplicates_skipped_while_filling": 4181
+  },
+  {
+   "run": "SRR25071100",
+   "study": "PRJNA941072",
+   "label": "K0616_K6 sediment 2020-06-01",
+   "sample": "SAMN33588913",
+   "sample_alias": "K0616_K6",
+   "sample_title": "CALeDNA_K0616_K6",
+   "library_name": "CALeDNA_K0616_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 679581,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/000/SRR25071100/SRR25071100_1.fastq.gz",
+     "md5": "3902083b5aa67245f0701a806f1c4dc3",
+     "bytes": 31645985
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/000/SRR25071100/SRR25071100_2.fastq.gz",
+     "md5": "3ff8ae87221b74462829cc19cad81f17",
+     "bytes": 33253565
+    }
+   ],
+   "trim": {
+    "pairs_in": 679581,
+    "no_primer": 642928,
+    "overlap_found": 36439,
+    "adapter_cut": 36610,
+    "short": 23861,
+    "kept": 12744,
+    "has_N": 48
+   },
+   "usable_pairs": 12744,
+   "unique_within_run": 2444,
+   "within_run_dup_rate": 0.8082,
+   "records_in_set": 2075,
+   "duplicates_skipped_while_filling": 10669
+  },
+  {
+   "run": "SRR25071121",
+   "study": "PRJNA941072",
+   "label": "K0572_B2 soil 2020-06-01",
+   "sample": "SAMN33588936",
+   "sample_alias": "K0572_B2",
+   "sample_title": "CALeDNA_K0572_B2",
+   "library_name": "CALeDNA_K0572_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 645596,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/021/SRR25071121/SRR25071121_1.fastq.gz",
+     "md5": "a93ee11f1028c5bc8ddfb03f251f2796",
+     "bytes": 29870260
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/021/SRR25071121/SRR25071121_2.fastq.gz",
+     "md5": "d86d98e3b05f3fc259b3a5a66115a980",
+     "bytes": 31367993
+    }
+   ],
+   "trim": {
+    "pairs_in": 645596,
+    "no_primer": 608618,
+    "overlap_found": 36643,
+    "adapter_cut": 36957,
+    "short": 26741,
+    "kept": 10188,
+    "has_N": 49
+   },
+   "usable_pairs": 10188,
+   "unique_within_run": 2194,
+   "within_run_dup_rate": 0.7846,
+   "records_in_set": 1698,
+   "duplicates_skipped_while_filling": 8490
+  },
+  {
+   "run": "SRR25071145",
+   "study": "PRJNA941072",
+   "label": "K0773_A1 sediment 2020-06-01",
+   "sample": "SAMN33588925",
+   "sample_alias": "K0773_A1",
+   "sample_title": "CALeDNA_K0773_A1",
+   "library_name": "CALeDNA_K0773_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 450918,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/045/SRR25071145/SRR25071145_1.fastq.gz",
+     "md5": "ff2996175a8fb51a7a125e20ba4fda54",
+     "bytes": 18567480
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/045/SRR25071145/SRR25071145_2.fastq.gz",
+     "md5": "8b84e8271020d2295fc861e5c507222c",
+     "bytes": 19727693
+    }
+   ],
+   "trim": {
+    "pairs_in": 450918,
+    "no_primer": 429095,
+    "overlap_found": 21746,
+    "adapter_cut": 21816,
+    "kept": 11298,
+    "short": 10494,
+    "has_N": 31
+   },
+   "usable_pairs": 11298,
+   "unique_within_run": 1764,
+   "within_run_dup_rate": 0.8439,
+   "records_in_set": 1111,
+   "duplicates_skipped_while_filling": 10187
+  },
+  {
+   "run": "SRR25071087",
+   "study": "PRJNA941072",
+   "label": "K0779_E4 sediment 2020-06-01",
+   "sample": "SAMN33588929",
+   "sample_alias": "K0779_E4",
+   "sample_title": "CALeDNA_K0779_E4",
+   "library_name": "CALeDNA_K0779_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 574027,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/087/SRR25071087/SRR25071087_1.fastq.gz",
+     "md5": "1196a8113de96a8fe548841c0f88a1b5",
+     "bytes": 28512661
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/087/SRR25071087/SRR25071087_2.fastq.gz",
+     "md5": "e54a319a06962c5e7e2f184999ade61f",
+     "bytes": 29617238
+    }
+   ],
+   "trim": {
+    "pairs_in": 574027,
+    "no_primer": 540387,
+    "overlap_found": 33490,
+    "adapter_cut": 33613,
+    "short": 25138,
+    "kept": 8460,
+    "has_N": 42
+   },
+   "usable_pairs": 8460,
+   "unique_within_run": 1740,
+   "within_run_dup_rate": 0.7943,
+   "records_in_set": 1177,
+   "duplicates_skipped_while_filling": 7283
+  },
+  {
+   "run": "SRR25071301",
+   "study": "PRJNA941072",
+   "label": "K0619_M8 sediment 2020-06-01",
+   "sample": "SAMN33588920",
+   "sample_alias": "K0619_M8",
+   "sample_title": "CALeDNA_K0619_M8",
+   "library_name": "CALeDNA_K0619_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 469806,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/001/SRR25071301/SRR25071301_1.fastq.gz",
+     "md5": "b2ffe3faba4ae000fbce04e5d28db2bd",
+     "bytes": 23118113
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/001/SRR25071301/SRR25071301_2.fastq.gz",
+     "md5": "cb53f7c28ad8c47b509d6e4f60f86d5b",
+     "bytes": 22618129
+    }
+   ],
+   "trim": {
+    "pairs_in": 469806,
+    "no_primer": 444838,
+    "overlap_found": 24833,
+    "adapter_cut": 24944,
+    "short": 17793,
+    "kept": 7150,
+    "has_N": 25
+   },
+   "usable_pairs": 7150,
+   "unique_within_run": 1903,
+   "within_run_dup_rate": 0.7338,
+   "records_in_set": 1288,
+   "duplicates_skipped_while_filling": 5862
+  },
+  {
+   "run": "SRR25071078",
+   "study": "PRJNA941072",
+   "label": "K0792_C3 sediment 2020-06-01",
+   "sample": "SAMN33588932",
+   "sample_alias": "K0792_C3",
+   "sample_title": "CALeDNA_K0792_C3",
+   "library_name": "CALeDNA_K0792_C3",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 494299,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/078/SRR25071078/SRR25071078_1.fastq.gz",
+     "md5": "cdf24969e727d6c1435eb37cbcbadfb9",
+     "bytes": 21379441
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/078/SRR25071078/SRR25071078_2.fastq.gz",
+     "md5": "c4738a8693fe80247051a5438ff0f0dc",
+     "bytes": 21666655
+    }
+   ],
+   "trim": {
+    "pairs_in": 494299,
+    "no_primer": 470268,
+    "overlap_found": 23915,
+    "adapter_cut": 23979,
+    "short": 12808,
+    "kept": 11196,
+    "has_N": 27
+   },
+   "usable_pairs": 11196,
+   "unique_within_run": 2284,
+   "within_run_dup_rate": 0.796,
+   "records_in_set": 1927,
+   "duplicates_skipped_while_filling": 9269
+  },
+  {
+   "run": "SRR25071072",
+   "study": "PRJNA941072",
+   "label": "K0835_A1 soil 2020-06-01",
+   "sample": "SAMN33588941",
+   "sample_alias": "K0835_A1",
+   "sample_title": "CALeDNA_K0835_A1",
+   "library_name": "CALeDNA_K0835_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 725118,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/072/SRR25071072/SRR25071072_1.fastq.gz",
+     "md5": "1371650eb7f68cfbca1de4480c16dfef",
+     "bytes": 35218513
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/072/SRR25071072/SRR25071072_2.fastq.gz",
+     "md5": "72751377f4422c686fe6468ebab51fc6",
+     "bytes": 35632425
+    }
+   ],
+   "trim": {
+    "pairs_in": 725118,
+    "no_primer": 675646,
+    "overlap_found": 49225,
+    "adapter_cut": 49453,
+    "short": 43463,
+    "kept": 5953,
+    "has_N": 56
+   },
+   "usable_pairs": 5953,
+   "unique_within_run": 1216,
+   "within_run_dup_rate": 0.7957,
+   "records_in_set": 1059,
+   "duplicates_skipped_while_filling": 4894
+  },
+  {
+   "run": "SRR25071191",
+   "study": "PRJNA941072",
+   "label": "K0611_K6 sediment 2020-06-01",
+   "sample": "SAMN33588905",
+   "sample_alias": "K0611_K6",
+   "sample_title": "CALeDNA_K0611_K6",
+   "library_name": "CALeDNA_K0611_K6",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 584138,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/091/SRR25071191/SRR25071191_1.fastq.gz",
+     "md5": "ea062995eb9d1528c0bd2146c6ea3444",
+     "bytes": 25001522
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/091/SRR25071191/SRR25071191_2.fastq.gz",
+     "md5": "6233eb16a574b1cc52ad2a3065d4d2bf",
+     "bytes": 25665309
+    }
+   ],
+   "trim": {
+    "pairs_in": 584138,
+    "no_primer": 554578,
+    "overlap_found": 29458,
+    "adapter_cut": 29537,
+    "short": 10137,
+    "kept": 19382,
+    "has_N": 41
+   },
+   "usable_pairs": 19382,
+   "unique_within_run": 3697,
+   "within_run_dup_rate": 0.8093,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 14747
+  },
+  {
+   "run": "SRR25071090",
+   "study": "PRJNA941072",
+   "label": "K0778_A1 sediment 2020-06-01",
+   "sample": "SAMN33588928",
+   "sample_alias": "K0778_A1",
+   "sample_title": "CALeDNA_K0778_A1",
+   "library_name": "CALeDNA_K0778_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 590544,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/090/SRR25071090/SRR25071090_1.fastq.gz",
+     "md5": "08f00c07887e1914267377cb10a3d4e7",
+     "bytes": 25981507
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/090/SRR25071090/SRR25071090_2.fastq.gz",
+     "md5": "a80ff20cd4ff30fef5c7813e05781e42",
+     "bytes": 26919687
+    }
+   ],
+   "trim": {
+    "pairs_in": 590544,
+    "no_primer": 563602,
+    "overlap_found": 26801,
+    "adapter_cut": 26897,
+    "kept": 16442,
+    "short": 10467,
+    "has_N": 33
+   },
+   "usable_pairs": 16442,
+   "unique_within_run": 3179,
+   "within_run_dup_rate": 0.8067,
+   "records_in_set": 2359,
+   "duplicates_skipped_while_filling": 14083
+  },
+  {
+   "run": "SRR25071093",
+   "study": "PRJNA941072",
+   "label": "K0777_G5 sediment 2020-06-01",
+   "sample": "SAMN33588927",
+   "sample_alias": "K0777_G5",
+   "sample_title": "CALeDNA_K0777_G5",
+   "library_name": "CALeDNA_K0777_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 673101,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/093/SRR25071093/SRR25071093_1.fastq.gz",
+     "md5": "5a7e4aaf88425789fd295a37ba981ef0",
+     "bytes": 35006761
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/093/SRR25071093/SRR25071093_2.fastq.gz",
+     "md5": "7b0fe6da96d52851a6b2b490752456de",
+     "bytes": 36401786
+    }
+   ],
+   "trim": {
+    "pairs_in": 673101,
+    "no_primer": 630855,
+    "overlap_found": 42009,
+    "adapter_cut": 42201,
+    "short": 19975,
+    "kept": 22215,
+    "has_N": 56
+   },
+   "usable_pairs": 22215,
+   "unique_within_run": 3493,
+   "within_run_dup_rate": 0.8428,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 17286
+  },
+  {
+   "run": "SRR25071281",
+   "study": "PRJNA941072",
+   "label": "K0713_G5 soil 2020-06-01",
+   "sample": "SAMN33588960",
+   "sample_alias": "K0713_G5",
+   "sample_title": "CALeDNA_K0713_G5",
+   "library_name": "CALeDNA_K0713_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 426813,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/081/SRR25071281/SRR25071281_1.fastq.gz",
+     "md5": "f9c5f654390504964abc34b1d9c9e9ad",
+     "bytes": 14021340
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/081/SRR25071281/SRR25071281_2.fastq.gz",
+     "md5": "cd4bdbf0b3c5a2e8700f647136e7e4fe",
+     "bytes": 14786128
+    }
+   ],
+   "trim": {
+    "pairs_in": 426813,
+    "overlap_found": 14804,
+    "adapter_cut": 15004,
+    "short": 14511,
+    "no_primer": 411793,
+    "kept": 501,
+    "has_N": 8
+   },
+   "usable_pairs": 501,
+   "unique_within_run": 247,
+   "within_run_dup_rate": 0.507,
+   "records_in_set": 205,
+   "duplicates_skipped_while_filling": 296
+  },
+  {
+   "run": "SRR25071278",
+   "study": "PRJNA941072",
+   "label": "K0715_A1 sediment 2020-06-01",
+   "sample": "SAMN33588950",
+   "sample_alias": "K0715_A1",
+   "sample_title": "CALeDNA_K0715_A1",
+   "library_name": "CALeDNA_K0715_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 476908,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/078/SRR25071278/SRR25071278_1.fastq.gz",
+     "md5": "399c36d51b62de3250e7e4cbaa073411",
+     "bytes": 17847641
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/078/SRR25071278/SRR25071278_2.fastq.gz",
+     "md5": "6401e182ca959ba342ea260363b9ef81",
+     "bytes": 19061991
+    }
+   ],
+   "trim": {
+    "pairs_in": 476908,
+    "overlap_found": 23884,
+    "adapter_cut": 24004,
+    "kept": 9854,
+    "no_primer": 452889,
+    "short": 14142,
+    "has_N": 23
+   },
+   "usable_pairs": 9854,
+   "unique_within_run": 2392,
+   "within_run_dup_rate": 0.7573,
+   "records_in_set": 1590,
+   "duplicates_skipped_while_filling": 8264
+  },
+  {
+   "run": "SRR25071197",
+   "study": "PRJNA941072",
+   "label": "K0609_G5 soil 2020-12-01",
+   "sample": "SAMN33589011",
+   "sample_alias": "K0609_G5",
+   "sample_title": "CALeDNA_K0609_G5",
+   "library_name": "CALeDNA_K0609_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 828590,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/097/SRR25071197/SRR25071197_1.fastq.gz",
+     "md5": "0b048448713e585437e2e65370610cd4",
+     "bytes": 42456085
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/097/SRR25071197/SRR25071197_2.fastq.gz",
+     "md5": "c55c2b4323b7074fffdd672fedbc31d9",
+     "bytes": 44554002
+    }
+   ],
+   "trim": {
+    "pairs_in": 828590,
+    "no_primer": 788894,
+    "overlap_found": 39254,
+    "adapter_cut": 39663,
+    "short": 33311,
+    "kept": 6361,
+    "has_N": 24
+   },
+   "usable_pairs": 6361,
+   "unique_within_run": 1773,
+   "within_run_dup_rate": 0.7213,
+   "records_in_set": 1586,
+   "duplicates_skipped_while_filling": 4775
+  },
+  {
+   "run": "SRR25071107",
+   "study": "PRJNA941072",
+   "label": "K0614_T9 soil 2020-06-01",
+   "sample": "SAMN33588937",
+   "sample_alias": "K0614_T9",
+   "sample_title": "CALeDNA_K0614_T9",
+   "library_name": "CALeDNA_K0614_T9",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 273652,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/007/SRR25071107/SRR25071107_1.fastq.gz",
+     "md5": "a65619484dfc405eab383d0f91e0c953",
+     "bytes": 11935155
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/007/SRR25071107/SRR25071107_2.fastq.gz",
+     "md5": "6ecf0835a70fa80bff96ae2d947fe58d",
+     "bytes": 12588938
+    }
+   ],
+   "trim": {
+    "pairs_in": 273652,
+    "no_primer": 257311,
+    "overlap_found": 15806,
+    "adapter_cut": 15883,
+    "short": 7182,
+    "kept": 9138,
+    "has_N": 21
+   },
+   "usable_pairs": 9138,
+   "unique_within_run": 2432,
+   "within_run_dup_rate": 0.7339,
+   "records_in_set": 1942,
+   "duplicates_skipped_while_filling": 7196
+  },
+  {
+   "run": "SRR25071246",
+   "study": "PRJNA941072",
+   "label": "K0720_L7 sediment 2020-06-01",
+   "sample": "SAMN33588956",
+   "sample_alias": "K0720_L7",
+   "sample_title": "CALeDNA_K0720_L7",
+   "library_name": "CALeDNA_K0720_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 528633,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/046/SRR25071246/SRR25071246_1.fastq.gz",
+     "md5": "1bff6ef1fe3be7d005bff4d160e973c7",
+     "bytes": 19836874
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/046/SRR25071246/SRR25071246_2.fastq.gz",
+     "md5": "bd25427e480cdcaa1311c38640a9a040",
+     "bytes": 21392526
+    }
+   ],
+   "trim": {
+    "pairs_in": 528633,
+    "no_primer": 505836,
+    "overlap_found": 17623,
+    "adapter_cut": 17699,
+    "short": 15328,
+    "kept": 7445,
+    "has_N": 24
+   },
+   "usable_pairs": 7445,
+   "unique_within_run": 5551,
+   "within_run_dup_rate": 0.2544,
+   "records_in_set": 2514,
+   "duplicates_skipped_while_filling": 984
+  },
+  {
+   "run": "SRR25071189",
+   "study": "PRJNA941072",
+   "label": "K0612_G5 sediment 2020-12-01",
+   "sample": "SAMN33589002",
+   "sample_alias": "K0612_G5",
+   "sample_title": "CALeDNA_K0612_G5",
+   "library_name": "CALeDNA_K0612_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 336573,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/089/SRR25071189/SRR25071189_1.fastq.gz",
+     "md5": "e35a772e3b5a729b0bd40c4572bbb072",
+     "bytes": 15802365
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/089/SRR25071189/SRR25071189_2.fastq.gz",
+     "md5": "3382513e8a1241323720874bf2bc75ef",
+     "bytes": 16446228
+    }
+   ],
+   "trim": {
+    "pairs_in": 336573,
+    "no_primer": 326715,
+    "overlap_found": 9678,
+    "adapter_cut": 9847,
+    "short": 9658,
+    "kept": 196,
+    "has_N": 4
+   },
+   "usable_pairs": 196,
+   "unique_within_run": 93,
+   "within_run_dup_rate": 0.5255,
+   "records_in_set": 70,
+   "duplicates_skipped_while_filling": 126
+  },
+  {
+   "run": "SRR25071140",
+   "study": "PRJNA941072",
+   "label": "K0774_M8 sediment 2020-06-01",
+   "sample": "SAMN33588926",
+   "sample_alias": "K0774_M8",
+   "sample_title": "CALeDNA_K0774_M8",
+   "library_name": "CALeDNA_K0774_M8",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 624390,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/040/SRR25071140/SRR25071140_1.fastq.gz",
+     "md5": "8cf2b3b4625ab16cce1c6e6d41445f3c",
+     "bytes": 24502323
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/040/SRR25071140/SRR25071140_2.fastq.gz",
+     "md5": "b25fd040f8020db75c8bdce6b89fd707",
+     "bytes": 25277225
+    }
+   ],
+   "trim": {
+    "pairs_in": 624390,
+    "no_primer": 601705,
+    "overlap_found": 22535,
+    "adapter_cut": 22665,
+    "short": 15342,
+    "kept": 7317,
+    "has_N": 26
+   },
+   "usable_pairs": 7317,
+   "unique_within_run": 1649,
+   "within_run_dup_rate": 0.7746,
+   "records_in_set": 1164,
+   "duplicates_skipped_while_filling": 6153
+  },
+  {
+   "run": "SRR25071142",
+   "study": "PRJNA941072",
+   "label": "K0512_L7 soil 2020-06-01",
+   "sample": "SAMN33588957",
+   "sample_alias": "K0512_L7",
+   "sample_title": "CALeDNA_K0512_L7",
+   "library_name": "CALeDNA_K0512_L7",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 710542,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/042/SRR25071142/SRR25071142_1.fastq.gz",
+     "md5": "a21bdd0140c81cce489f04d33c415407",
+     "bytes": 30240363
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/042/SRR25071142/SRR25071142_2.fastq.gz",
+     "md5": "2af19d3d70277c8760a4a990af8025cd",
+     "bytes": 31872069
+    }
+   ],
+   "trim": {
+    "pairs_in": 710542,
+    "no_primer": 677618,
+    "overlap_found": 32580,
+    "adapter_cut": 32910,
+    "short": 28692,
+    "kept": 4194,
+    "has_N": 38
+   },
+   "usable_pairs": 4194,
+   "unique_within_run": 856,
+   "within_run_dup_rate": 0.7959,
+   "records_in_set": 682,
+   "duplicates_skipped_while_filling": 3512
+  },
+  {
+   "run": "SRR25071151",
+   "study": "PRJNA941072",
+   "label": "K0759_E4 soil 2020-06-01",
+   "sample": "SAMN33588940",
+   "sample_alias": "K0759_E4",
+   "sample_title": "CALeDNA_K0759_E4",
+   "library_name": "CALeDNA_K0759_E4",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 552523,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/051/SRR25071151/SRR25071151_1.fastq.gz",
+     "md5": "82770962dbfeefc03d88769b8f8f6afe",
+     "bytes": 21808634
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/051/SRR25071151/SRR25071151_2.fastq.gz",
+     "md5": "5dccd5ff443483f6be5827565f49a7df",
+     "bytes": 22650107
+    }
+   ],
+   "trim": {
+    "pairs_in": 552523,
+    "no_primer": 534771,
+    "overlap_found": 17656,
+    "adapter_cut": 17725,
+    "kept": 5886,
+    "short": 11847,
+    "has_N": 19
+   },
+   "usable_pairs": 5886,
+   "unique_within_run": 1285,
+   "within_run_dup_rate": 0.7817,
+   "records_in_set": 1029,
+   "duplicates_skipped_while_filling": 4857
+  },
+  {
+   "run": "SRR25071154",
+   "study": "PRJNA941072",
+   "label": "K0757_A1 sediment 2020-06-01",
+   "sample": "SAMN33588924",
+   "sample_alias": "K0757_A1",
+   "sample_title": "CALeDNA_K0757_A1",
+   "library_name": "CALeDNA_K0757_A1",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 449703,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/054/SRR25071154/SRR25071154_1.fastq.gz",
+     "md5": "14eaccf26718991959d6003346b03b6b",
+     "bytes": 23289119
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/054/SRR25071154/SRR25071154_2.fastq.gz",
+     "md5": "af31ae89de0856e05913c7ac6fb9c68d",
+     "bytes": 24322151
+    }
+   ],
+   "trim": {
+    "pairs_in": 449703,
+    "no_primer": 424419,
+    "overlap_found": 24914,
+    "adapter_cut": 25243,
+    "short": 14901,
+    "kept": 10358,
+    "has_N": 25
+   },
+   "usable_pairs": 10358,
+   "unique_within_run": 2314,
+   "within_run_dup_rate": 0.7766,
+   "records_in_set": 1961,
+   "duplicates_skipped_while_filling": 8397
+  },
+  {
+   "run": "SRR25071224",
+   "study": "PRJNA941072",
+   "label": "K0838_B2 sediment 2020-06-01",
+   "sample": "SAMN33588935",
+   "sample_alias": "K0838_B2",
+   "sample_title": "CALeDNA_K0838_B2",
+   "library_name": "CALeDNA_K0838_B2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 598929,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/024/SRR25071224/SRR25071224_1.fastq.gz",
+     "md5": "c9f9e4e6106711d892c89a0c80a0ad2f",
+     "bytes": 24729773
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/024/SRR25071224/SRR25071224_2.fastq.gz",
+     "md5": "5c1e0af5bab335a471d8fc4caf7d10f4",
+     "bytes": 26113928
+    }
+   ],
+   "trim": {
+    "pairs_in": 598929,
+    "no_primer": 577177,
+    "overlap_found": 21567,
+    "adapter_cut": 21736,
+    "short": 20349,
+    "kept": 1384,
+    "has_N": 19
+   },
+   "usable_pairs": 1384,
+   "unique_within_run": 356,
+   "within_run_dup_rate": 0.7428,
+   "records_in_set": 312,
+   "duplicates_skipped_while_filling": 1072
+  },
+  {
+   "run": "SRR25071095",
+   "study": "PRJNA941072",
+   "label": "K0618_G5 sediment 2020-06-01",
+   "sample": "SAMN33588918",
+   "sample_alias": "K0618_G5",
+   "sample_title": "CALeDNA_K0618_G5",
+   "library_name": "CALeDNA_K0618_G5",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 551078,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/095/SRR25071095/SRR25071095_1.fastq.gz",
+     "md5": "b0b99eeb2fb549f2103207ed5958f166",
+     "bytes": 25424150
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR250/095/SRR25071095/SRR25071095_2.fastq.gz",
+     "md5": "7088691ecaf8a9f298bcec21fdab41c7",
+     "bytes": 25924568
+    }
+   ],
+   "trim": {
+    "pairs_in": 551078,
+    "no_primer": 532496,
+    "overlap_found": 18466,
+    "adapter_cut": 18558,
+    "short": 15738,
+    "kept": 2831,
+    "has_N": 13
+   },
+   "usable_pairs": 2831,
+   "unique_within_run": 728,
+   "within_run_dup_rate": 0.7428,
+   "records_in_set": 509,
+   "duplicates_skipped_while_filling": 2322
+  }
+ ],
+ "dedupe": {
+  "usable_pairs_all_runs": 634793,
+  "unique_pairs_all_runs": 115642,
+  "sum_of_within_run_unique": 153466,
+  "dup_rate_all_runs": 0.8178,
+  "dup_rate_within_runs_only": 0.7582,
+  "extra_dup_rate_across_runs": 0.2465,
+  "records_scanned_to_fill_set": 573249,
+  "duplicates_skipped_to_fill_set": 473249,
+  "dup_rate_while_filling": 0.8256,
+  "unique_forward_sequences_in_set": 67328,
+  "unique_reverse_sequences_in_set": 65432
+ },
+ "duplicate_rate": 0.8178,
+ "unique_pairs_available": 115642,
+ "lengths": {
+  "forward_mean": 127.13,
+  "reverse_mean": 127.49,
+  "forward_quantiles": {
+   "p0": 50,
+   "p10": 116,
+   "p25": 117,
+   "p50": 118,
+   "p75": 118,
+   "p90": 130,
+   "p100": 284
+  },
+  "reverse_quantiles": {
+   "p0": 50,
+   "p10": 116,
+   "p25": 117,
+   "p50": 118,
+   "p75": 118,
+   "p90": 138,
+   "p100": 287
+  }
+ },
+ "batches_of_25000": [
+  {
+   "records": 25000,
+   "paired_bases": 6210898,
+   "forward_bases": 3107271,
+   "reverse_bases": 3103627,
+   "paired_fraction_of_bwa_chunk": 0.3105
+  },
+  {
+   "records": 25000,
+   "paired_bases": 6256279,
+   "forward_bases": 3123979,
+   "reverse_bases": 3132300,
+   "paired_fraction_of_bwa_chunk": 0.3128
+  },
+  {
+   "records": 25000,
+   "paired_bases": 6322148,
+   "forward_bases": 3153115,
+   "reverse_bases": 3169033,
+   "paired_fraction_of_bwa_chunk": 0.3161
+  },
+  {
+   "records": 25000,
+   "paired_bases": 6673042,
+   "forward_bases": 3328623,
+   "reverse_bases": 3344419,
+   "paired_fraction_of_bwa_chunk": 0.3337
+  }
+ ],
+ "bwa_chunk_limit_bases": 20000000,
+ "read_names": "<run>_<spot>, identical in F and R (production's fasta-gen numbers them instead)",
+ "compression": "zstd -3 --no-check, one frame (as the tronko test data; the pipeline's fasta-gen writes zstd level 3 without a checksum)",
+ "files": {
+  "ba100k_F.fasta.zst": {
+   "sha256": "35542705ba5ca46620d64eed1022c245001f1a1ee2e9ad1c4bb90f18a1c860b3",
+   "bytes": 1695561,
+   "sha256_decompressed": "9c0587524f6fd6f230954f73468fa0662a68c40bd4fe22f1e5f372fce2d20717",
+   "bytes_decompressed": 14764299,
+   "records": 100000
+  },
+  "ba100k_R.fasta.zst": {
+   "sha256": "5501ca074adf81e2ee4b0c5d980b169781c6a6d83e95b11b3cf8bc48253cb13e",
+   "bytes": 1755708,
+   "sha256_decompressed": "1af2c56d76cd4c1e33d993400a05a521e39a25cc8856a0d1dc2ea6e7e2819732",
+   "bytes_decompressed": 14800690,
+   "records": 100000
+  }
+ },
+ "generated_by": "harness/build_readsets.py build, then package",
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession",
+ "source": "the before-after read set vert12s (taxa-assignment-review/tronko-performance/data/before-after-reads/vert12s/vert12s_F.fasta.zst, vert12s_R.fasta.zst), the same bytes under this set's names",
+ "built_by": {
+  "script": "projects/taxa-assignment-review/determinism-performance/harness/build_readsets.py",
+  "repository": "eDNA-Explorer/edna-explorer-data-pipelines",
+  "commit": "8bd5a707c",
+  "note": "the script as committed there is byte-identical to the copy that built the set on 2026-09-26 (generated_by above); the study and run accessions are under study and runs"
+ }
+}

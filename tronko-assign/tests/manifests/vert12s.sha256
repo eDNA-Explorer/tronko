@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker vert12s (vert12S): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/vert12s/.
+62e823c738c2517c8b9bd98708f3ba2509ecf8e72294ed2a17018f5939a31651  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta
+ab1591ede93b7489b6368a947846825cc562e142d567ba867f2f4bde301c64dd  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta.amb
+f78fd9da85eb622ec0190adbecccac36e179f5ef35828de8a1495ae2cca61518  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta.ann
+31f77e7b0ba7c7e4afe84e25656b4353755f64617e7cefe64963301629399ce9  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta.bwt
+5e89833d8069b166d49ea17df783f4e8d374bf24429d07d37aaf160189df89b9  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta.pac
+c66ce867cc94c21e172181b7044d5b521f1419affca2bfa9297a0bcf4854e95f  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/vert12S.fasta.sa
+9613951a98000b13ee6924b88940e79b22b10fe66deff41bba836d1e443eabe1  gs://edna-reference-databases/CruxV2/vert12S/2023-04-07/tronko/reference_tree.trkb

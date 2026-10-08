@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # make -C tronko-assign/tests/real test-real: this checkout's tronko-assign on production's real
-# references, compared byte for byte with production's one-thread goldens in data/real/ (each set's
+# references, compared byte for byte with the one-thread goldens in data/real/ (each set's
 # goldens.tar.zst, unpacked into the cache and checked against its goldens.sha256).
 #   1. fetch the reference files named in manifests/<marker>.sha256 (by URL, each checked against
 #      its SHA-256; files already cached with the right sum are kept)
@@ -50,4 +50,4 @@ for m in $MARKERS; do
 	done
 done
 ((fail == 0)) || die "some outputs differ from the goldens or have none ($WORK/results.tsv)"
-log "PASS: $n outputs byte-identical to production's one-thread goldens ($WORK/results.tsv)"
+log "PASS: $n outputs byte-identical to the one-thread goldens ($WORK/results.tsv)"

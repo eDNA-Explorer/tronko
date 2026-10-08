@@ -193,7 +193,7 @@ rc190_oneN_AB843420.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Chara
 rc191_oneN_DQ433082.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Phalaropus;Phalaropus lobatus	-7.191232	2.000000	0.000000	0	71
 rc192_plain_AY666370.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae	-7.201283	1.000000	0.000000	0	601
 rc193_plain_KF946717.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-7.201283	1.000000	0.000000	0	1374
-rc194_plain_EU525589.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-7.201283	1.000000	0.000000	0	1090
+rc194_plain_EU525589.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-11.796402	1.000000	0.000000	0	1090
 rc195_plain_GQ481570.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-7.201283	1.000000	0.000000	0	733
 rc196_plain_KY056596.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago;Gallinago stenura	-7.201283	1.000000	0.000000	0	2890
 rc197_oneN_EU525406.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-7.191232	2.000000	0.000000	0	996
@@ -318,7 +318,7 @@ rc315_plain_KF009512.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Aphr
 rc316_random_none	unassigned
 rc317_oneN_GU571895.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula arctica	-7.191232	2.000000	0.000000	0	975
 rc318_plain_KT075279.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa semipalmata	-7.201283	1.000000	0.000000	0	151
-rc319_plain_DQ433701.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-11.796402	1.000000	0.000000	0	7
+rc319_plain_DQ433701.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Jacana	-7.201283	1.000000	0.000000	0	7
 rc320_oneN_DQ432981.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-7.191232	2.000000	0.000000	0	1399
 rc321_plain_JQ251257.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris minutilla	-7.201283	1.000000	0.000000	0	367
 rc322_plain_KM001315.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius semipalmatus	-7.201283	1.000000	0.000000	0	794

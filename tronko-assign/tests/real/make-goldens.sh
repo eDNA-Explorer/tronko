@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# make -C tronko-assign/tests/real goldens: make the real-reference goldens again from production's
-# release (commit 71f6ec3) at one thread, built with the pipeline's recipe, and compare every file
+# make -C tronko-assign/tests/real goldens: make the real-reference goldens again from the
+# goldens' commit (ef420cf: production 71f6ec3 with F1 removed, tests/README.md) at one thread, built with the pipeline's recipe, and compare every file
 # with the golden committed under data/real/ (the set's goldens.tar.zst).
 # make -C tronko-assign/tests/real update-goldens: the same, and write every golden that is new or
 # differs into the set's goldens.tar.zst (with its command line and time -v record under
@@ -9,7 +9,7 @@
 # exactly the sets that changed and `git diff` of goldens.sha256 the goldens; for each golden that
 # differs the script prints the number of changed rows and the first of them.
 #   1. fetch and check the reference files of manifests/<marker>.sha256 (as test-real)
-#   2. export GOLDEN_COMMIT (default 71f6ec3) with its carquet submodule from this repository
+#   2. export GOLDEN_COMMIT (default ef420cf) with its carquet submodule from this repository
 #   3. build it as the pipeline builds it (cap 25), plain and parquet
 #   4. run every case at --number-of-cores 1 with production's full command line
 #   5. compare each output with the set's golden: IDENTICAL, DIFFER or NEW
@@ -18,7 +18,7 @@
 # Environment: GOLDEN_COMMIT, GOLDENS_UPDATE (1: write, as update-goldens does), and MARKERS, SETS,
 # CASES, FORMATS, TRONKO_REAL_* (lib.sh). Measured at one thread: FWH dev 23 to 25 minutes per case.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-COMMIT=${GOLDEN_COMMIT:-71f6ec3}
+COMMIT=${GOLDEN_COMMIT:-ef420cf}
 UPDATE=${GOLDENS_UPDATE:-0}
 WORK=${TRONKO_REAL_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/tronko-goldens.XXXXXX")}
 mkdir -p "$WORK"

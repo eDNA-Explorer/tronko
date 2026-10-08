@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker its2plants (ITS2_Plants): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/its2plants/.
+aa212ef29bf92f53fc4707a49c39fea263c1847cc3f9ac90721e46f0e0f93234  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta
+b000b1100ee0ecf9b0f8aaca1a823b7da074c6a91ab9e462cc74ad4015fb424d  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta.amb
+99d17d8ee1d3216ce3adf30627d8bb8b110380e2b5d824aa5eef984cd3bbe2eb  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta.ann
+ed9bf26970ecf28dc24b340665cab139e4452b0ea1eb99a56e5ebf15b428ba4a  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta.bwt
+08f6e9e31b87c499f49e8ea5f4c108b2f131c5330b3b4950e7832104e9411c41  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta.pac
+3236d0b16051b1d6de198aca46c005ead4822be8b0de15262e67b0ae29454787  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/ITS2_Plants.fasta.sa
+08bba7fe9d354e1b34305914c057cc1e80e6744b5b7b267119c4646936c0fed1  gs://edna-reference-databases/CruxV2/ITS2_Plants/2023-04-07/tronko/reference_tree.trkb
