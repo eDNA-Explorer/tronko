@@ -1,4 +1,5 @@
 #include "allocateMemoryForResults.h"
+#include "nodestore.h"
 
 void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_threads, int numberOfTrees, int print_alignments, int maxNumSpec, int paired, int use_nw, int max_lineTaxonomy, int max_name_length, int max_query_length, int max_numbase, int use_portion, int padding_size, int number_of_total_nodes){
 	int i,j, k;
@@ -9,6 +10,11 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		results->positions = malloc((max_query_length+max_numbase+1)*(sizeof(int)));
 		results->locQuery = malloc((max_query_length+max_numbase+1)*(sizeof(char)));
 	}
+	results->nsblk = NULL;
+	if (ns_trees != NULL){
+		/* node-store path: scores live in the per-thread block (nodestore.c) */
+		results->nodeScores = NULL;
+	}else{
 	results->nodeScores = (type_of_PP ***)malloc(MAX_NUM_BWA_MATCHES*(sizeof(type_of_PP **)));
 	for (i=0; i<MAX_NUM_BWA_MATCHES; i++){
 		results->nodeScores[i] = (type_of_PP **)malloc(numberOfTrees*(sizeof(type_of_PP *)));
@@ -18,6 +24,7 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 				results->nodeScores[i][j][k] = 0;
 			}
 		}
+	}
 	}
 	results->voteRoot = (int **)malloc(numberOfTrees*sizeof(int *));
 	for (i=0; i<numberOfTrees; i++){
@@ -91,6 +98,7 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 	int i, j, k;
 	free(results->positions);
 	free(results->locQuery);
+	if (results->nodeScores != NULL){
 	for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
 		for(j=0; j<numberOfTrees; j++){
 			free(results->nodeScores[i][j]);
@@ -98,6 +106,8 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 		free(results->nodeScores[i]);
 	}
 	free(results->nodeScores);
+	}
+	ns_block_free(results->nsblk);
 	for(i=0; i<numberOfTrees; i++){
 		free(results->voteRoot[i]);
 		free(results->leaf_coordinates[i]);
