@@ -70,6 +70,21 @@ goldens") and by the commit "tests: assignment parity with the production invoca
 | `prod-names/` | `pn_paired_F.fasta`, `pn_paired_R.fasta`, `pn_unpaired_F.fasta`, `pn_unpaired_R.fasta` | the `tests/data/assignment/` reads renamed as the pipeline names them (`12S_MiFish_U_paired_F_<idx>`); the sequences are the example-derived reads |
 | each | `goldens/`, `goldens-cap25/`: `expected_<case>.tsv` | goldens of `integration/test_gap_fixtures.sh` |
 
+## `tronko-assign/tests/data/nw_fixture_alignments.txt.gz` (`tools/record_nw_alignments.sh`)
+
+2,000 lines of `leaf TAB read`, the input of `unit/test_nw_fill.c`: the 1st, 6th, 11th, ...
+`needleman_wunsch_align()` call of the 10,000 that the three cases of
+`tests/integration/test_assignment_production_parity.sh` make at one thread (single, unpaired
+reverse, paired: 4,000, 2,000 and 4,000 calls, in that order). The leaves are example leaves as
+`tronko-assign` passes them to the aligner (about 311 bases), the reads the
+`tests/data/assignment/` reads (150 bases). It was recorded from production (`71f6ec3`):
+`tools/record_nw_alignments.sh 71f6ec3 <file> d019e28` writes this file byte for byte (`gzip -9n`;
+`d019e28`, the head of `pr2/01-tests`, holds production's fixture goldens), and so does
+`pr2/03-ub-fixes`. From the commit that removes F1 on, 609 of the 2,000 lines differ (the leaf
+aligned to a read, as F1 changed which candidate leaves a read has); every commit from there up to
+the parent of the two-pass fill, BWA-MEM3 included, gives one and the same other file. The test
+uses the file only as a set of real alignment inputs, so the production recording is kept.
+
 ## `tronko-assign/tests/data/real/`: real-reference read sets
 
 Public Illumina MiSeq amplicon reads of the two production markers, from the European Nucleotide

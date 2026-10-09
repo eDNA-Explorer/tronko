@@ -27,6 +27,11 @@ typedef struct
   size_t score_width, score_height; // width=len(seq_a)+1, height=len(seq_b)+1
   score_t *match_scores, *gap_a_scores, *gap_b_scores;
   size_t capacity;
+  // Substitution profile of the two-pass Needleman-Wunsch fill (alignment.c):
+  // one row of len(seq_a) scores per distinct character of seq_b
+  int *profile;
+  size_t prof_capacity; // ints allocated in profile
+  int prof_rows;        // rows in use for the current alignment
 } aligner_t;
 
 // Store alignment result here
