@@ -13,8 +13,14 @@ alters any assignment, score digit or row order fails.
 ```
 make -C tronko-assign clean && make -C tronko-assign      # the binary under test
 make -C tronko-assign bwa-mem3                            # the aligner it runs (clang 19 by default)
-make -C tronko-assign/tests test                          # every test; same as: make -C tronko-assign test
+make -C tronko-assign/tests test                          # every test
+make -C tronko-assign/tests test-san                      # the unit tests of tests/Makefile under ASan and UBSan
+make -C tronko-assign/tests clean
 ```
+
+`make -C tronko-assign/tests test` builds and runs the unit tests of `tests/Makefile` with
+production's flags (gcc `-O3 -fno-stack-protector`, no `-march`), then `tronko-assign`'s own
+`make test`, which runs `tests/run_tests.sh`.
 
 `tronko-assign` runs BWA-MEM3 v0.14.0 as a separate program for its candidate search.
 `make bwa-mem3` clones the pinned release (tag `v0.14.0`, commit `5c1d5e3`), builds it unchanged
@@ -25,6 +31,7 @@ one of them. For development only, an older compiler is accepted with
 `make bwa-mem3 BWA_MEM3_CC=gcc BWA_MEM3_CXX=g++ ALLOW_UNSUPPORTED_COMPILER=1`. The fixtures commit
 only their reference FASTA; the tests build each one's BWA-MEM3 index beside it
 (`integration/mem3_lib.sh`, well under a second each).
+
 `tests/run_tests.sh` prints one `==` line per test: PASS, FAIL or SKIP (a missing fixture is a
 skip, exit 77). It exits 1 if any test failed. The whole run takes a few minutes, most of it the
 three-tree and gap fixtures at one thread.
@@ -60,6 +67,7 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_gap_fixtures.sh` | `data/gaps/` | code production runs that the other fixtures never reach (below) |
 | `integration/test_bwamem3.sh` | the first 20 single-end reads of the repository fixture | the BWA-MEM3 run itself, through a stand-in `bwa-mem3` that logs its calls: the pinned command line and thread count, BWA-MEM3's environment overrides removed, the index staged once and dropped, `--no-shm`, `--bwa-mem3`, the index built without `-6`; with `-6`, a missing index built in the run beside the FASTA under a temporary name and renamed into place (output equal to the three-tree fixture's `mt_single_F` golden), found by the next run, rebuilt when one of its files is missing, refused in a read-only directory, and a build stopped by SIGTERM leaving no file under the final names; a stop with a message when the version is not 0.14.0, the aligner fails, a read has no record or records come out of order, and on SIGTERM the staged index dropped and the temporary directory removed |
 | `integration/test_pinned_aligner.sh` | four fixture batches: `mr_paired`, the repository's pairs on the example and on the three-tree reference, `rc_single` | the pinned aligner: BWA-MEM3 gives the stored SAM for each batch, at every thread count (the Tronko fields of every record against `data/pinned-aligner/<case>.fields.tsv`, the whole SAM without header against `<case>.sam.sha256`), so another BWA-MEM3 release, build or SIMD tier cannot change the candidate search unnoticed |
+| `unit/test_vote_tally` | random forests and reads | the vote tally over a read's candidate trees equals the pass over every tree (below) |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
 | `integration/test_slot_cap.sh` | chimeric reads made from the example reference | a copy built with `MAX_NUM_BWA_MATCHES 2` and AddressSanitizer on reads with three candidate leaves: the SAM parse stops at the last slot and placement reads no further |
 
@@ -345,3 +353,39 @@ The fixture inputs themselves (reads, references, BWA index) are regenerated fro
 dataset by `tools/make_fixture_inputs.sh <out-dir>`, which also compares every file with the
 committed one ([tools/README.md](tools/README.md)); `data/PROVENANCE.md` names the tool that wrote
 each fixture.
+
+## `unit/test_vote_tally.c`
+
+After placement, `runAssignmentOnChunk_WithBWA` tallies a read's votes: how many nodes of each
+tree lie inside the score window, the list of voted nodes (`minNodes`), the tree with the most
+votes (`maxRoot`, lowest index on a tie) and the ascending list of trees with votes
+(`maxRoots`). It used to pass over every node of every tree in the reference, 7,086,092 nodes on
+CO1_fwhF2_EPTDr2n, for every read; `vote_tally.h` now passes only over the read's candidate trees
+(`vote_hit_trees()`, `vote_tally_hit_trees()`, `vote_reset_hit_trees()`). The old pass is kept
+there as `vote_tally_all_trees()`.
+
+The test runs both on random forests (1 to 4,000 trees, one-leaf trees, one large tree) and
+random reads, with the buffers reused from read to read as in `tronko-assign`, and requires the
+same `numMinNodes`, `minNodes`, per-tree counts, count of voting trees, `maxRoot`, `max` and
+`maxRoots` for every read, and `voteRoot` all zero after each reset. The candidate lists come out
+of tree order, with duplicate trees, with -1 and out-of-range ids, longer than the tree count and
+empty; the votes include none, one node, sparse, dense, every node and equal counts in several
+trees. It prints one line, for example:
+
+```
+test_vote_tally: 140000 reads on 6 forests; 55613 with more than one hit tree, ... ; without the sort 12713 results would change, without the duplicate removal 31529; 0 differ
+```
+
+The last counts show that the inputs exercise the rules: that many reads would get a different
+result if the candidate trees were taken in hit order, or with duplicates.
+
+## `integration/test_multitree_parity.sh` with `-DVOTE_SHADOW_CHECK`
+
+Built with `make ARCH_FLAGS=-DVOTE_SHADOW_CHECK`, `tronko-assign` also recomputes every read's
+vote tally with the old full pass and aborts on any difference, and prints one line of counters at
+exit; the three-tree script passes that line on:
+
+```
+PASS: mt_paired, --number-of-cores 4
+  VOTE_SHADOW reads=2000 multi_hit=1247 multi_vote=1184 unsorted=630 neg_in_prefix=0 dup_in_prefix=0 cap_reached=0 written_past_prefix=0
+```
