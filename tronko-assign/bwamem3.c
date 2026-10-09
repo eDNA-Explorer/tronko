@@ -18,7 +18,11 @@
  *      records with 0x20);
  *   5. runs the SAM parse (sam_parse.c).
  *
- * The index is BWA-MEM3's, beside the -a FASTA (<fasta>.amb .ann .pac .bwt.2bit.64). The process
+ * The index is BWA-MEM3's, beside the -a FASTA (<fasta>.amb .ann .pac .bwt.2bit.64). Without -6
+ * `bwa-mem3 index` builds it there in every run. With -6 the index there is used; if any of its
+ * four files is missing, it is built first (ensure_index): under a temporary name beside the FASTA
+ * and renamed into place, .bwt.2bit.64 last, so a build stopped part-way never leaves a set that
+ * looks complete. The process
  * reaches it through symbolic links named tronko-<pid>-<basename> in its temporary directory, so
  * the shared-memory segment it stages (BWA-MEM3 keys segments by the prefix's basename) cannot be
  * confused with a segment another process staged from a different file of the same name, nor a
@@ -43,6 +47,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <time.h>
 #include <unistd.h>
 #include "bwamem3.h"
 #include "sam_parse.h"
@@ -80,6 +85,8 @@ static struct {
 	char prefix[PATH_MAX];     /* dir/tronko-<pid>-<basename>: the index prefix bwa-mem3 is given */
 	char threads[16];
 	int staged;                /* this process staged prefix in shared memory */
+	char build[PATH_MAX];      /* <fasta>.tmp-<pid>: the name -6's index build runs under */
+	int building;              /* build's files may exist and must go at finish */
 	char **envp;               /* environ without BWA-MEM3's overrides */
 	long batch;
 } A;
@@ -235,6 +242,76 @@ static void index_file(char *dst, size_t size, const char *prefix, const char *s
 	if ((size_t)snprintf(dst, size, "%s.%s", prefix, suffix) >= size) die("path too long: %s.%s", prefix, suffix);
 }
 
+/* Every file `bwa-mem3 index <prefix>` may leave under <prefix>: the index, the FM-index writer's
+ * scratch file, and the .alt and .0123 it can write; removed when a build under A.build ends
+ * early. */
+static const char *const mem3_build_suffixes[] = { "amb", "ann", "pac", "bwt.2bit.64", "bwt.2bit.64.tmp", "alt", "0123" };
+
+static void remove_build_files(void)
+{
+	char path[PATH_MAX];
+	size_t i;
+	for (i = 0; i < sizeof mem3_build_suffixes / sizeof *mem3_build_suffixes; i++) {
+		snprintf(path, sizeof path, "%s.%s", A.build, mem3_build_suffixes[i]);
+		unlink(path);
+	}
+	unlink(A.build);
+}
+
+/* -6: use the BWA-MEM3 index beside the FASTA (real, absolute), building it there first if any of
+ * its four files is missing. The build indexes a symbolic link <fasta>.tmp-<pid> to the FASTA, in
+ * the FASTA's directory so the renames stay on one file system; then the existing .bwt.2bit.64 is
+ * removed and each new file renamed over its final name, .bwt.2bit.64 (the file `bwa-mem3 index`
+ * writes last) last. A process stopped at any point therefore leaves at least one of the four
+ * missing, and the next run with -6 builds again. Its .amb .ann .pac equal the fork's (plan test
+ * 23), so replacing those is harmless. The FASTA's directory must be writable; there is no
+ * fallback. Logs one line: found, or built with the build's wall time. */
+static void ensure_index(const char *real)
+{
+	char path[PATH_MAX], dst[PATH_MAX], dir[PATH_MAX], *slash;
+	const char *base;
+	struct timespec t0, t1;
+	size_t i;
+	int missing = 0;
+	for (i = 0; i < sizeof mem3_index_suffixes / sizeof *mem3_index_suffixes; i++) {
+		index_file(path, sizeof path, real, mem3_index_suffixes[i]);
+		if (access(path, R_OK) != 0) missing = 1;
+	}
+	if (!missing) {
+		fprintf(stderr, "tronko-assign: bwa-mem3: index found beside %s\n", A.fasta);
+		return;
+	}
+	snprintf(dir, sizeof dir, "%s", real);
+	slash = strrchr(dir, '/');
+	if (slash == dir) slash[1] = 0; else *slash = 0;
+	base = strrchr(real, '/') + 1;
+	if (access(dir, W_OK | X_OK) != 0)
+		die("the BWA-MEM3 index of %s is missing and its directory is not writable (%s); "
+		    "-6 builds the index beside the FASTA", A.fasta, strerror(errno));
+	if ((size_t)snprintf(A.build, sizeof A.build, "%s.tmp-%ld", real, (long)getpid()) >= sizeof A.build - 32)
+		die("path too long: %s.tmp-%s", real, "<pid>");
+	A.building = 1;
+	remove_build_files();  /* a leftover of an earlier process with this pid */
+	if (symlink(base, A.build) != 0) die("cannot make %s: %s", A.build, strerror(errno));
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	{
+		char *argv[] = { A.bin, "index", A.build, 0 };
+		if (run(argv, 0) != 0) die("`%s index %s` failed", A.bin, A.build);
+	}
+	index_file(dst, sizeof dst, real, "bwt.2bit.64");
+	if (unlink(dst) != 0 && errno != ENOENT) die("cannot remove the old %s: %s", dst, strerror(errno));
+	for (i = 0; i < sizeof mem3_index_suffixes / sizeof *mem3_index_suffixes; i++) {  /* .bwt.2bit.64 is last */
+		index_file(path, sizeof path, A.build, mem3_index_suffixes[i]);
+		index_file(dst, sizeof dst, real, mem3_index_suffixes[i]);
+		if (rename(path, dst) != 0) die("cannot rename %s into place: %s", path, strerror(errno));
+	}
+	clock_gettime(CLOCK_MONOTONIC, &t1);
+	remove_build_files();
+	A.building = 0;
+	fprintf(stderr, "tronko-assign: bwa-mem3: index built beside %s in %.2f s\n", A.fasta,
+	        (double)(t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9);
+}
+
 static void *stop_waiter(void *arg)
 {
 	sigset_t set, one;
@@ -308,6 +385,7 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 		if (!getcwd(cwd, sizeof cwd)) die("cannot read the working directory: %s%s", strerror(errno), "");
 		if ((size_t)snprintf(real, sizeof real, "%s/%s", cwd, fasta) >= sizeof real) die("path too long: %s/%s", cwd, fasta);
 	}
+	if (skip_build) ensure_index(real);
 	base = strrchr(real, '/');
 	base = base ? base + 1 : real;
 	if ((size_t)snprintf(A.prefix, sizeof A.prefix, "%s/tronko-%ld-%s", A.dir, (long)getpid(), base) >= sizeof A.prefix)
@@ -316,7 +394,7 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 		index_file(src, sizeof src, real, mem3_index_suffixes[i]);
 		index_file(dst, sizeof dst, A.prefix, mem3_index_suffixes[i]);
 		if (access(src, R_OK) != 0)
-			die("the BWA-MEM3 index file %s is missing (build it with `bwa-mem3 index <fasta>`, or run without -6)%s", src, "");
+			die("the BWA-MEM3 index file %s is missing%s", src, "");
 		if (symlink(src, dst) != 0) die("cannot link %s: %s", dst, strerror(errno));
 	}
 	index_file(src, sizeof src, real, "alt");
@@ -376,6 +454,10 @@ void bwamem3_finish(void)
 		}
 		unlink(path);
 		A.staged = 0;
+	}
+	if (A.building) {  /* -6's build was stopped: its files go, the final names were not reached */
+		remove_build_files();
+		A.building = 0;
 	}
 	for (i = 0; i < sizeof mem3_index_suffixes / sizeof *mem3_index_suffixes; i++) {
 		snprintf(path, sizeof path, "%s.%s", A.prefix, mem3_index_suffixes[i]);

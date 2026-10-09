@@ -1211,7 +1211,7 @@ int main(int argc, char **argv){
 			TSV_LOG_SIMPLE(tsv_log, "BWA_INDEX");
 		} else {
 			if (opt.verbose_level >= 0) {
-				LOG_INFO("Skipping BWA index build");
+				LOG_INFO("-6: using the BWA-MEM3 index beside the FASTA, built first if missing");
 			}
 		}
 		bwamem3_init(opt.bwa_mem3_bin, opt.fasta_file, opt.number_of_cores, opt.skip_build, !opt.no_shm);

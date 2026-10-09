@@ -10,8 +10,9 @@
 
 /* Prepares the aligner for this process: finds the bwa-mem3 binary (bin_option, else
  * $TRONKO_BWA_MEM3, else bwa-mem3 beside the tronko-assign executable, else bwa-mem3 on PATH) and
- * checks its version; builds the BWA-MEM3 index of fasta beside it unless skip_build (-6), in
- * which case the index must exist; makes the process's temporary directory; and, when use_shm,
+ * checks its version; builds the BWA-MEM3 index of fasta beside it, in every run unless skip_build
+ * (-6), with skip_build only when one of its files is missing (built under a temporary name and
+ * renamed into place, so a stopped build is never taken for an index); makes the process's temporary directory; and, when use_shm,
  * stages the index in shared memory. Exits with a message on any failure. */
 void bwamem3_init(const char *bin_option, const char *fasta, int threads, int skip_build, int use_shm);
 

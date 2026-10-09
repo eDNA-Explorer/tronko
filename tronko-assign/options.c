@@ -80,7 +80,8 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-e, Use only a portion of the reference sequences\n\
 	-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences\n\
 	-5 [FILE], Print tree number and leaf number and exit\n\
-	-6, Skip the BWA-MEM3 index build: the index (<-a FASTA>.amb .ann .pac .bwt.2bit.64) exists\n\
+	-6, Use the BWA-MEM3 index beside the -a FASTA (.amb .ann .pac .bwt.2bit.64); build it there first if a file is missing\n\
+	    (the FASTA's directory must then be writable). Without -6 the index is built in every run\n\
 	--bwa-mem3 [FILE], BWA-MEM3 binary (default: $TRONKO_BWA_MEM3, else bwa-mem3 beside tronko-assign, else on PATH)\n\
 	--no-shm, do not stage the BWA-MEM3 index in shared memory (it is then read from disk for every batch)\n\
 	-u, Score constant [default: 0.01]\n\
