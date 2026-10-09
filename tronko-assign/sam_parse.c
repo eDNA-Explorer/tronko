@@ -3,6 +3,8 @@
  * start arrays) in the batch's bwaMatches. Moved unchanged from the vendored BWA's fastmap.c
  * (main_mem's pipeline step 2), including the candidate-slot overflow fix (every slot write
  * checks k < MAX_NUM_BWA_MATCHES) and the read-name buffer of max_readname_length bytes.
+ * The leaf map (leaf name to tree and node) is built by the first batch and kept for the
+ * process, since the trees do not change after load.
  *
  * sam[i] is the SAM text (records ending in newlines, no header) of the i-th read handed to the
  * aligner: for paired input, sam[2k] holds the records of pair k's read 1 and sam[2k+1] those of
@@ -24,9 +26,10 @@ void sam_parse_batch(const sam_parse_ctx_t *ctx, int n_seqs, char **sam)
 		int k=0;
 		int no_add=0;
 		int success=1;
-	HASHMAP(char, leafMap) map;
-	hashmap_init(&map, hashmap_hash_string, strcmp);
-	for(i=0; i<ctx->ntree; i++){
+	static HASHMAP(char, leafMap) map; // built by the first batch and kept for the process: read-only once built
+	int build_map = hashmap_size(&map) == 0;
+	if (build_map) hashmap_init(&map, hashmap_hash_string, strcmp);
+	for(i=0; build_map && i<ctx->ntree; i++){
 		for(j=numspecArr[i]-1; j<2*numspecArr[i]-1; j++){
 			struct leafMap *l;
 			l = malloc(sizeof(*l));
@@ -455,9 +458,4 @@ void sam_parse_batch(const sam_parse_ctx_t *ctx, int n_seqs, char **sam)
 				}
 			}
 		}
-	struct leafMap *blob;
-	hashmap_foreach_data(blob,&map){
-		free(blob);
-	}
-	hashmap_cleanup(&map);
 }
