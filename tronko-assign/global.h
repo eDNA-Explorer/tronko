@@ -243,6 +243,8 @@ typedef struct Options{
 	int padding;
 	char print_node_info[BUFFER_SIZE];
 	int skip_build;
+	char bwa_mem3_bin[BUFFER_SIZE];  // --bwa-mem3: the BWA-MEM3 binary (empty = default search, bwamem3.c)
+	int no_shm;                      // --no-shm: do not stage the BWA-MEM3 index in shared memory
 	int print_leave_seqs;
 	double score_constant;
 	int print_all_nodes;
