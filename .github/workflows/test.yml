@@ -103,11 +103,6 @@ jobs:
         cd tronko-assign
         make clean && make
 
-    - name: Build frozen high-perf baseline
-      run: |
-        git worktree add --detach /tmp/tronko-assign-baseline 71f6ec3eed6ca7c0e11de256deb7d19e10d174fc
-        make -C /tmp/tronko-assign-baseline/tronko-assign clean all
-    
     - name: Run integration tests
       run: |
         cd tests
@@ -115,8 +110,6 @@ jobs:
         ./test_simple_workflows
     
     - name: Run example dataset tests
-      env:
-        TRONKO_ASSIGN_BASELINE_BIN: /tmp/tronko-assign-baseline/tronko-assign/tronko-assign
       run: |
         chmod +x tests/integration/test_assignment_parity.sh
         timeout 300 ./tests/integration/test_assignment_parity.sh

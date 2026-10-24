@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker co1metazoa (CO1_Metazoa): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/co1metazoa/.
+c09233f196025cac8e6c4daa998f173c8558c2a35c8bef785e2f7f27af37842f  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta
+62ccd5a1ad0a0481fc13e9bce3a49b13d3ce77a4a8a4a5e6860174f9f75a2b11  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.amb
+9f07fa86632fcbd67818772d689f41646292a3bd401fae1c24f5fe1685de5541  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.ann
+8955a29f30dac827b7d2f362577e07bf9a31e10fc6dabd9a85bad41dd3cdc13e  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.bwt
+78e7084d831568bbf93f1d168a742c44b23f7970779bf269b77709dfbd349537  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.pac
+ba9b1847038dcb74fe6173694a5f2b56e9648189397569ddde681633fe5468ca  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/CO1_Metazoa.fasta.sa
+ad0f4c98022410e956d31103956671af2aab7ee99c34b58fa4c2961ffc69eda5  gs://edna-reference-databases/CruxV2/CO1_Metazoa/2023-04-07/tronko/reference_tree.trkb

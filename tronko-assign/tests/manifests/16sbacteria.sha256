@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker 16sbacteria (16S_Bacteria): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/16sbacteria/.
+103bc7bcc0f37916886a3f36adc307cce6220c0d6dad6050101557e8b0cf75c7  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta
+17c8987acc9d762427b32b10eb55e76d6b568aefb9dbf7c66acf58557d348506  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta.amb
+80c398a81b5e6873403aa50c5dc4e4d015185e44f914c22ab1ea248850c507be  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta.ann
+464ddaf1aeff5c36754080cf6189df19b195eef193628c48daf8cc26fb42d892  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta.bwt
+15347f558741cfe00e9b5e8f253bec674e34b4b65e5113e1192e7861b6e2b599  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta.pac
+6eeccd1b8c6b97d21821e6dab2e97df36545de179d611eb34c0f7545e03d4429  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/16S_Bacteria.fasta.sa
+3b4195f36becde81af7d73dd086b9484940c847b924ddadea079fbca2ceefd90  gs://edna-reference-databases/CruxV2/16S_Bacteria/2023-04-07/tronko/reference_tree.trkb

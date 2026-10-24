@@ -23,7 +23,7 @@ mr20_norm_DQ385168.1	Eukaryota;Chordata;Aves;Charadriiformes;Burhinidae;Burhinus
 mr21_norm_JQ175762.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Phaetusa;Phaetusa simplex	-14.392515	1.000000	1.000000	0	1121
 mr22_r2unseed_DQ433124.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Pluvialis;Pluvialis squatarola	-82.717300	1.000000	13.000000	0	645
 mr23_norm_KF009533.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago;Gallinago imperialis	-14.392515	1.000000	1.000000	0	2615
-mr24_r1unseed_GU571629.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna paradisaea	-77.023568	13.000000	1.000000	0	1183
+mr24_r1unseed_GU571629.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna paradisaea	-77.023568	12.000000	1.000000	0	1183
 mr25_norm_KF009511.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Actophilornis;Actophilornis africanus	-14.392515	1.000000	1.000000	0	2595
 mr26_norm_FJ027923.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Oreopholus;Oreopholus ruficollis	-14.392515	1.000000	1.000000	0	2111
 mr27_r2random_AB843405.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cerorhinca;Cerorhinca monocerata	-377.072723	1.000000	55.000000	0	989
@@ -66,7 +66,7 @@ mr63_norm_KY040012.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Hydrophas
 mr64_norm_EF632092.1	Eukaryota;Chordata;Aves;Charadriiformes;Rostratulidae;Rostratula;Rostratula benghalensis	-14.392515	1.000000	1.000000	0	1939
 mr65_norm_MF580171.1	Eukaryota;Chordata;Aves;Charadriiformes;Burhinidae;Burhinus;Burhinus capensis	-14.392515	1.000000	1.000000	0	2910
 mr66_norm_JQ176606.2	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus resplendens	-14.392515	1.000000	1.000000	0	2544
-mr67_r1unseed_KF946588.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alle;Alle alle	-77.023568	12.000000	1.000000	0	1052
+mr67_r1unseed_KF946588.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alle;Alle alle	-77.023568	14.000000	1.000000	0	1052
 mr68_r1unseed_FJ028548.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus chilensis	-82.717300	13.000000	1.000000	0	674
 mr69_r2fwd_EU525426.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-14.392515	1.000000	1.000000	0	607
 mr70_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Irediparra;Irediparra gallinacea	-14.392515	1.000000	1.000000	0	2618
@@ -82,7 +82,7 @@ mr79_r2unseed_AY666353.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-
 mr80_norm_DQ432749.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria interpres	-14.392515	1.000000	1.000000	0	386
 mr81_norm_KF009539.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limnodromus;Limnodromus semipalmatus	-14.392515	1.000000	1.000000	0	2621
 mr82_r2long_DQ434154.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Onychoprion;Onychoprion aleuticus	-135.066427	1.000000	22.000000	0	1119
-mr83_r2random_EU525584.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-383.517371	1.000000	46.000000	0	121
+mr83_r2random_EU525584.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-383.517371	1.000000	45.000000	0	121
 mr84_r2unseed_KX946489.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna hirundo	-82.717300	1.000000	13.000000	0	1200
 mr85_r1unseed_EU525460.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Phalaropus;Phalaropus fulicaria	-75.924956	26.000000	28.000000	0	69
 mr86_r2fwd_GU571658.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa glareola	-14.392515	1.000000	1.000000	0	131
@@ -96,7 +96,7 @@ mr93_norm_JX160001.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa
 mr94_norm_DQ385168.1	Eukaryota;Chordata;Aves;Charadriiformes;Burhinidae;Burhinus;Burhinus grallarius	-14.392515	1.000000	1.000000	0	1676
 mr95_r2long_GQ482783.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa glareola	-135.066427	1.000000	22.000000	0	131
 mr96_norm_AY666503.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Leucophaeus	-14.392515	1.000000	1.000000	0	1353
-mr97_r1unseed_EF380334.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-370.012626	21.000000	16.000000	0	1090
+mr97_r1unseed_EF380334.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-77.023568	21.000000	30.000000	0	1090
 mr98_r1unseed_FJ028398.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae	-82.717300	13.000000	1.000000	0	1246
 mr99_norm_KX371151.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-14.392515	1.000000	1.000000	0	782
 mr100_r2unseed_GU571623.1	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius parasiticus	-77.023568	1.000000	12.000000	0	896
@@ -106,7 +106,7 @@ mr103_norm_EU525415.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Gelochelid
 mr104_r2unseed_GQ482504.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Pluvialis;Pluvialis apricaria	-77.023568	1.000000	12.000000	0	643
 mr105_r2unseed_AB843203.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Synthliboramphus;Synthliboramphus antiquus	-82.717300	1.000000	13.000000	0	1066
 mr106_norm_DQ432749.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria interpres	-14.392515	1.000000	1.000000	0	386
-mr107_r2random_DQ385177.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula arctica	-404.008064	1.000000	45.000000	0	975
+mr107_r2random_DQ385177.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Fratercula;Fratercula arctica	-404.008064	1.000000	44.000000	0	975
 mr108_norm_KT943749.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus;Larus vegae	-14.392515	1.000000	1.000000	0	2822
 mr109_r2long_DQ434146.1	Eukaryota;Chordata;Aves;Charadriiformes;Stercorariidae;Stercorarius;Stercorarius longicaudus	-129.372694	1.000000	21.000000	0	909
 mr110_r1unseed_DQ433361.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Brachyramphus;Brachyramphus marmoratus	-77.023568	15.000000	14.000000	0	919
@@ -141,10 +141,10 @@ mr138_r2long_EU525457.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Num
 mr139_norm_KF009539.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limnodromus;Limnodromus semipalmatus	-14.392515	1.000000	1.000000	0	2621
 mr140_r2fwd_AY666178.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris subruficollis	-14.392515	1.000000	1.000000	0	347
 mr141_norm_FJ027923.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Oreopholus;Oreopholus ruficollis	-14.392515	1.000000	1.000000	0	2111
-mr142_r2random_GQ482780.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa erythropus	-409.639073	1.000000	62.000000	0	165
+mr142_r2random_GQ482780.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa erythropus	-403.648231	1.000000	61.000000	0	165
 mr143_r1unseed_AB842902.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-82.717300	14.000000	1.000000	0	1397
 mr144_norm_DQ385175.1	Eukaryota;Chordata;Aves;Charadriiformes;Glareolidae;Cursorius;Cursorius temminckii	-14.392515	1.000000	1.000000	0	1682
-mr145_r2random_GU571409.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-379.845661	1.000000	55.000000	0	455
+mr145_r2random_GU571409.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-379.845661	1.000000	56.000000	0	455
 mr146_r2fwd_KX946482.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna hirundo	-14.392515	1.000000	2.000000	0	1209
 mr147_r2unseed_KF009520.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alpina	-77.023568	1.000000	12.000000	0	317
 mr148_norm_KF009518.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris acuminata	-14.392515	1.000000	1.000000	0	2600
@@ -302,7 +302,7 @@ mr299_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Iredipar
 mr300_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Irediparra;Irediparra gallinacea	-14.392515	1.000000	1.000000	0	2618
 mr301_r2unseed_FJ028325.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sterna;Sterna trudeaui	-82.717300	1.000000	13.000000	0	1178
 mr302_r1unseed_AY666530.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa solitaria	-77.023568	12.000000	1.000000	0	214
-mr303_r1unseed_GU571660.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa nebularia	-82.717300	20.000000	12.000000	0	173
+mr303_r1unseed_GU571660.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa nebularia	-87.312420	19.000000	11.000000	0	173
 mr304_r1unseed_GU571581.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Pluvialis;Pluvialis apricaria	-82.717300	13.000000	1.000000	0	643
 mr305_r2fwd_KM001268.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius dubius	-14.392515	1.000000	1.000000	0	830
 mr306_norm_DQ385170.1	Eukaryota;Chordata;Aves;Charadriiformes;Chionididae;Chionis;Chionis minor	-14.392515	1.000000	1.000000	0	1678
@@ -315,7 +315,7 @@ mr312_r1unseed_EU525522.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Sternu
 mr313_norm_KF009539.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limnodromus;Limnodromus semipalmatus	-14.392515	1.000000	1.000000	0	2621
 mr314_norm_DQ434599.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-14.392515	1.000000	1.000000	0	455
 mr315_r2unseed_DQ433292.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alca;Alca torda	-82.717300	1.000000	13.000000	0	1016
-mr316_r1unseed_DQ433471.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cepphus;Cepphus grylle	-77.023568	13.000000	1.000000	0	1039
+mr316_r1unseed_DQ433471.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Cepphus;Cepphus grylle	-77.023568	12.000000	1.000000	0	1039
 mr317_norm_KF946614.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alpina	-14.392515	1.000000	1.000000	0	311
 mr318_norm_MF580171.1	Eukaryota;Chordata;Aves;Charadriiformes;Burhinidae;Burhinus;Burhinus capensis	-14.392515	1.000000	1.000000	0	2910
 mr319_norm_KF009518.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris acuminata	-14.392515	1.000000	1.000000	0	2600
@@ -333,7 +333,7 @@ mr330_r2random_JQ657319.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;L
 mr331_r2long_EU525430.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Hydroprogne;Hydroprogne caspia	-129.372693	1.000000	21.000000	0	1290
 mr332_norm_GU571941.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus;Larus canus	-14.392515	1.000000	1.000000	0	1392
 mr333_r2fwd_AY666260.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria melanocephala	-14.392515	1.000000	1.000000	0	373
-mr334_r1unseed_JQ251240.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris melanotos	-82.717300	14.000000	10.000000	0	358
+mr334_r1unseed_JQ251240.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris melanotos	-82.717300	14.000000	11.000000	0	358
 mr335_norm_JN801263.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Anous	-14.392515	1.000000	1.000000	0	1103
 mr336_norm_DQ434599.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-14.392515	1.000000	1.000000	0	426
 mr337_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Irediparra;Irediparra gallinacea	-14.392515	1.000000	1.000000	0	2618
@@ -375,7 +375,7 @@ mr372_r1unseed_EU525426.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostrid
 mr373_norm_DQ434599.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-14.392515	1.000000	1.000000	0	425
 mr374_norm_KM001331.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius veredus	-14.392515	1.000000	1.000000	0	2753
 mr375_norm_AB843140.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax;Scolopax rusticola	-14.392515	1.000000	1.000000	0	44
-mr376_r1unseed_AB843839.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-82.717300	13.000000	1.000000	0	684
+mr376_r1unseed_AB843839.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-87.312420	13.000000	1.000000	0	684
 mr377_r2unseed_FJ582600.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-77.023568	1.000000	12.000000	0	455
 mr378_r2unseed_DQ432805.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris pusilla	-77.023568	1.000000	12.000000	0	280
 mr379_norm_GU571775.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris alba	-14.392515	1.000000	1.000000	0	304
@@ -436,7 +436,7 @@ mr433_norm_KT803675.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Ichthyaetu
 mr434_r2long_GU571711.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Alle;Alle alle	-135.066427	1.000000	22.000000	0	1042
 mr435_norm_DQ432749.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Arenaria;Arenaria interpres	-14.392515	1.000000	1.000000	0	386
 mr436_norm_KM001319.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Thinornis;Thinornis novaeseelandiae	-14.392515	1.000000	1.000000	0	2747
-mr437_r2random_KF946637.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius hiaticula	-434.969879	1.000000	68.000000	0	819
+mr437_r2random_KF946637.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius hiaticula	-434.969879	1.000000	70.000000	0	824
 mr438_norm_KF009511.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Actophilornis;Actophilornis africanus	-14.392515	1.000000	1.000000	0	2595
 mr439_r2fwd_GQ482634.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Scolopax;Scolopax rusticola	-14.392515	1.000000	1.000000	0	44
 mr440_norm_KF009539.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limnodromus;Limnodromus semipalmatus	-14.392515	1.000000	1.000000	0	2621
@@ -449,7 +449,7 @@ mr446_r2unseed_GQ481923.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae	-82.71
 mr447_r2long_KM894291.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris melanotos	-135.066427	1.000000	22.000000	0	358
 mr448_r2random_GU572160.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Vanellus;Vanellus vanellus	-388.923421	1.000000	48.000000	0	686
 mr449_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Irediparra;Irediparra gallinacea	-14.392515	1.000000	1.000000	0	2618
-mr450_r2random_DQ434048.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Rhodostethia;Rhodostethia rosea	-437.838452	1.000000	40.000000	0	1317
+mr450_r2random_DQ434048.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Rhodostethia;Rhodostethia rosea	-443.501028	1.000000	41.000000	0	1317
 mr451_norm_KF009548.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius;Numenius minutus	-14.392515	1.000000	1.000000	0	2630
 mr452_norm_KM001331.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius veredus	-14.392515	1.000000	1.000000	0	2753
 mr453_r1unseed_EU525426.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-82.717300	18.000000	14.000000	0	607
@@ -467,7 +467,7 @@ mr464_r2long_JN801385.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tri
 mr465_norm_GU571299.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris canutus	-14.392515	1.000000	1.000000	0	261
 mr466_norm_DQ385175.1	Eukaryota;Chordata;Aves;Charadriiformes;Glareolidae;Cursorius;Cursorius temminckii	-14.392515	1.000000	1.000000	0	1682
 mr467_norm_FJ027348.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius modestus	-14.392515	1.000000	1.000000	0	847
-mr468_r2random_KF009521.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris ferruginea	-494.192162	1.000000	35.000000	0	274
+mr468_r2random_KF009521.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris ferruginea	-494.192162	1.000000	34.000000	0	274
 mr469_r2fwd_KM001307.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius ruficapillus	-14.392515	1.000000	1.000000	0	2740
 mr470_r2unseed_AY666261.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris mauri	-77.023568	1.000000	12.000000	0	282
 mr471_norm_FJ027923.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Oreopholus;Oreopholus ruficollis	-14.392515	1.000000	1.000000	0	2111
@@ -484,7 +484,7 @@ mr481_norm_GU571947.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Hydrocoloe
 mr482_norm_DQ433361.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Brachyramphus;Brachyramphus marmoratus	-14.392515	1.000000	1.000000	0	919
 mr483_norm_EU525457.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius;Numenius tahitiensis	-14.392515	1.000000	1.000000	0	485
 mr484_norm_GU571299.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris canutus	-14.392515	1.000000	1.000000	0	261
-mr485_r1unseed_GQ481580.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Chlidonias;Chlidonias leucopterus	-82.717300	29.000000	26.000000	0	1233
+mr485_r1unseed_GQ481580.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Chlidonias;Chlidonias leucopterus	-82.717300	29.000000	27.000000	0	1233
 mr486_norm_GU571947.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Hydrocoloeus;Hydrocoloeus minutus	-14.392515	1.000000	1.000000	0	2415
 mr487_r2unseed_EU525454.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Numenius;Numenius phaeopus	-77.023568	1.000000	12.000000	0	483
 mr488_norm_FJ027923.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Oreopholus;Oreopholus ruficollis	-14.392515	1.000000	1.000000	0	2111
@@ -494,7 +494,7 @@ mr491_r1unseed_EU525429.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Hydrop
 mr492_norm_DQ434599.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-14.392515	1.000000	1.000000	0	425
 mr493_norm_KF009536.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Irediparra;Irediparra gallinacea	-14.392515	1.000000	1.000000	0	2618
 mr494_r2long_DQ434152.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Onychoprion;Onychoprion aleuticus	-135.066427	1.000000	22.000000	0	1119
-mr495_r1unseed_AY666476.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-82.717300	14.000000	1.000000	0	1397
+mr495_r1unseed_AY666476.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Larus	-82.717300	13.000000	1.000000	0	1397
 mr496_r1unseed_KM001331.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius;Charadrius veredus	-82.717300	13.000000	1.000000	0	2753
 mr497_norm_FJ582600.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-14.392515	1.000000	1.000000	0	426
 mr498_r2unseed_DQ434247.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Actitis;Actitis macularia	-82.717300	1.000000	13.000000	0	562
@@ -513,7 +513,7 @@ mr510_r2random_KU722467.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Geloch
 mr511_norm_KT803675.1	Eukaryota;Chordata;Aves;Charadriiformes;Laridae;Ichthyaetus;Ichthyaetus audouinii	-14.392515	1.000000	1.000000	0	2821
 mr512_r2fwd_GQ481442.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris;Calidris tenuirostris	-14.392512	1.000000	1.000000	0	231
 mr513_r2random_AY666297.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Limnodromus;Limnodromus griseus	-426.416547	1.000000	64.000000	0	545
-mr514_r2random_JN801726.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-462.328800	1.000000	57.000000	0	607
+mr514_r2random_JN801726.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Himantopus	-454.812888	1.000000	56.000000	0	607
 mr515_norm_KY040012.1	Eukaryota;Chordata;Aves;Charadriiformes;Jacanidae;Hydrophasianus;Hydrophasianus chirurgus	-14.392515	1.000000	1.000000	0	2889
 mr516_r2unseed_GQ481955.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Gallinago	-77.023568	1.000000	12.000000	0	412
 mr517_r2long_KX371152.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-129.372694	1.000000	21.000000	0	782
@@ -541,7 +541,7 @@ mr538_r2fwd_GU571477.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Lymn
 mr539_r2fwd_EU525493.1	Eukaryota;Chordata;Aves;Charadriiformes;Recurvirostridae;Recurvirostra;Recurvirostra americana	-14.392515	1.000000	1.000000	0	596
 mr540_norm_DQ385168.1	Eukaryota;Chordata;Aves;Charadriiformes;Burhinidae;Burhinus;Burhinus grallarius	-14.392515	1.000000	1.000000	0	1676
 mr541_norm_AY666181.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Aphriza;Aphriza virgata	-14.392515	1.000000	1.000000	0	236
-mr542_r2random_JQ251246.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris	-412.316403	1.000000	41.000000	0	348
+mr542_r2random_JQ251246.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Calidris	-413.275888	1.000000	44.000000	0	348
 mr543_r2unseed_KF946893.1	Eukaryota;Chordata;Aves;Charadriiformes;Scolopacidae;Tringa;Tringa totanus	-77.023568	1.000000	12.000000	0	116
 mr544_r2random_KM001340.1	Eukaryota;Chordata;Aves;Charadriiformes;Charadriidae;Charadrius	-354.786497	1.000000	46.000000	0	722
 mr545_r2unseed_AB843793.1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Synthliboramphus;Synthliboramphus antiquus	-82.717300	1.000000	13.000000	0	1066

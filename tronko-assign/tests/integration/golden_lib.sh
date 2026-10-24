@@ -1,8 +1,8 @@
 # Shared by the golden parity scripts in this directory (sourced, not run).
 #
 # Each script runs tronko-assign on a fixture with the flags production uses and compares the
-# output byte for byte with a golden: the output of production tronko-assign (high-perf,
-# 71f6ec3) at --number-of-cores 1, built from the source as committed (MAX_NUM_BWA_MATCHES 10)
+# output byte for byte with a golden: the output of tronko-assign at --number-of-cores 1 from the
+# commit that removed F1 (tests/README.md), built from the source as committed (MAX_NUM_BWA_MATCHES 10)
 # and with production's match cap of 25. The goldens for cap 10 live in <dir>, those for cap 25
 # in <dir>-cap25.
 #

@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker its1fungi (ITS1_Fungi): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/its1fungi/.
+71a57a8ee9e42b47838dbedf0a695ca2a88374633db6e68480d7c42a545dd771  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta
+6984104171581241453cd52793141dd378d8de8663791c55899780b0035b8054  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta.amb
+72490cd340d831a2bcf01a64f474f404794a7d525a8dfa90fddc421118eb1ee8  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta.ann
+1fa60377342eee7b16b9c7d7092964b99ea57ac8f582b90fe6d3c93aa207942f  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta.bwt
+b5e76301771db5c37b865fab7e810fc97f125b7b35145edca98a88f9f6d18adb  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta.pac
+776a173addd45fc078399866d1ab23b11e36124b9b3765eb9dea8e78f5f2d0b3  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/ITS1_Fungi.fasta.sa
+fb02d326ef7d233505e0865bc8adf0bab45faf2870dc87343803b8906bbf2704  gs://edna-reference-databases/CruxV2/ITS1_Fungi/2023-04-07/tronko/reference_tree.trkb

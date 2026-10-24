@@ -1,8 +1,8 @@
-tronko-assign/tests/data/real/mifish/dev: real-reference goldens of production tronko-assign
+tronko-assign/tests/data/real/mifish/dev: real-reference goldens of tronko-assign with F1 removed (step-2 goldens)
 
 reference:   12S_MiFish_U (production's reference files of 2023-04-07; manifest tronko-assign/tests/manifests/mifish.sha256)
 read set:    dev, 30000 pairs; dev_F.fasta.zst and dev_R.fasta.zst (zstd -3 --no-check)
-commit:      eDNA-Explorer/tronko 71f6ec3 (branch high-perf), production's release
+commit:      eDNA-Explorer/tronko branch pr2/04-f1-removed, commit "bwa: remove the fork's extra primary marking (F1) and its replayed draw" (tronko-assign tree aa9fc7eb70; production 71f6ec3 with the determinism change, the undefined-behaviour fixes and F1 removed)
 build:       the eDNA Explorer pipeline's recipe (as in tronko-assign/tests/real/lib.sh, build_pipeline):
                cd tronko-assign
                sed -i 's/#define MAX_NUM_BWA_MATCHES 10/#define MAX_NUM_BWA_MATCHES 25/' global.h
@@ -10,31 +10,21 @@ build:       the eDNA Explorer pipeline's recipe (as in tronko-assign/tests/real
                make ENABLE_PARQUET=1 CC="gcc -O3 -fcommon -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion"  # parquet (--parquet)
 cap:         MAX_NUM_BWA_MATCHES 25, as production builds
 threads:     --number-of-cores 1
-machine:     GCE n2-highmem-32, Intel Cascade Lake (Intel(R) Xeon(R) CPU @ 2.80GHz), 32 vCPU, 256 GB; Ubuntu 24.04, gcc 13.3.0
-date:        Thu 2026-09-24 03:01 to 10:32 PDT (cap-25 TSV and parquet)
+machine:     GCE n2-highmem-64 av-markers-tronko, Intel Cascade Lake (Intel(R) Xeon(R) CPU @ 2.80GHz), 64 vCPU, 512 GB;
+             Ubuntu 24.04, gcc 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1); other golden runs shared the machine
+date:        Wed 2026-10-07 12:26 to 15:11 PDT
+made by:     aligner-options implementation strand B2 (Claude agent for chondl), with the functions of
+             tronko-assign/tests/real/lib.sh (build_pipeline, run_case, pack_goldens) as make update-goldens uses them
 
-command lines (as run, with the run machine's directories written as placeholders: <build-tsv> and
-<build-parquet> for the TSV and parquet builds, <reads> for this set's read pairs as uncompressed FASTA,
-<ref> for the reference files of the manifest, <out> for the run's output directory; the time -v record
-of each is in provenance/ in goldens.tar.zst, with the same placeholders):
-  mifish_paired.parquet: <build-parquet>/tronko-assign -r -p -z -1 <reads>/dev_F.fasta -2 <reads>/dev_R.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 --parquet <out>/out
+command lines: production's full command line with the committed .fasta.zst reads, -R -T --tsv-log <file> -V2,
+and -o (TSV) or --parquet; each golden's command line and time -v record are in provenance/ in goldens.tar.zst.
 
-  mifish_paired.tsv: <build-tsv>/tronko-assign -r -p -z -1 <reads>/dev_F.fasta -2 <reads>/dev_R.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 -o <out>/out.tsv
-
-  mifish_unpF.parquet: <build-parquet>/tronko-assign -r -s -g <reads>/dev_F.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 --parquet <out>/out
-
-  mifish_unpF.tsv: <build-tsv>/tronko-assign -r -s -g <reads>/dev_F.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 -o <out>/out.tsv
-
-  mifish_unpR.parquet: <build-parquet>/tronko-assign -r -s -v -g <reads>/dev_R.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 --parquet <out>/out
-
-  mifish_unpR.tsv: <build-tsv>/tronko-assign -r -s -v -g <reads>/dev_R.fasta -f <ref>/reference_tree.trkb -a <ref>/12S_MiFish_U.fasta -w -6 --Cinterval 10 --number-of-cores 1 -o <out>/out.tsv
-
-
-production's full command line adds -R -T --tsv-log <file> -V2 and reads the .fasta.zst files;
-the output is byte-identical with and without them (tronko-assign tests prod-cmdline fixture;
-the FWH single-end goldens of all three sets, made again at one thread with the full command line and
-.fasta.zst reads from tronko-assign with the undefined-behaviour fixes of a later pull request of this
-series (branch pr/03-ub-fixes: "bwa: convert read bases before indexing the SAM SEQ literals" and the six
-fixes after it), are byte-identical to these).
+wall time and peak resident memory of each golden run (time -v):
+  mifish_paired.tsv: 2:44:29 (h:mm:ss or m:ss), 14213080 kB
+  mifish_paired.parquet: 2:42:12 (h:mm:ss or m:ss), 14218676 kB
+  mifish_unpF.tsv: 1:36:41 (h:mm:ss or m:ss), 13939316 kB
+  mifish_unpF.parquet: 1:37:23 (h:mm:ss or m:ss), 13940960 kB
+  mifish_unpR.tsv: 1:31:45 (h:mm:ss or m:ss), 13983308 kB
+  mifish_unpR.parquet: 1:31:22 (h:mm:ss or m:ss), 13987368 kB
 
 read sources: reads.json in this directory (study, runs, ENA files with MD5, primers, trimming rules).
