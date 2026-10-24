@@ -1,4 +1,5 @@
 #include "getSequenceinRoot.h"
+#include "nodestore.h"
 
 /*void getSequenceInRoot(){
 	int i;
@@ -139,6 +140,11 @@ void getSequenceInNodeWithoutNs(int rootNum, int node, char *sequenceInNode, int
 	type_of_PP maximum;
 	int index,i,j;
 	int count=0;
+	if (treeArr[rootNum][node].posteriornc == NULL && ns_trees != NULL){
+		/* the per-node arrays were released after the node store was built (nodestore.c) */
+		ns_leaf_sequence(rootNum, node, sequenceInNode, positionsInRoot, start_position, end_position);
+		return;
+	}
 	//for(i=0; i<numbaseArr[rootNum];i++){
 	for(i=start_position; i<end_position; i++){
 		//maximum=PP_Arr[rootNum][node][i][0];

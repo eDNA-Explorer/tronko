@@ -68,6 +68,8 @@ the thread that places it. The default checks 1, 4 and 16 threads.
 | `integration/test_bwamem3.sh` | the first 20 single-end reads of the repository fixture | the BWA-MEM3 run itself, through a stand-in `bwa-mem3` that logs its calls: the pinned command line and thread count, BWA-MEM3's environment overrides removed, the index staged once and dropped, `--no-shm`, `--bwa-mem3`, the index built without `-6`; with `-6`, a missing index built in the run beside the FASTA under a temporary name and renamed into place (output equal to the three-tree fixture's `mt_single_F` golden), found by the next run, rebuilt when one of its files is missing, refused in a read-only directory, and a build stopped by SIGTERM leaving no file under the final names; a stop with a message when the version is not 0.14.0, the aligner fails, a read has no record or records come out of order, and on SIGTERM the staged index dropped and the temporary directory removed |
 | `integration/test_pinned_aligner.sh` | four fixture batches: `mr_paired`, the repository's pairs on the example and on the three-tree reference, `rc_single` | the pinned aligner: BWA-MEM3 gives the stored SAM for each batch, at every thread count (the Tronko fields of every record against `data/pinned-aligner/<case>.fields.tsv`, the whole SAM without header against `<case>.sam.sha256`), so another BWA-MEM3 release, build or SIMD tier cannot change the candidate search unnoticed |
 | `unit/test_vote_tally` | random forests and reads | the vote tally over a read's candidate trees equals the pass over every tree (below) |
+| `unit/test_nodestore` | random trees and reads | the blocked node-store scoring equals production's per-node scoring bit for bit (below) |
+| `integration/test_nodestore_paths.sh` | `tests/data/assignment` | every node-store variant (block sizes, budget, kernels, the legacy loop, reads without candidates at block edges) reproduces the goldens (below) |
 | `integration/test_path_options.sh` | none | each of the thirteen path options at the longest length its buffer holds (accepted) and one longer (refused, exit 1, message naming the option) |
 | `integration/test_slot_cap.sh` | chimeric reads made from the example reference | a copy built with `MAX_NUM_BWA_MATCHES 2` and AddressSanitizer on reads with three candidate leaves: the SAM parse stops at the last slot and placement reads no further |
 
@@ -389,3 +391,22 @@ exit; the three-tree script passes that line on:
 PASS: mt_paired, --number-of-cores 4
   VOTE_SHADOW reads=2000 multi_hit=1247 multi_vote=1184 unsorted=630 neg_in_prefix=0 dup_in_prefix=0 cap_reached=0 written_past_prefix=0
 ```
+
+## `unit/test_nodestore.c` and `integration/test_nodestore_paths.sh`
+
+`nodestore.c` lays each tree's posteriors out node-innermost at load and scores reads in blocks
+against node tiles. `unit/test_nodestore.c` (built by `tronko-assign`'s `make test` with the
+binary's flags, about 2 s) checks, on random trees whose node counts straddle the tile widths and
+on reads with sentinel columns, NaN and tied posteriors, `-1` positions, gaps, lowercase and other
+characters, one- and two-mate reads and empty leaf strings, that every (read, node) score of the
+blocked path equals production's `assignScores_Arr_paired`/`getscore_Arr` (linked unchanged) bit
+for bit, for blocks of 1, 7, 64 and 1,000 reads and every kernel the CPU supports; that every leaf
+string from the store equals `getSequenceInNodeWithoutNs`; and that `ns_reduce` equals the
+reduction of `place_paired_with_nw`, including scores on the vote window's edge. Nine deliberately
+broken variants of `nodestore.c` are all caught.
+
+`integration/test_nodestore_paths.sh` runs the repository fixtures against their goldens: the
+three read modes, the store self-check (`TRONKO_NODESTORE_CHECK=1`), blocks of 1 and 7 reads, a
+1 MiB block budget, each supported kernel (`TRONKO_NS_KERNEL`), the legacy loop
+(`TRONKO_NODESTORE=0`), and reads without candidates at block starts and ends against the legacy
+loop of the same binary.
