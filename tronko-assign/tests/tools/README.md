@@ -60,3 +60,16 @@ Not made by these tools: `tests/data/assignment/single.fasta`, `paired_1.fasta` 
 `paired_2.fasta`, the four reads and four pairs of the original parity test (pull request #10).
 They are reads of example leaf `GU572157.1`, but not exact slices of it, and their generator is
 not in the repository.
+
+## Recorders of unit-test data
+
+Some unit tests read calls recorded while `tronko-assign` ran the fixtures, with the outputs of the
+original code. A recorder exports a commit that still has the original code into a temporary
+directory (`git archive`, so run it from a git checkout), adds a recording hook there, builds
+`tronko-assign`, runs the three cases of `tests/integration/test_assignment_production_parity.sh`
+at one thread, checks each output against its golden and writes the recorded calls. The checkout
+itself is not touched.
+
+| Tool | Records | Read by |
+|---|---|---|
+| `record_nw_alignments.sh <commit> <output> [<golden-commit>]` | `tronko-assign/tests/data/nw_fixture_alignments.txt.gz`, from `71f6ec3` with the goldens of `d019e28` (`data/PROVENANCE.md`) | `unit/test_nw_fill.c` |
