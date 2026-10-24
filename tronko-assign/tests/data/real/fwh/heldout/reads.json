@@ -1,0 +1,301 @@
+{
+ "marker": "fwh",
+ "set": "heldout",
+ "pairs": 30000,
+ "study": {
+  "accession": "PRJDB15936",
+  "secondary_accession": "DRP010099",
+  "title": "Environmental DNA samples in Kanagawa rivers",
+  "center": "Kanagawa Environmental Research Center",
+  "first_public": "2023-06-07",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJDB15936"
+ },
+ "primers": {
+  "forward": "GGDACWGGWTGAACWGTWTAYCCHCC",
+  "reverse": "CAAACAAATARDGGTATTCGDTY"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "min_length": 100,
+  "drop_N": true,
+  "adapters": [
+   "AGATCGGAAGAGC",
+   "CTGTCTCTTATACACATCT"
+  ],
+  "drop_insert_shorter_than": 100,
+  "cut_at_adapter": true,
+  "seed": 20260923,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "adapter_rule": "the first adapter occurrence in each trimmed read ends the insert; a pair whose insert is shorter than drop_insert_shorter_than in either read is dropped; with cut_at_adapter the reads are cut there",
+  "dereplicate": "exact duplicate pairs (same trimmed forward and reverse sequence) removed across all runs of the set, first occurrence kept",
+  "interleave": "per-run shuffle, round-robin across runs in the order listed"
+ },
+ "runs": [
+  {
+   "run": "DRR495858",
+   "sample": "SAMD00620279",
+   "sample_title": "Yase_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 168616,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495858/DRR495858_1.fastq.gz",
+     "md5": "370c900471560f5d6de17708237e6b85",
+     "bytes": 6892211
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495858/DRR495858_2.fastq.gz",
+     "md5": "a46b9b84a67ae6b367371153e8dea873",
+     "bytes": 8016539
+    }
+   ]
+  },
+  {
+   "run": "DRR495861",
+   "sample": "SAMD00620280",
+   "sample_title": "Yatarou_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 136266,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495861/DRR495861_1.fastq.gz",
+     "md5": "3c2b358bb61ad0de1ce24b2a93fb92db",
+     "bytes": 7155697
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495861/DRR495861_2.fastq.gz",
+     "md5": "c5a51ee42baed511dde177b7cbb8d67e",
+     "bytes": 8035629
+    }
+   ]
+  },
+  {
+   "run": "DRR495866",
+   "sample": "SAMD00620281",
+   "sample_title": "Shijuhasse_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 146971,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495866/DRR495866_1.fastq.gz",
+     "md5": "e657a4992762eabf6e64a1f869567fb3",
+     "bytes": 6042300
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495866/DRR495866_2.fastq.gz",
+     "md5": "572b001b5ae118804d296f104fdb469c",
+     "bytes": 6764940
+    }
+   ]
+  },
+  {
+   "run": "DRR495868",
+   "sample": "SAMD00620282",
+   "sample_title": "Nakatsu_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 167507,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495868/DRR495868_1.fastq.gz",
+     "md5": "ea0d22d60b364439a8f08eac39eff4f6",
+     "bytes": 6671282
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495868/DRR495868_2.fastq.gz",
+     "md5": "7908739dc32cacf29e1bad5f126d37c9",
+     "bytes": 7714735
+    }
+   ]
+  },
+  {
+   "run": "DRR495872",
+   "sample": "SAMD00620283",
+   "sample_title": "Sakawa_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 190975,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495872/DRR495872_1.fastq.gz",
+     "md5": "8e14080a1981239f95f498fb1b44d5d2",
+     "bytes": 9676810
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495872/DRR495872_2.fastq.gz",
+     "md5": "7f08a9b41d3dc670f6eafe1b82f2ca79",
+     "bytes": 11136739
+    }
+   ]
+  },
+  {
+   "run": "DRR495873",
+   "sample": "SAMD00620284",
+   "sample_title": "Yoduku_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 174297,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495873/DRR495873_1.fastq.gz",
+     "md5": "5993548e39c2391aa486071954baf592",
+     "bytes": 10345540
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495873/DRR495873_2.fastq.gz",
+     "md5": "bc44b01360445075293107b20089d5cb",
+     "bytes": 11417884
+    }
+   ]
+  },
+  {
+   "run": "DRR495859",
+   "sample": "SAMD00620279",
+   "sample_title": "Yase_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 166574,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495859/DRR495859_1.fastq.gz",
+     "md5": "5415c7ba1e91e5f0be5c1fecb2dceeda",
+     "bytes": 7912883
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495859/DRR495859_2.fastq.gz",
+     "md5": "cd4f1b0bb03cbe198bad42812c4c625a",
+     "bytes": 8535599
+    }
+   ]
+  },
+  {
+   "run": "DRR495862",
+   "sample": "SAMD00620280",
+   "sample_title": "Yatarou_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 135140,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495862/DRR495862_1.fastq.gz",
+     "md5": "36e2c78a92263f0e1fcc62d50f33b2fc",
+     "bytes": 6964586
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495862/DRR495862_2.fastq.gz",
+     "md5": "8f8708893425af308779e24703c47256",
+     "bytes": 7242084
+    }
+   ]
+  },
+  {
+   "run": "DRR495865",
+   "sample": "SAMD00620281",
+   "sample_title": "Shijuhasse_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 137662,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495865/DRR495865_1.fastq.gz",
+     "md5": "a20e5abf33e23d0cf24adcb193833eaf",
+     "bytes": 5335836
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495865/DRR495865_2.fastq.gz",
+     "md5": "6a0365e2603f71ddf04a20cde879e8f5",
+     "bytes": 5979396
+    }
+   ]
+  },
+  {
+   "run": "DRR495869",
+   "sample": "SAMD00620282",
+   "sample_title": "Nakatsu_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 153295,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495869/DRR495869_1.fastq.gz",
+     "md5": "4039f5fd8b572e5061b2d54492bbb27c",
+     "bytes": 6865339
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495869/DRR495869_2.fastq.gz",
+     "md5": "76d3ea770e8b83e2e43a29e72693d26d",
+     "bytes": 7430393
+    }
+   ]
+  },
+  {
+   "run": "DRR495870",
+   "sample": "SAMD00620283",
+   "sample_title": "Sakawa_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 137499,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495870/DRR495870_1.fastq.gz",
+     "md5": "cfe7819644255e2a820fde69fa976309",
+     "bytes": 6470942
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495870/DRR495870_2.fastq.gz",
+     "md5": "9a41ca4331ba1c63f3cfd8923fa292e9",
+     "bytes": 6983323
+    }
+   ]
+  },
+  {
+   "run": "DRR495874",
+   "sample": "SAMD00620284",
+   "sample_title": "Yoduku_River",
+   "library_name": "fwhF2/EPTDr2n",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 160070,
+   "records_in_set": 2500,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495874/DRR495874_1.fastq.gz",
+     "md5": "fcd1db95a5d142cb1f46cdd3b59c9e67",
+     "bytes": 10018374
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/DRR495/DRR495874/DRR495874_2.fastq.gz",
+     "md5": "4f9b5c2f791efecc921cf8001c8ee151",
+     "bytes": 11197913
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "heldout_F.fasta.zst": {
+   "sha256": "0c42a793451d2501fe9ce147f6c0dca314314ec9f83fbba3195a11a0cd46afa8",
+   "sha256_decompressed": "cbc24bf15934b79321c515f389adb5022774bb910a049b97de4c5dd85ae7800c",
+   "records": 30000
+  },
+  "heldout_R.fasta.zst": {
+   "sha256": "730abfbd8c4a69a05fe31ff154c8d51920977b748c4ec2e59630ec358d5712d2",
+   "sha256_decompressed": "084f6b9f2b7de6b4f8faa9a7923db79ea686dfd947ca676ac46221b9b3c0090a",
+   "records": 30000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}

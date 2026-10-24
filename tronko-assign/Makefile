@@ -79,6 +79,13 @@ $(TARGET): $(TARGET).c
 debug: carquet_lib $(TARGET).c
 	$(CC) $(DBGCFLAGS) $(ARCH_FLAGS) $(MATH_FLAGS) $(MEMOPT_FLAGS) $(PARQUET_FLAGS) $(STACKPROTECT) -o $(TARGET) $(NEEDLEMANWUNSCH) $(HASHMAP) $(BWA) $(WFA2) $(SOURCES) $(PARQUET_SOURCES) $(LIBS) $(PARQUET_LIBS) $(OPENMP_FLAGS)
 
+# Tests (tests/run_tests.sh, described in tests/README.md). The integration tests run the binary
+# this Makefile builds, so build it first.
+test:
+	bash tests/run_tests.sh
+
+.PHONY: test
+
 clean:
 	$(RM) $(TARGET)
 

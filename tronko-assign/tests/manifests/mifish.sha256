@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker mifish (12S_MiFish_U): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/mifish/.
+b5c5f5f6f84dcb9ce6b718a8bd67ef283e7bcfb54bd543c85bd7e603054f21a3  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta
+6f6c39b94a072215aad6b61776f0ee5b7e5d76fb5b56880bd5c9e4a95d6e8a59  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta.amb
+edd8bc64f248f90f089389175b713005fe83d711200156e24e3515a302936213  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta.ann
+55b19bfe1e944f2b73cda5242ff94e966707e9cfbcc7d543ebba928db4f04d17  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta.bwt
+6deae526a7349cb8783014f3f248a8b8fcdf8d7ba4f568d47e8c57b2254bfea5  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta.pac
+ca280f656edea81889cca10ddc14d57e3f140e22b1be6822150e78e25a8e7993  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/12S_MiFish_U.fasta.sa
+1bc1d2906e152bfc57c3b623c57eafcca10cd5db4323cf9861a44734ce4697b6  gs://edna-reference-databases/CruxV2/12S_MiFish_U/2023-04-07/tronko/reference_tree.trkb

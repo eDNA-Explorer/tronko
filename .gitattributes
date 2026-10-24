@@ -1,0 +1,6 @@
+# Test data is compared byte for byte (no end-of-line conversion) and is collapsed in pull request
+# diffs on GitHub (linguist-generated). The golden checksum lists and the data provenance stay visible.
+tests/data/** -text linguist-generated=true
+tronko-assign/tests/data/** -text linguist-generated=true
+tronko-assign/tests/data/real/**/goldens.sha256 -linguist-generated
+tronko-assign/tests/data/PROVENANCE.md -linguist-generated

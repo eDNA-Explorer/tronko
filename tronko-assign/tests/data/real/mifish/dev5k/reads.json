@@ -1,0 +1,60 @@
+{
+ "marker": "mifish",
+ "set": "dev5k",
+ "pairs": 5000,
+ "study": {
+  "accession": "PRJNA985779",
+  "secondary_accession": "SRP444959",
+  "title": "18S and MiFish Hywind Scotland water samples metbarcoding data",
+  "center": "NORCE",
+  "first_public": "2023-06-22",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA985779"
+ },
+ "primers": {
+  "forward": "GTCGGTAAAACTCGTGCCAGC",
+  "reverse": "CATAGTGGGGTATCTAATCCCAGTTTG"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "drop_N": true,
+  "min_length": 100,
+  "sample": "5,000 pairs drawn at random (Python random.seed 20260918), written in the run's order"
+ },
+ "runs": [
+  {
+   "run": "SRR25108797",
+   "sample": "SAMN35809796",
+   "sample_title": "St.6 10 m replicate 2",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 11157,
+   "records_in_set": 5000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/097/SRR25108797/SRR25108797_1.fastq.gz",
+     "md5": "0f335e20303897a8d50f16eb248c7683",
+     "bytes": 304236
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/097/SRR25108797/SRR25108797_2.fastq.gz",
+     "md5": "28f99d9c5618c07361e26202c799bf80",
+     "bytes": 422045
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "dev5k_F.fasta.zst": {
+   "sha256": "3f2a11cd43b7b9b9c304173b6d466e938085ccff873277e5ca6a8bf338a291f9",
+   "sha256_decompressed": "2c946a1cab2e9bd9f48ecae7268b5f9c937f45275376157de0f7dd4090b68f5f",
+   "records": 5000
+  },
+  "dev5k_R.fasta.zst": {
+   "sha256": "33dc3ddec49dc267d7fdf274e7b248dd020f5d02d14f8bfff491448a2e9bd6c7",
+   "sha256_decompressed": "a77841b243e9b3813111641c9d2ac9e895c6d49bb1500b656358eebf8076e479",
+   "records": 5000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}

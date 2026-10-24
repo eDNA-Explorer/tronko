@@ -1,0 +1,259 @@
+{
+ "marker": "mifish",
+ "set": "dev",
+ "pairs": 30000,
+ "study": {
+  "accession": "PRJNA985779",
+  "secondary_accession": "SRP444959",
+  "title": "18S and MiFish Hywind Scotland water samples metbarcoding data",
+  "center": "NORCE",
+  "first_public": "2023-06-22",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA985779"
+ },
+ "primers": {
+  "forward": "GTCGGTAAAACTCGTGCCAGC",
+  "reverse": "CATAGTGGGGTATCTAATCCCAGTTTG"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "min_length": 100,
+  "drop_N": true,
+  "adapters": [
+   "AGATCGGAAGAGC",
+   "CTGTCTCTTATACACATCT"
+  ],
+  "drop_insert_shorter_than": 100,
+  "cut_at_adapter": false,
+  "seed": 20260923,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "adapter_rule": "the first adapter occurrence in each trimmed read ends the insert; a pair whose insert is shorter than drop_insert_shorter_than in either read is dropped; with cut_at_adapter the reads are cut there",
+  "dereplicate": "exact duplicate pairs (same trimmed forward and reverse sequence) removed across all runs of the set, first occurrence kept",
+  "interleave": "per-run shuffle, round-robin across runs in the order listed"
+ },
+ "runs": [
+  {
+   "run": "SRR25108806",
+   "sample": "SAMN35809758",
+   "sample_title": "St.1 50 m replicate 1",
+   "library_name": "St.1.50m.F1-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 49292,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/006/SRR25108806/SRR25108806_1.fastq.gz",
+     "md5": "f4aa9e05430508ebfdcf1aa3be7a3c1b",
+     "bytes": 1333872
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/006/SRR25108806/SRR25108806_2.fastq.gz",
+     "md5": "b46e6bf91bfb3828129851ab62b5e540",
+     "bytes": 1918375
+    }
+   ]
+  },
+  {
+   "run": "SRR25108769",
+   "sample": "SAMN35809765",
+   "sample_title": "St.2 10 m replicate 3",
+   "library_name": "St.2.10m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 80684,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/069/SRR25108769/SRR25108769_1.fastq.gz",
+     "md5": "154b9ed9cea34afe7ad20bfeafe7dcd3",
+     "bytes": 2143740
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/069/SRR25108769/SRR25108769_2.fastq.gz",
+     "md5": "20beaf00c4e6a0de674bc3f1766fa400",
+     "bytes": 3052948
+    }
+   ]
+  },
+  {
+   "run": "SRR25108821",
+   "sample": "SAMN35809775",
+   "sample_title": "St.3 50 m replicate 2",
+   "library_name": "St.3.50m.F2-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 100470,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/021/SRR25108821/SRR25108821_1.fastq.gz",
+     "md5": "f6e185e3189702ab33ee05548488936b",
+     "bytes": 2856374
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/021/SRR25108821/SRR25108821_2.fastq.gz",
+     "md5": "cc4c384538c5dc2752ec62b3bf5ffa09",
+     "bytes": 3925425
+    }
+   ]
+  },
+  {
+   "run": "SRR25108809",
+   "sample": "SAMN35809781",
+   "sample_title": "St.4 10 m replicate 3",
+   "library_name": "St.4.10m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 109052,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/009/SRR25108809/SRR25108809_1.fastq.gz",
+     "md5": "262cf4368fb18db4f6c2a505f7cce7fb",
+     "bytes": 3072885
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/009/SRR25108809/SRR25108809_2.fastq.gz",
+     "md5": "9a65177cced28a58205f16713e77a2ca",
+     "bytes": 4535643
+    }
+   ]
+  },
+  {
+   "run": "SRR25108799",
+   "sample": "SAMN35809792",
+   "sample_title": "St.5 50 m replicate 3",
+   "library_name": "St.5.50m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 54129,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/099/SRR25108799/SRR25108799_1.fastq.gz",
+     "md5": "dba34e4c1c982156f4971a360e9aedcd",
+     "bytes": 1551757
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/099/SRR25108799/SRR25108799_2.fastq.gz",
+     "md5": "6a9295504de35af4e5e31e7c0806e8a7",
+     "bytes": 2137183
+    }
+   ]
+  },
+  {
+   "run": "SRR25108797",
+   "sample": "SAMN35809796",
+   "sample_title": "St.6 10 m replicate 2",
+   "library_name": "St.6.10m.F2-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 11157,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/097/SRR25108797/SRR25108797_1.fastq.gz",
+     "md5": "0f335e20303897a8d50f16eb248c7683",
+     "bytes": 304236
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/097/SRR25108797/SRR25108797_2.fastq.gz",
+     "md5": "28f99d9c5618c07361e26202c799bf80",
+     "bytes": 422045
+    }
+   ]
+  },
+  {
+   "run": "SRR25108782",
+   "sample": "SAMN35809806",
+   "sample_title": "St.7 50 m replicate 1",
+   "library_name": "St.7.50m.F1-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 16007,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/082/SRR25108782/SRR25108782_1.fastq.gz",
+     "md5": "8df67b2563f7af9cc1b70886a646e79e",
+     "bytes": 439790
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/082/SRR25108782/SRR25108782_2.fastq.gz",
+     "md5": "00e8b854adb7ed99e15446e4c56de793",
+     "bytes": 625729
+    }
+   ]
+  },
+  {
+   "run": "SRR25108777",
+   "sample": "SAMN35809813",
+   "sample_title": "St.8 10 m replicate 3",
+   "library_name": "St.8.10m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 69312,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/077/SRR25108777/SRR25108777_1.fastq.gz",
+     "md5": "d6aaa13b255fedd55942d8e34a927082",
+     "bytes": 1935304
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/077/SRR25108777/SRR25108777_2.fastq.gz",
+     "md5": "b46485f80b27eb3d9fff2e65d70c055d",
+     "bytes": 2558975
+    }
+   ]
+  },
+  {
+   "run": "SRR25108753",
+   "sample": "SAMN35809824",
+   "sample_title": "St.9 50 m replicate 3",
+   "library_name": "St.9.50m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 73296,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/053/SRR25108753/SRR25108753_1.fastq.gz",
+     "md5": "11d3e78ca80757e1c646c664b4bbebbb",
+     "bytes": 2040212
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/053/SRR25108753/SRR25108753_2.fastq.gz",
+     "md5": "5f8a952f6b468993d3c1ac368091624b",
+     "bytes": 2728847
+    }
+   ]
+  },
+  {
+   "run": "SRR25108763",
+   "sample": "SAMN35809829",
+   "sample_title": "St.10 10 m replicate 3",
+   "library_name": "St.10.10m.F3-12S",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 75131,
+   "records_in_set": 3000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/063/SRR25108763/SRR25108763_1.fastq.gz",
+     "md5": "827219ac4b333e184dc80da77849c8e7",
+     "bytes": 2057076
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR251/063/SRR25108763/SRR25108763_2.fastq.gz",
+     "md5": "6bfc794feadf98ea28e637df6aee1ce7",
+     "bytes": 2911703
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "dev_F.fasta.zst": {
+   "sha256": "ffb5c27499998e7b4a7249bafdf25d51117824fe55bd81df5cecac09eddf5daf",
+   "sha256_decompressed": "e89e2ac5104f9343313e28646f6e4e1501f11e8273c9f544a0e0581bcd1087d4",
+   "records": 30000
+  },
+  "dev_R.fasta.zst": {
+   "sha256": "1ce17efdfa14ff45ea56ca61bfc4ef6e2e2eec45ad5e6b6be65386345106963e",
+   "sha256_decompressed": "295b4ef2c1882be29bd31fb3419014d2150f7fd04d881ef1a1b383e881e92df4",
+   "records": 30000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}

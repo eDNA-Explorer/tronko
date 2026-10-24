@@ -1,0 +1,60 @@
+{
+ "marker": "fwh",
+ "set": "dev5k",
+ "pairs": 5000,
+ "study": {
+  "accession": "PRJNA664693",
+  "secondary_accession": "SRP284209",
+  "title": "Improved freshwater macroinvertebrate detection from environmental DNA through minimized non-target amplification",
+  "center": "University of Duisburg-Essen",
+  "first_public": "2020-09-23",
+  "url": "https://www.ebi.ac.uk/ena/browser/view/PRJNA664693"
+ },
+ "primers": {
+  "forward": "GGDACWGGWTGAACWGTWTAYCCHCC",
+  "reverse": "CAAACAAATARDGGTATTCGDTY"
+ },
+ "rules": {
+  "primer_tail_bases": 14,
+  "primer_match": "IUPAC-aware, first match; everything after it kept",
+  "drop_N": true,
+  "min_length": 100,
+  "sample": "5,000 pairs drawn at random (Python random.seed 20260918), written in the run's order"
+ },
+ "runs": [
+  {
+   "run": "SRR12681741",
+   "sample": "SAMN16230048",
+   "sample_title": "RMOeDNA, MiSeq, fwhF2/EPTDr2n, 92",
+   "instrument": "Illumina MiSeq",
+   "ena_read_count": 267456,
+   "records_in_set": 5000,
+   "files": [
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/041/SRR12681741/SRR12681741_1.fastq.gz",
+     "md5": "0f2816ecc1e1c805fc8c15e4f8b7ea73",
+     "bytes": 11445713
+    },
+    {
+     "url": "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR126/041/SRR12681741/SRR12681741_2.fastq.gz",
+     "md5": "6d5fff81fc757a677830802092ee1d22",
+     "bytes": 17394095
+    }
+   ]
+  }
+ ],
+ "compression": "zstd -3 --no-check, one frame (as the pipeline writes reads)",
+ "files": {
+  "dev5k_F.fasta.zst": {
+   "sha256": "972996d6b6e70564699e61087701569077ceecf8ccc0c5d58cd43e3723163407",
+   "sha256_decompressed": "559c95ada20a0eca6993b906eec99784c6b2ce9eb158d2b94d83fe9f11265576",
+   "records": 5000
+  },
+  "dev5k_R.fasta.zst": {
+   "sha256": "eaccd6c181829903f5e11cafab187c6738a8013abb78bc3cb4336b3961a42d4a",
+   "sha256_decompressed": "3c19aa092097ab4661aa4d696d4b6902aef1caa8be0969bde98477f1f2a4ce7e",
+   "records": 5000
+  }
+ },
+ "license": "INSDC public data (ENA/SRA/DDBJ): no use restrictions; cite the study accession"
+}

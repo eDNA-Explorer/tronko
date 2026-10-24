@@ -1,0 +1,12 @@
+# tronko-assign real-reference tests, marker fwh (CO1_fwhF2_EPTDr2n): the seven reference files
+# tronko-assign reads with -f and -a, production's files of 2023-04-07, by URL with SHA-256.
+# Format: <sha256>  <url>. Read by real/lib.sh: every file is checked against this list when it
+# is fetched and again before every run. The read pairs and goldens are in the repository,
+# under data/real/fwh/.
+834b81f1788f5386bfdeb72c3421f5a4e84fd8390cb1f296fed544bdbd41f766  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta
+3341973656be861667980b30c200182b71070a058d9bdc3941156cb998fa1192  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta.amb
+77a228efc7a9498928c7aff489652b689f6df83d1dd3028d3d77b3742568c3ff  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta.ann
+45e2a868eb4566fa67dc838cd3f44b94f0f118e939abb93f6c57c307a0add964  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta.bwt
+4ec2f0c68ded9e325b981898db43e69ccbe3a789e357353ab2797af86afea65b  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta.pac
+17830c1548766d751772219c75a5b6449bf6c8bbf9322d8e324615d3b70ddab8  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/CO1_fwhF2_EPTDr2n.fasta.sa
+af6dfe34057081e4825c0d362cbe8df3795b23e6100b8fb418c248934baa0f24  gs://edna-reference-databases/CruxV2/CO1_fwhF2_EPTDr2n/2023-04-07/tronko/reference_tree.trkb
