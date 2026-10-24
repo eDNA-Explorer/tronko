@@ -108,6 +108,18 @@ void mem_pestat(const mem_opt_t *opt, int64_t l_pac, int n, const mem_alnreg_v *
 		}
 }
 
+/* The 2-bit code of one base of the mate, for the rescue alignment. ms is the mate as the fork
+ * keeps it, upper-case ASCII: worker1 aligns a converted copy of each read (mem_align1), where
+ * upstream BWA converts the read in place (mem_align1_core), so mem_matesw received ASCII and
+ * ksw_qinit indexed the 5x5 score matrix with 65 to 89, reading past opt->mat into the heap.
+ * Converted with BWA's own table; every code above 3 is N (4), including 5 ('-'), so each
+ * index into the matrix is in bounds. */
+static inline uint8_t mate_nt4(uint8_t c)
+{
+	int x = nst_nt4_table[c];
+	return x < 4? x : 4;
+}
+
 int mem_matesw(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac, const mem_pestat_t pes[4], const mem_alnreg_t *a, int l_ms, const uint8_t *ms, mem_alnreg_v *ma)
 {
 	extern int mem_sort_dedup_patch(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac, uint8_t *query, int n, mem_alnreg_t *a);
@@ -129,11 +141,13 @@ int mem_matesw(const mem_opt_t *opt, const bntseq_t *bns, const uint8_t *pac, co
 		if (skip[r]) continue;
 		is_rev = (r>>1 != (r&1)); // whether to reverse complement the mate
 		is_larger = !(r>>1); // whether the mate has larger coordinate
+		rev = malloc(l_ms); // $ms as 2-bit codes, reverse complemented if is_rev
 		if (is_rev) {
-			rev = malloc(l_ms); // this is the reverse complement of $ms
-			for (i = 0; i < l_ms; ++i) rev[l_ms - 1 - i] = ms[i] < 4? 3 - ms[i] : 4;
-			seq = rev;
-		} else seq = (uint8_t*)ms;
+			for (i = 0; i < l_ms; ++i) { uint8_t c = mate_nt4(ms[i]); rev[l_ms - 1 - i] = c < 4? 3 - c : 4; }
+		} else {
+			for (i = 0; i < l_ms; ++i) rev[i] = mate_nt4(ms[i]);
+		}
+		seq = rev;
 		if (!is_rev) {
 			rb = is_larger? a->rb + pes[r].low : a->rb - pes[r].high;
 			re = (is_larger? a->rb + pes[r].high: a->rb - pes[r].low) + l_ms; // if on the same strand, end position should be larger to make room for the seq length

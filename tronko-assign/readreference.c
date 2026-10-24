@@ -265,7 +265,7 @@ int readInXNumberOfLines_fastq(int numberOfLinesToRead, gzFile query_reads, int 
 			char tempname[max_readname_length];
 			memset(tempname,'\0',max_readname_length);
 			for(i=0; i<size-1; i++){
-				if ( pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+				if (i > 0 && pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
 					tempname[i] = '2';
 				}else{
 					tempname[i] = seqname[i];
@@ -438,7 +438,7 @@ int readInXNumberOfLines(int numberOfLinesToRead, gzFile query_reads, int whichP
 			char tempname[max_readname_length];
 			memset(tempname,'\0',max_readname_length);
 			for(i=0; i<size-1; i++){
-				if (pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+				if (i > 0 && pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
 					tempname[i] ='2';
 				}else{
 					tempname[i] = seqname[i];
@@ -1963,7 +1963,7 @@ int readInXNumberOfLines_cf(int numberOfLinesToRead, CompressedFile* query_reads
 			char tempname[max_readname_length];
 			memset(tempname,'\0',max_readname_length);
 			for(i=0; i<size-1; i++){
-				if (pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+				if (i > 0 && pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
 					tempname[i] ='2';
 				}else{
 					tempname[i] = seqname[i];
@@ -2121,7 +2121,7 @@ int readInXNumberOfLines_fastq_cf(int numberOfLinesToRead, CompressedFile* query
 			char tempname[max_readname_length];
 			memset(tempname,'\0',max_readname_length);
 			for(i=0; i<size-1; i++){
-				if ( pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
+				if (i > 0 && pairedQueryMat->forward_name[iter][i] == '1' && pairedQueryMat->forward_name[iter][i-1] == '_'){
 					tempname[i] = '2';
 				}else{
 					tempname[i] = seqname[i];

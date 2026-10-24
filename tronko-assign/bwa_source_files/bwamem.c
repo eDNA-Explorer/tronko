@@ -852,6 +852,17 @@ void reverse_complement(char* seq) {
         seq[len / 2] = complement(seq[len / 2]);
     }
 }
+/* The index into "ACGTN"/"TGCAN" for one base of the SAM SEQ column. s->seq is still ASCII here:
+ * worker1 aligns a converted copy of the read (mem_align1), where upstream BWA converts s->seq in
+ * place (mem_align1_core). Indexed with the ASCII code, the literals were read out of bounds, and
+ * where the byte read was 0 the SAM text, which fastmap.c parses as a C string, ended there and
+ * the read's later records were lost. The base is converted with BWA's own table; every code
+ * above 3 prints as N, including 5 ('-'), so SEQ never holds a NUL. */
+static inline int sam_seq_code(char c)
+{
+	int x = nst_nt4_table[(uint8_t)c];
+	return x < 4? x : 4;
+}
 void mem_aln2sam(const mem_opt_t *opt, const bntseq_t *bns, kstring_t *str, bseq1_t *s, int n, const mem_aln_t *list, int which, const mem_aln_t *m_, int concordant, int seq_index, int startline, int paired)
 {
 	int i, l_name;
@@ -949,7 +960,7 @@ void mem_aln2sam(const mem_opt_t *opt, const bntseq_t *bns, kstring_t *str, bseq
 			if ((p->cigar[p->n_cigar-1]&0xf) == 4 || (p->cigar[p->n_cigar-1]&0xf) == 3) qe -= p->cigar[p->n_cigar-1]>>4;
 		}
 		ks_resize(str, str->l + (qe - qb) + 1);
-		for (i = qb; i < qe; ++i) str->s[str->l++] = "ACGTN"[(int)s->seq[i]];
+		for (i = qb; i < qe; ++i) str->s[str->l++] = "ACGTN"[sam_seq_code(s->seq[i])];
 		kputc('\t', str);
 		if (s->qual) { // printf qual
 			ks_resize(str, str->l + (qe - qb) + 1);
@@ -963,7 +974,7 @@ void mem_aln2sam(const mem_opt_t *opt, const bntseq_t *bns, kstring_t *str, bseq
 			if ((p->cigar[p->n_cigar-1]&0xf) == 4 || (p->cigar[p->n_cigar-1]&0xf) == 3) qb += p->cigar[p->n_cigar-1]>>4;
 		}
 		ks_resize(str, str->l + (qe - qb) + 1);
-		for (i = qe-1; i >= qb; --i) str->s[str->l++] = "TGCAN"[(int)s->seq[i]];
+		for (i = qe-1; i >= qb; --i) str->s[str->l++] = "TGCAN"[sam_seq_code(s->seq[i])];
 		kputc('\t', str);
 		if (s->qual) { // printf qual
 			ks_resize(str, str->l + (qe - qb) + 1);

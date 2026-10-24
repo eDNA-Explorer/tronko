@@ -376,6 +376,10 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 	int max_strikes = mstr->max_strikes;
 	int enable_pruning = mstr->enable_pruning;
 	type_of_PP pruning_factor = mstr->pruning_factor;
+	/* This thread's own copy: the per-read code below writes tstart (and nothing reads it); on the
+	 * global of the same name, every placement thread wrote it without synchronisation, a data
+	 * race that ThreadSanitizer reports. */
+	struct timespec tstart;
 	/*affine_penalties_t affine_penalties = {
 		.match = 0,
 		.mismatch = 4,
@@ -424,7 +428,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 		int leaf_iter=0;
 		dropped_matches_count = 0;  // Reset dropped counter for this read
 		if (bwa_results[iter].concordant_matches_roots[0]==-1 && mstr->concordant==1){
-			for (i=0; i<mstr->ntree; i++){
+			for (i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].discordant_matches_roots[0] < 0 ){
 					//for(j=0; j<mstr->ntree;j++){
 					//	results->leaf_coordinates[j][0]=j;
@@ -471,7 +475,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 				}
 			}
 		}else if (mstr->concordant==1){
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;
@@ -512,7 +516,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 			}
 		}else{
 			j=0;
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				//if(strlen(bwa_results[iter].discordant_leaf_matches[i])<=3){
 				if(bwa_results[iter].discordant_matches_roots[i]==-1){
 					break;
@@ -555,7 +559,7 @@ void *runAssignmentOnChunk_WithBWA(void *ptr){
 					no_add=0;
 				}
 			}
-			for(i=0; i<mstr->ntree; i++){
+			for(i=0; i<mstr->ntree && i<MAX_NUM_BWA_MATCHES; i++){
 				if (bwa_results[iter].concordant_matches_roots[i]==-1){
 				//if (strlen(bwa_results[iter].concordant_leaf_matches[i])<=3){
 					break;

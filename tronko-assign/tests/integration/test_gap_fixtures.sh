@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Parity of tronko-assign on the coverage-gap fixtures: inputs that make it run code production
 # executes and the other fixtures never reach. Each case must reproduce its golden, made by
-# production tronko-assign (71f6ec3) at --number-of-cores 1, at every thread count in
-# TRONKO_ASSIGN_CORES.
+# production tronko-assign (71f6ec3) at --number-of-cores 1 (mr_paired: by the code with the
+# mate-rescue fix, tests/README.md), at every thread count in TRONKO_ASSIGN_CORES.
 #
 #   mr_paired      620 pairs in which one mate cannot be seeded, so BWA runs mate rescue
 #                  (ksw_align2, including the 16-bit kernel for the 40 mates of 260 bases)
