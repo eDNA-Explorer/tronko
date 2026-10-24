@@ -694,7 +694,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	}
 
 //	if (opt->n_threads < 1) opt->n_threads = 1;
-	opt->n_threads=1;
+	opt->n_threads = number_of_threads > 1? number_of_threads : 1;
 /*	if (optind + 1 >= argc || optind + 3 < argc) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage: bwa mem [options] <idxbase> <in1.fq> [in2.fq]\n\n");
@@ -836,7 +836,7 @@ int main_mem(char* databaseFile, int number_of_seqs, int number_of_threads, bwaM
 	aux.start = start;
 	aux.end = end;
 	//bwa_print_sam_hdr(aux.idx->bns, hdr_line);
-	aux.actual_chunk_size = fixed_chunk_size > 0? fixed_chunk_size : opt->chunk_size * opt->n_threads;
+	aux.actual_chunk_size = fixed_chunk_size > 0? fixed_chunk_size : opt->chunk_size;
 	//aux.actual_chunk_size = number_of_seqs;
 	//kt_pipeline(no_mt_io? 1 : 2, process, &aux, 3);
 	kt_pipeline(1, process, &aux, 3);

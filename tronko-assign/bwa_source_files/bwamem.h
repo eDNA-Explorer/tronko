@@ -149,7 +149,8 @@ extern "C" {
 	 *
 	 * @return       list of aligned regions.
 	 */
-	mem_alnreg_v mem_align1(const mem_opt_t *opt, const bwt_t *bwt, const bntseq_t *bns, const uint8_t *pac, int l_seq, const char *seq);
+	mem_alnreg_v mem_align1(const mem_opt_t *opt, const bwt_t *bwt, const bntseq_t *bns, const uint8_t *pac, int l_seq, const char *seq, int64_t id);
+	extern int64_t bwa_read_ordinal_base;
 
 	/**
 	 * Generate CIGAR and forward-strand position from alignment region

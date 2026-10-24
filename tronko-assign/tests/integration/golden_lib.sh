@@ -8,7 +8,7 @@
 #
 # Environment:
 #   TRONKO_ASSIGN_BIN     binary under test (default tronko-assign/tronko-assign)
-#   TRONKO_ASSIGN_CORES   thread counts that must reproduce every golden (default "1")
+#   TRONKO_ASSIGN_CORES   thread counts that must reproduce every golden (default "1 4 16")
 #   TRONKO_MATCH_CAP      MAX_NUM_BWA_MATCHES the binary was built with (default: read from
 #                         tronko-assign/global.h, so a tree patched the way production patches it
 #                         picks the cap-25 goldens by itself)
@@ -22,7 +22,7 @@
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 TA="$REPO_ROOT/tronko-assign"
 ASSIGN=${TRONKO_ASSIGN_BIN:-"$TA/tronko-assign"}
-CORES=${TRONKO_ASSIGN_CORES:-"1"}
+CORES=${TRONKO_ASSIGN_CORES:-"1 4 16"}
 MATCH_CAP=${TRONKO_MATCH_CAP:-$(sed -n 's/^#define MAX_NUM_BWA_MATCHES \([0-9][0-9]*\).*/\1/p' "$TA/global.h")}
 RECORD=${TRONKO_TESTS_RECORD:-0}
 XFAIL=" ${TRONKO_TESTS_XFAIL:-} "

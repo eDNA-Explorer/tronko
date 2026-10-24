@@ -179,6 +179,7 @@ typedef struct mystruct{
 	int max_strikes;
 	int enable_pruning;
 	type_of_PP pruning_factor;
+	struct bwaMatches *bwa_results;
 #ifdef ENABLE_PARQUET
 	void *parquet_writer;  // Per-thread Parquet writer (parquet_writer_t*)
 	int thread_id;         // Thread index for filename

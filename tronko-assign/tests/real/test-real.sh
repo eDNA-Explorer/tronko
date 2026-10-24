@@ -7,12 +7,12 @@
 #   2. check every reference file against the manifest again; stop, naming the file, on any mismatch
 #   3. build tronko-assign/ as the pipeline builds it (cap 25), plain and parquet
 #   4. run every case with production's full command line at each of THREADS; cmp with the golden
-# Environment: THREADS (default 1: production's own output depends on the thread count),
+# Environment: THREADS (default 16, production's thread count),
 # TRONKO_ASSIGN_SRC (the tronko-assign/ source to build; default this checkout's), and MARKERS,
 # SETS, CASES, FORMATS, TRONKO_REAL_* (lib.sh).
-# Memory: MiFish about 14 GiB; FWH about 124 GiB at one thread, about 200 GiB at 16 on this commit.
+# Memory: MiFish about 16 GiB at 16 threads; FWH about 124 GiB at one thread, 146 GiB at 16.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-THREADS=${THREADS:-1}
+THREADS=${THREADS:-16}
 SRC=${TRONKO_ASSIGN_SRC:-$REPO_ROOT/tronko-assign}
 WORK=${TRONKO_REAL_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/tronko-test-real.XXXXXX")}
 mkdir -p "$WORK"

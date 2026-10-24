@@ -4,11 +4,11 @@
 # Each revision's tronko-assign/ (and its carquet submodule) is exported from this repository and
 # built as the pipeline builds it; the reference files are fetched once. A revision that fails to
 # build or run is reported as ERROR and the next one still runs.
-# Environment: BRANCHES (required), THREADS (default 1), and MARKERS, SETS, CASES, FORMATS,
+# Environment: BRANCHES (required), THREADS (default 16), and MARKERS, SETS, CASES, FORMATS,
 # TRONKO_REAL_* (lib.sh). Writes <work>/summary.tsv, one row per revision and output.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 [[ -n ${BRANCHES:-} ]] || die "set BRANCHES, e.g. BRANCHES=\"main my-branch\""
-export THREADS=${THREADS:-1}
+export THREADS=${THREADS:-16}
 WORK=${TRONKO_REAL_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/tronko-verify.XXXXXX")}
 mkdir -p "$WORK"
 log "branches: $BRANCHES; threads: $THREADS; work: $WORK"

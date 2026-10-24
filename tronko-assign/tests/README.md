@@ -13,15 +13,15 @@ make -C tronko-assign/tests test                          # every test; same as:
 ```
 
 `tests/run_tests.sh` prints one `==` line per test: PASS, FAIL or SKIP (a missing fixture is a
-skip, exit 77). It exits 1 if any test failed. The whole run takes a few minutes at one thread,
-most of it the three-tree and gap fixtures.
+skip, exit 77). It exits 1 if any test failed. The whole run takes a few minutes, most of it the
+three-tree and gap fixtures at one thread.
 
 Environment, read by every integration script (`integration/golden_lib.sh`):
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `TRONKO_ASSIGN_BIN` | `tronko-assign/tronko-assign` | binary under test |
-| `TRONKO_ASSIGN_CORES` | `1` | thread counts; each must reproduce every golden |
+| `TRONKO_ASSIGN_CORES` | `1 4 16` | thread counts; each must reproduce every golden |
 | `TRONKO_MATCH_CAP` | read from `global.h` | `MAX_NUM_BWA_MATCHES` of the binary: 10 as committed, 25 as production builds it |
 | `TRONKO_TESTS_XFAIL` | empty | case names whose mismatch is reported as XFAIL, not a failure |
 | `TRONKO_TESTS_RECORD` | `0` | `1` writes each output as the golden instead of comparing (one thread count only) |
@@ -32,9 +32,9 @@ tree patched that way and run the tests as above: the scripts read the cap from 
 compare with the cap-25 goldens (`<dir>-cap25/`). On these fixtures the cap-25 goldens are
 byte-identical to the cap-10 ones, because no read here has more than three candidate trees.
 
-**Thread counts.** Production's output depends on the thread count (each thread runs BWA on its
-own slice of the batch), so the default is one thread. `TRONKO_ASSIGN_CORES="1 4"` shows the
-dependence: at four threads most cases differ from their goldens.
+**Thread counts.** Every thread count must reproduce the one-thread goldens: BWA runs once per
+batch over the whole batch, and tie-breaks are keyed to a read's position in the batch, not to
+the thread that places it. The default checks 1, 4 and 16 threads.
 
 ## What each test pins
 
@@ -156,18 +156,17 @@ with `ENABLE_PARQUET=1` for the parquet build. Every run uses production's full 
 | `SETS` | `dev5k` | `dev5k`, `dev`, `heldout` |
 | `CASES` | `paired unpF unpR` | read modes: paired (`-p -z`), unpaired forward (`-s`), unpaired reverse (`-s -v`) |
 | `FORMATS` | `tsv parquet` | parquet needs `tronko-assign/carquet` (`git submodule update --init`) |
-| `THREADS` | `1` | `test-real`, `verify-branches`: thread counts, each must reproduce every golden |
+| `THREADS` | `16` | `test-real`, `verify-branches`: thread counts, each must reproduce every golden |
 | `BRANCHES` | none | `verify-branches`: branches or commits |
 | `GOLDEN_COMMIT` | `71f6ec3` | `goldens`, `update-goldens`: the commit the goldens are made from |
 | `TRONKO_REAL_WORK` | a new `mktemp -d` | builds, runs and outputs |
 
-**Thread counts.** Production's output depends on the thread count, so on this commit only
-`THREADS=1` reproduces the goldens; a later pull request of this series (branch
-`pr/02-determinism`) makes every thread count reproduce them.
+**Thread counts.** Every thread count must reproduce the one-thread goldens; the default is 16,
+the thread count production runs.
 
-Memory: MiFish needs about 14 GiB at one thread and 16 GiB at 16 threads. FWH needs about
-124 GiB at one thread and, on this commit, about 200 GiB at 16 threads, because each thread loads
-its own copy of the BWA index; FWH at 16 threads needs a machine with 256 GiB. One case at one thread takes, by the `time -v` records of the golden runs
+Memory: MiFish needs about 14 GiB at one thread and 16 GiB at 16 threads; FWH about 124 GiB at
+one thread and 146 GiB at 16 threads (one copy of the BWA index), so FWH needs a machine with at
+least 192 GiB. One case at one thread takes, by the `time -v` records of the golden runs
 (`provenance/` in each set's `goldens.tar.zst`, 32-vCPU Intel Cascade Lake): MiFish `dev5k` 14 to 29 minutes, `dev`
 and `heldout` 1.3 to 3.8 hours; FWH `dev5k` 8 to 12 minutes, `dev` and `heldout` 20 to 62 minutes.
 Making every golden again, (a) below, is about 38 hours of one-thread runs; `MARKERS`, `SETS` and
@@ -195,8 +194,8 @@ make -C tronko-assign/tests/real test-real MARKERS="mifish fwh" SETS="dev5k dev 
 make -C tronko-assign/tests/real verify-branches BRANCHES="<branch> <branch> ..." THREADS=16
 ```
 
-`make -C tronko-assign/tests/real test-real` alone runs MiFish `dev5k` at one thread, the smallest
-check (six runs, about two hours at one thread).
+`make -C tronko-assign/tests/real test-real` alone runs MiFish `dev5k` at 16 threads, the smallest
+check (six runs, a few minutes in all).
 
 ### (c) Add goldens, or replace them after an intended change
 
