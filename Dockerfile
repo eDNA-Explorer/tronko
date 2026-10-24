@@ -1,4 +1,5 @@
-FROM ubuntu:22.04
+# Ubuntu 24.04: the release with clang 19, which BWA-MEM3 (the aligner tronko-assign runs) needs
+FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,6 +10,14 @@ RUN apt-get update && apt-get install -y \
     libzstd-dev \
     libc6-dev \
     git \
+    ca-certificates \
+    clang-19 \
+    libomp-19-dev \
+    libdeflate-dev \
+    autoconf \
+    automake \
+    libtool \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -17,9 +26,9 @@ WORKDIR /app
 # Copy source code
 COPY . /app/
 
-# Build tronko-assign
+# Build tronko-assign and the BWA-MEM3 it runs (pinned v0.14.0, built with clang 19)
 WORKDIR /app/tronko-assign
-RUN make clean && make
+RUN make clean && make && make bwa-mem3
 
 # Build tronko-build
 WORKDIR /app/tronko-build

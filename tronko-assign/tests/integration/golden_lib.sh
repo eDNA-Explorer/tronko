@@ -15,6 +15,9 @@
 #   TRONKO_TESTS_XFAIL    case names whose mismatch is reported as XFAIL instead of failing
 #   TRONKO_TESTS_RECORD=1 write each output as the golden instead of comparing (one thread count
 #                         only); how the goldens are (re)made from a given commit
+#   TRONKO_BWA_MEM3       the BWA-MEM3 binary (default tronko-assign/bwa-mem3, built by
+#                         `make bwa-mem3`); the fixtures' BWA-MEM3 indexes are built with it
+#                         (mem3_lib.sh)
 #
 # The caller sets SCRIPT_DIR before sourcing. Sets REPO_ROOT, TA, ASSIGN, CORES, MATCH_CAP,
 # RECORD, TMP_DIR (removed on exit) and FAILS.
@@ -31,6 +34,8 @@ TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tronko-goldens.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 [[ -x "$ASSIGN" ]] || { echo "Missing executable: $ASSIGN (build tronko-assign first)" >&2; exit 1; }
+# shellcheck source=mem3_lib.sh
+source "$SCRIPT_DIR/mem3_lib.sh"
 case $MATCH_CAP in
 10 | 25) ;;
 *) echo "SKIP: no goldens for MAX_NUM_BWA_MATCHES ${MATCH_CAP:-?} (10 and 25 only)"; exit 77 ;;

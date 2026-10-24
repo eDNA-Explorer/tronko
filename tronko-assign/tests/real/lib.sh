@@ -13,6 +13,15 @@
 #                        from $TRONKO_REAL_MIRROR/<path>); without it files are fetched with
 #                        `gcloud storage cp`, `gsutil cp`, or curl from storage.googleapis.com
 #   TRONKO_REAL_WORK     scratch for builds and outputs (default: a new mktemp -d directory)
+#   TRONKO_BWA_MEM3      the BWA-MEM3 binary that builds running BWA-MEM3 use, and that builds their
+#                        index (default: tronko-assign/bwa-mem3 of this checkout, `make bwa-mem3`)
+#
+# The aligner index. A build whose sources hold bwamem3.c runs BWA-MEM3, which reads its own index
+# (<fasta>.amb .ann .pac .bwt.2bit.64); the bucket holds only the vendored BWA's, which the
+# manifests list and older builds (production's, for make-goldens) read. The BWA-MEM3 index is
+# built from the manifest-checked FASTA once and kept in the cache, under
+# bwa-mem3-index/<BWA-MEM3 version>/<FASTA SHA-256>/ beside a link to the FASTA, which is what such a
+# build is given with -a (mem3_index_real; FWH took 130 s and 31.8 GiB on an n2-highmem-64).
 set -euo pipefail
 REAL_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TESTS_DIR=$(cd "$REAL_DIR/.." && pwd)
@@ -27,6 +36,8 @@ MIRROR=${TRONKO_REAL_MIRROR:-}
 # The eDNA Explorer pipeline's build: the match cap patched to 25, then make with this CC;
 # ENABLE_PARQUET=1 for the parquet build.
 PIPELINE_CC="gcc -O3 -fcommon -Wno-error -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion"
+
+MEM3=${TRONKO_BWA_MEM3:-$REPO_ROOT/tronko-assign/bwa-mem3}
 
 die() { echo "real: $*" >&2; exit 1; }
 log() { echo "real: $*" >&2; }
@@ -97,6 +108,49 @@ verify_all() {
 ref_trkb() { cache_path "$(manifest_lines "$1" | awk '$2 ~ /\/reference_tree\.trkb$/ {print $2}')"; }
 ref_fasta() { cache_path "$(manifest_lines "$1" | awk '$2 ~ /\.fasta$/ {print $2}')"; }
 set_dir() { echo "$DATA_DIR/$1/$2"; }
+
+# uses_mem3 <tronko-assign source or build dir>: 0 if that tronko-assign runs BWA-MEM3
+uses_mem3() { [[ -f $1/bwamem3.c ]]; }
+# mem3_check: the BWA-MEM3 binary is there and is the release tronko-assign accepts; exports it
+mem3_check() {
+	[[ -x $MEM3 ]] || die "no BWA-MEM3 at $MEM3 (make -C tronko-assign bwa-mem3, or set TRONKO_BWA_MEM3)"
+	local v; v=$("$MEM3" version 2>/dev/null | head -1)
+	[[ $v == 0.14.0 ]] || die "$MEM3 reports version '$v'; tronko-assign needs BWA-MEM3 0.14.0"
+	export TRONKO_BWA_MEM3=$MEM3
+}
+# mem3_ref_dir <marker>: the cache directory of the marker's BWA-MEM3 index
+mem3_ref_dir() {
+	local sha; sha=$(manifest_lines "$1" | awk '$2 ~ /\.fasta$/ {print $1}')
+	echo "$CACHE/bwa-mem3-index/0.14.0/$sha"
+}
+# mem3_ref_fasta <marker>: the -a path of a BWA-MEM3 build (a link to the cached FASTA, its index beside it)
+mem3_ref_fasta() { echo "$(mem3_ref_dir "$1")/$(basename "$(ref_fasta "$1")")"; }
+# mem3_index_real <marker>: build the marker's BWA-MEM3 index into the cache unless it is there.
+# Built in a scratch directory beside it and renamed into place, so a run never sees half an index.
+mem3_index_real() {
+	local d fa name tmp ext
+	d=$(mem3_ref_dir "$1") fa=$(ref_fasta "$1") name=$(basename "$(ref_fasta "$1")")
+	[[ -f $d/.built ]] && return 0
+	mem3_check
+	mkdir -p "$(dirname "$d")"
+	tmp=$(mktemp -d "$d.tmp.XXXXXX")
+	ln -s "$fa" "$tmp/$name"
+	log "building the BWA-MEM3 index of $name ($1) into $d"
+	local -a tm=()
+	[[ -x /usr/bin/time ]] && tm=(/usr/bin/time -v -o "$tmp/index.time.txt")
+	"${tm[@]}" "$MEM3" index "$tmp/$name" >"$tmp/index.log" 2>&1 || die "bwa-mem3 index failed for $fa ($tmp/index.log)"
+	for ext in amb ann pac bwt.2bit.64; do [[ -s $tmp/$name.$ext ]] || die "bwa-mem3 index wrote no $name.$ext ($tmp)"; done
+	(cd "$tmp" && sha256sum "$name".{amb,ann,pac,bwt.2bit.64} >index.sha256) && touch "$tmp/.built"
+	if ! mv -T "$tmp" "$d" 2>/dev/null; then
+		[[ -f $d/.built ]] || die "cannot move $tmp to $d"
+		rm -rf "$tmp"   # another run built it first
+	fi
+	log "BWA-MEM3 index of $1 built: $(tr '\n' ' ' <"$d/index.sha256" | cut -c1-200)"
+}
+# aligner_fasta <marker> <tronko-assign build dir>: what that build is given with -a
+aligner_fasta() {
+	if uses_mem3 "$2"; then mem3_ref_fasta "$1"; else ref_fasta "$1"; fi
+}
 # golden_rel <marker> <case> <tsv|parquet>: a golden's path inside the set's goldens.tar.zst
 golden_rel() { if [[ $3 == tsv ]]; then echo "$1_$2.tsv"; else echo "parquet/$1_$2.parquet"; fi; }
 
@@ -169,7 +223,8 @@ run_case() {
 	*) die "unknown case $c" ;;
 	esac
 	if [[ $fmt == tsv ]]; then out=(-o "$d/out.tsv"); else out=(--parquet "$d/out"); fi
-	argv=("${mode[@]}" -f "$(ref_trkb "$m")" -a "$(ref_fasta "$m")" -w -6 --Cinterval 10
+	if uses_mem3 "$(dirname "$bin")"; then mem3_index_real "$m"; mem3_check; fi
+	argv=("${mode[@]}" -f "$(ref_trkb "$m")" -a "$(aligner_fasta "$m" "$(dirname "$bin")")" -w -6 --Cinterval 10
 		--number-of-cores "$n" -R -T --tsv-log "$d/tsvlog.tsv" -V2 "${out[@]}")
 	mkdir -p "$d"
 	echo "tronko-assign ${argv[*]}" >"$d/cmdline"

@@ -18,7 +18,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
-          cmake \
+          clang-19 libomp-19-dev libdeflate-dev autoconf automake libtool cmake \
           zlib1g-dev \
           libzstd-dev \
           lcov \
@@ -41,6 +41,13 @@ jobs:
       run: |
         cd tronko-assign
         make clean && make
+    - name: Cache BWA-MEM3 (by release and build script)
+      uses: actions/cache@v4
+      with:
+        path: tronko-assign/build/bwa-mem3
+        key: bwa-mem3-v0.14.0-5c1d5e3-clang19-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tronko-assign/scripts/build_bwa_mem3.sh') }}
+    - name: Build BWA-MEM3 (the aligner tronko-assign runs; pinned v0.14.0, clang 19)
+      run: make -C tronko-assign bwa-mem3
     
     - name: Run unit tests
       run: |
@@ -81,6 +88,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
+          clang-19 libomp-19-dev libdeflate-dev autoconf automake libtool cmake \
           zlib1g-dev \
           libzstd-dev \
           valgrind
@@ -102,6 +110,13 @@ jobs:
       run: |
         cd tronko-assign
         make clean && make
+    - name: Cache BWA-MEM3 (by release and build script)
+      uses: actions/cache@v4
+      with:
+        path: tronko-assign/build/bwa-mem3
+        key: bwa-mem3-v0.14.0-5c1d5e3-clang19-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tronko-assign/scripts/build_bwa_mem3.sh') }}
+    - name: Build BWA-MEM3 (the aligner tronko-assign runs; pinned v0.14.0, clang 19)
+      run: make -C tronko-assign bwa-mem3
 
     - name: Run integration tests
       run: |
@@ -141,6 +156,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
+          clang-19 libomp-19-dev libdeflate-dev autoconf automake libtool cmake \
           zlib1g-dev \
           libzstd-dev \
           valgrind \
@@ -154,10 +170,16 @@ jobs:
           git clone https://github.com/ThrowTheSwitch/Unity.git unity
         fi
     
+    - name: Cache BWA-MEM3 (by release and build script)
+      uses: actions/cache@v4
+      with:
+        path: tronko-assign/build/bwa-mem3
+        key: bwa-mem3-v0.14.0-5c1d5e3-clang19-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tronko-assign/scripts/build_bwa_mem3.sh') }}
     - name: Build binaries
       run: |
         cd tronko-build && make clean && make
         cd ../tronko-assign && make clean && make
+        make bwa-mem3
     
     - name: Run comprehensive test suite
       run: |
@@ -202,6 +224,10 @@ jobs:
           echo '=== Building in Docker ===' &&
           cd /workspace/tronko-build && make clean && make &&
           cd /workspace/tronko-assign && make clean && make &&
+          echo '=== Building BWA-MEM3 in Docker (clang 19) ===' &&
+          make bwa-mem3 &&
+          echo '=== Running the tronko-assign tests in Docker ===' &&
+          make -C /workspace/tronko-assign/tests test &&
           echo '=== Running unit tests in Docker ===' &&
           cd /workspace/tests && make -f Makefile.simple smoke &&
           echo '=== Running integration tests in Docker ===' &&

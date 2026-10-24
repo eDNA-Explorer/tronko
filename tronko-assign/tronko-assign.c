@@ -16,7 +16,7 @@
 #include "readreference.h"
 #include "options.h"
 #include "printAlignments.h"
-#include "bwa_source_files_include.h"
+#include "bwamem3.h"
 #include "hashmap.h"
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
@@ -251,15 +251,10 @@ void freeBWAResults(bwaMatches* bwa_results, int number_of_reads, int use_leaf_p
 	}
 	free(bwa_results);
 }
-static int bwa_num_threads = 1;
+/* The candidate search of one batch: BWA-MEM3 run once on reads start..end-1 (start is 0), then
+ * the SAM parse (bwamem3.c). */
 void run_bwa(int start, int end, bwaMatches* bwa_results, int concordant, int numberOfTrees, char *databasefile, int paired, int max_query_length, int max_readname_length, int max_acc_name){
-	int i,j;
-	int number_of_threads=bwa_num_threads;
-	if (paired != 0){
-		main_mem(databasefile,end-start,number_of_threads, bwa_results, concordant, numberOfTrees, start, paired, start, end, max_query_length, max_readname_length, max_acc_name);
-	}else{
-		main_mem(databasefile,end-start,number_of_threads, bwa_results, concordant, numberOfTrees, start, paired, start, end, max_query_length, max_readname_length, max_acc_name);
-	}
+	bwamem3_run_batch(end-start, paired, bwa_results, concordant, numberOfTrees, max_readname_length, max_acc_name);
 }
 int getLCA_Arr(int node1, int node2, int whichRoot){
 	if (node1 == node2){ return node1; }
@@ -931,6 +926,8 @@ int main(int argc, char **argv){
 	opt.use_leaf_portion=0;
 	opt.padding=0;
 	opt.skip_build=0;
+	opt.bwa_mem3_bin[0]='\0';
+	opt.no_shm=0;
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
@@ -1202,23 +1199,22 @@ int main(int argc, char **argv){
 	int max_name_length = 0;
 	int max_query_length = 0;
 	int numberOfLinesToRead=opt.number_of_lines_to_read;
-	bwa_num_threads = opt.number_of_cores;
 	mystruct mstr[opt.number_of_cores];//array of stuct that contains input and output for each thread
 	if ( strcmp("single",opt.paired_or_single)==0){
 		if (opt.skip_build==0){
 			if (opt.verbose_level >= 0) {
 				LOG_INFO("Building BWA index for: %s", opt.fasta_file);
 			}
-			bwa_index(2,opt.fasta_file);
 			if (opt.verbose_level >= 0) {
 				LOG_MILESTONE_TIMED(MILESTONE_BWA_INDEX_BUILT);
 			}
 			TSV_LOG_SIMPLE(tsv_log, "BWA_INDEX");
 		} else {
 			if (opt.verbose_level >= 0) {
-				LOG_INFO("Skipping BWA index build");
+				LOG_INFO("-6: using the BWA-MEM3 index beside the FASTA, built first if missing");
 			}
 		}
+		bwamem3_init(opt.bwa_mem3_bin, opt.fasta_file, opt.number_of_cores, opt.skip_build, !opt.no_shm);
 		CompressedFile* reads_file = cf_open(opt.read1_file, "r");
 		if ( reads_file == NULL ){
 			printf("**reads file could not be opened.\n");
@@ -1530,9 +1526,7 @@ int main(int argc, char **argv){
 		max_name_length = read_specs[0];
 		max_query_length = read_specs[1];
 		free(read_specs);
-		if (opt.skip_build==0){
-			bwa_index(2,opt.fasta_file);
-		}
+		bwamem3_init(opt.bwa_mem3_bin, opt.fasta_file, opt.number_of_cores, opt.skip_build, !opt.no_shm);
 		pairedQueryMat = malloc(sizeof(struct queryMatPaired));
 		if (opt.fastq==0){
 			pairedQueryMat->query1Mat = (char **)malloc(sizeof(char *)*numberOfLinesToRead/2);

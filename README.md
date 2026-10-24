@@ -63,7 +63,7 @@ Alignment-based and composition-based assignment methods calculate the lowest co
 		-e, Use only a portion of the reference sequences
 		-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences
 		-5 [FILE], Print tree number and leaf number and exit
-		-6, Skip the bwa build if database already exists
+		-6, Use the BWA-MEM3 index beside the -a FASTA, building it there first if a file is missing
 		-u, Score constant [default: 0.01]
 		-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]
 		-l [FILE], Log file path [default: stderr only]
@@ -181,7 +181,7 @@ To run `tronko-build` with the container:
 	singularity exec --bind <root-dir-to-bind-to-container> tronko_1.0.sif tronko-build
 
 # `tronko-assign` Usage
-Tronko does not detect the correct orientation of the reads. If your reverse read needs to be reverse complemented use the option `-z`. The default options of Tronko assume that your reads are in FASTA format. If you want to assign reads in FASTQ format, use the option `-q`. You will also need a FASTA file (not gzipped) of all of your reference sequences in the reference database (use the option `-a`). `tronko-assign` will create a `bwa index` of the reference sequences with the extension of *.fasta.ann, etc. If you already have the `bwa index` files present in the same directory and naming scheme as your reference sequences, you can choose skip the `bwa index` build use `-6`. The reads (and reference database file) can be gzipped or not gzipped. Assigning paired-end reads in FASTA format:
+Tronko does not detect the correct orientation of the reads. If your reverse read needs to be reverse complemented use the option `-z`. The default options of Tronko assume that your reads are in FASTA format. If you want to assign reads in FASTQ format, use the option `-q`. You will also need a FASTA file (not gzipped) of all of your reference sequences in the reference database (use the option `-a`). `tronko-assign` will create a BWA-MEM3 index (`bwa-mem3 index`) of the reference sequences beside the FASTA, with the extensions *.fasta.amb, .ann, .pac and .bwt.2bit.64, in every run. With `-6` it uses that index if all four files are present, and otherwise builds it once beside the FASTA (under a temporary name, renamed into place, so a build that is stopped part-way is never taken for an index; the FASTA's directory must be writable). Runs that share a reference should pass `-6`: the first builds the index, the others find it. The reads (and reference database file) can be gzipped or not gzipped. Assigning paired-end reads in FASTA format:
 ```
 tronko-assign -r -f [tronko-build REFERENCE DB FILE] -p -1 [FORWARD READS FASTA] -2 [REVERSE READS FASTA] -a [REFERENCE SEQUENCES FASTA] -o [OUTPUT FILE]
 ```

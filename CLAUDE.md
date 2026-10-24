@@ -30,6 +30,7 @@ cd tronko-assign && make clean
 ```
 
 Both use gcc with `-O3` optimization. tronko-assign links pthread, zlib, and rt libraries.
+`make -C tronko-assign bwa-mem3` builds the aligner tronko-assign runs and puts it beside the binary.
 
 ## Architecture
 
@@ -48,7 +49,8 @@ Key modules:
 
 ### tronko-assign
 Main source: `tronko-assign/tronko-assign.c`
-- Uses BWA for alignment to leaf nodes (embedded in `bwa_source_files/`)
+- Finds candidate leaves with BWA-MEM3 v0.14.0, a separate binary run once per batch (`bwamem3.c`; built
+  unchanged by `make bwa-mem3`, clang 19 or GCC 15); the SAM parse is `sam_parse.c`
 - Supports Wavefront Alignment (`WFA2/`) or Needleman-Wunsch alignment
 - Handles paired-end (`-p`) or single-end (`-s`) reads
 - Supports FASTA (default) or FASTQ (`-q`) input

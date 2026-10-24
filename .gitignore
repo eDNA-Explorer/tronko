@@ -10,6 +10,8 @@ debug.log
 
 # Build artifacts
 tronko-assign/tronko-assign
+tronko-assign/bwa-mem3
+tronko-assign/build/
 tronko-build/tronko-build
 *.o
 *.so
@@ -25,6 +27,7 @@ tronko-build/tronko-build
 *.bwt
 *.pac
 *.sa
+*.bwt.2bit.64
 
 # Example/test data outputs
 test_results_*.txt

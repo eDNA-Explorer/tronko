@@ -49,6 +49,9 @@ for path in "$REFERENCE" "$FASTA" "$DATA/single_4000.fasta" \
 	fi
 done
 
+# shellcheck source=../../tronko-assign/tests/integration/mem3_lib.sh
+source "$REPO_ROOT/tronko-assign/tests/integration/mem3_lib.sh"
+mem3_index "$FASTA" || exit 1
 COMMON=(-r -f "$REFERENCE" -a "$FASTA" -w -6 --Cinterval 10)
 echo "reference=$REFERENCE cores=$CORES"
 

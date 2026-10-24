@@ -41,6 +41,8 @@ static struct option long_options[]=
 	{"log-file",required_argument,0,'l'},
 	{"enable-resource-monitoring",no_argument,0,'R'},
 	{"enable-timing",no_argument,0,'T'},
+	{"bwa-mem3",required_argument,0,0},
+	{"no-shm",no_argument,0,0},
 	{"tsv-log",required_argument,0,0},  // Long option only, no short form
 	{"early-termination",no_argument,0,0},
 	{"no-early-termination",no_argument,0,0},
@@ -78,7 +80,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-e, Use only a portion of the reference sequences\n\
 	-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences\n\
 	-5 [FILE], Print tree number and leaf number and exit\n\
-	-6, Skip the bwa build if database already exists\n\
+	-6, Use the BWA-MEM3 index beside the -a FASTA (.amb .ann .pac .bwt.2bit.64); build it there first if a file is missing\n\
+	    (the FASTA's directory must then be writable). Without -6 the index is built in every run\n\
+	--bwa-mem3 [FILE], BWA-MEM3 binary (default: $TRONKO_BWA_MEM3, else bwa-mem3 beside tronko-assign, else on PATH)\n\
+	--no-shm, do not stage the BWA-MEM3 index in shared memory (it is then read from disk for every batch)\n\
 	-u, Score constant [default: 0.01]\n\
 	-7, Print scores for all nodes [scores_all_nodes.txt]\n\
 	-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]\n\
@@ -156,7 +161,17 @@ void parse_options(int argc, char **argv, Options *opt){
 		switch(c){
 			case 0:
 				// Handle long options without short equivalents
-				if (strcmp(long_options[option_index].name, "tsv-log") == 0) {
+				if (strcmp(long_options[option_index].name, "bwa-mem3") == 0) {
+					if (strlen(optarg) >= sizeof(opt->bwa_mem3_bin)) {
+						fprintf(stderr, "Path given to --bwa-mem3 is too long. Exiting...\n");
+						exit(1);
+					}
+					strcpy(opt->bwa_mem3_bin, optarg);
+				}
+				else if (strcmp(long_options[option_index].name, "no-shm") == 0) {
+					opt->no_shm = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "tsv-log") == 0) {
 					strncpy(opt->tsv_log_file, optarg, sizeof(opt->tsv_log_file) - 1);
 					opt->tsv_log_file[sizeof(opt->tsv_log_file) - 1] = '\0';
 				}
