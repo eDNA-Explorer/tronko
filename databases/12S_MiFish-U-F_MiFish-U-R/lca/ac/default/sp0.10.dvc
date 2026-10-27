@@ -1,0 +1,6 @@
+outs:
+- md5: 4bc0c2f1638a74a3df79ca2370e7faf6.dir
+  size: 7646085424
+  nfiles: 469733
+  hash: md5
+  path: sp0.10

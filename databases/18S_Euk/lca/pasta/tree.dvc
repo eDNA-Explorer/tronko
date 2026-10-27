@@ -1,0 +1,6 @@
+outs:
+- md5: 2c2997a1a88f2c9bb761f7c5d09b5a3a.dir
+  size: 250621155626
+  nfiles: 20
+  hash: md5
+  path: tree

@@ -1,0 +1,40 @@
+name: build
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v2
+      - name: print gcc version
+        run: gcc -v
+      - name: clean ancestralclust
+        run: make clean
+        working-directory: ./
+      - name: build ancestralclust
+        run: make
+        working-directory: .
+      - name: Archive ancestralclust binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: ancestralclust
+          path: ancestralclust
+      - name: clean ancestralclust
+        run: make clean
+        working-directory: ./
+      - name: build ancestralclust debug
+        run: make debug
+        working-directory: .
+      - name: Rename ancestralclust binary
+        run: mv ancestralclust ancestralclust-debug
+      - name: Archive ancestralclust-debug binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: ancestralclust-debug
+          path: ancestralclust-debug

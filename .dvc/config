@@ -1,0 +1,8 @@
+[core]
+    remote = tronko
+    autostage = true
+['remote "tronko"']
+    url = s3://ednaexplorer/tronko-databases
+    endpointurl = https://js2.jetstream-cloud.org:8001/
+['remote "gcs"']
+    url = gs://edna-dvc-data/tronko-databases

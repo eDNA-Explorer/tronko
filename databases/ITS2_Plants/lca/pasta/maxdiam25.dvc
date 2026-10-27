@@ -1,0 +1,6 @@
+outs:
+- md5: bba9a99442924018a57c54d715b4d0f7.dir
+  size: 38748802298
+  nfiles: 10937
+  hash: md5
+  path: maxdiam25

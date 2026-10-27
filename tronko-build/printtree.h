@@ -14,6 +14,9 @@
 void printtree();
 void printtreeArr();
 void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int max_lineTaxonomy, Options opt);
+FILE* printTreeFileHeader(int numberOfTrees, int max_nodename, int max_tax_name, int max_lineTaxonomy, Options opt);
+void printTreeFilePosteriors(FILE *outputTree, int start, int end, Options opt);
+void printTreeFileFinalize(FILE *outputTree, int numberOfTrees, Options opt);
 void printTaxonomyArrToFile(int numberOfTrees);
 void printTaxonomyToFile();
 void printTreeToFile();

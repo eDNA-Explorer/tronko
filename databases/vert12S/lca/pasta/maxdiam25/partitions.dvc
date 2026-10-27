@@ -1,0 +1,6 @@
+outs:
+- md5: f876ffc8e2aacbc50dd8a0ff6c3e3621.dir
+  size: 274388293
+  nfiles: 202
+  hash: md5
+  path: partitions

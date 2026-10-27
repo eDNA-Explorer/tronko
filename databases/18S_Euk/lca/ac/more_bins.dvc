@@ -1,0 +1,5 @@
+outs:
+- md5: 4ab05b81fae68c93d91d2f9e24acb2de.dir
+  nfiles: 1271462
+  hash: md5
+  path: more_bins
