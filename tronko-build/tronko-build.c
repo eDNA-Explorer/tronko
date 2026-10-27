@@ -1011,14 +1011,41 @@ static void tree_out_path(char *dst, const Options *opt, int which){
 		snprintf(dst, BUFFER_SIZE, "%s/RAxML_bestTree.%spartition%d.reroot", opt->partitions_directory, opt->prefix, which);
 }
 
+static long count_fasta_records(const char *path, long stop_at);
+
+/* One thread for a partition of fewer than --one-thread-below sequences (most of them),
+   when -J workers run many partitions at once: on the busy build machine a multithreaded
+   tool mostly waits for its own descheduled threads, and only one-thread FAMSA and
+   VeryFastTree runs repeat exactly. Measured on the 18S V8f build at nice 19 beside it:
+   VeryFastTree on 162 sequences 0.6 s on 1 thread, 149 s on 8; on 2,103 sequences 49 s
+   against more than 10 minutes; FAMSA on 603 sequences 0.25 s against 0.83 s, and on a
+   6-sequence partition one 8-thread run in 12 gave another alignment. *envp is replaced by a
+   one-thread environment, which the caller frees with free_tool_env(*single_env). Returns
+   the thread count to use. */
+static int partition_threads(const char *fasta, const Options *opt, int t, char *const **envp, char ***single_env){
+	*single_env = NULL;
+	if (opt->one_thread_below <= 0 || t <= 1) return t;
+	long n = count_fasta_records(fasta, opt->one_thread_below);
+	if (n < 0 || n >= opt->one_thread_below) return t;
+	*single_env = build_tool_env(1);
+	if (!*single_env) return t;   /* out of memory: keep the thread count the env says */
+	*envp = *single_env;
+	return 1;
+}
+
 /* Stage 1: alignment. */
 static pid_t spawn_famsa(int which, const Options *opt, int famsa_t, char *const envp[]){
 	char in[BUFFER_SIZE], out[BUFFER_SIZE], tstr[32];
+	char **single_env;
 	partition_path(in,  opt, ".fasta",     which);
 	partition_path(out, opt, "_MSA.fasta", which);
+	famsa_t = partition_threads(in, opt, famsa_t, &envp, &single_env);
 	snprintf(tstr, sizeof(tstr), "%d", famsa_t > 0 ? famsa_t : 1);
 	char *argv[] = {"famsa", "-t", tstr, in, out, NULL};
-	return spawn_tool("famsa", argv, envp, NULL, 0);
+	/* posix_spawnp has copied argv and envp into the child when it returns */
+	pid_t pid = spawn_tool("famsa", argv, envp, NULL, 0);
+	free_tool_env(single_env);
+	return pid;
 }
 
 /* Stage 2: in-process, between alignment and tree inference. Cheap file I/O
@@ -1030,8 +1057,24 @@ static void partition_midstage(int which, const Options *opt){
 	if (opt->tree_tool == TREE_RAXML) fasta_to_phylip(msa);
 }
 
-/* Stage 3: tree inference. RAxML still goes through system() -- it is not the
-   configured tool for this build and converting it buys nothing here. */
+/* Records in a FASTA file (lines starting with '>'), counting no further than stop_at;
+   -1 if it cannot be read. */
+static long count_fasta_records(const char *path, long stop_at){
+	FILE *f = fopen(path, "r");
+	if (!f) return -1;
+	char *line = NULL;
+	size_t cap = 0;
+	long n = 0;
+	while (n < stop_at && getline(&line, &cap, f) != -1){
+		if (line[0] == '>') n++;
+	}
+	free(line);
+	fclose(f);
+	return n;
+}
+
+/* Stage 3: tree inference. VeryFastTree/FastTree run on one thread below
+   --one-thread-below sequences (partition_threads); RAxML keeps -c. */
 static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const envp[]){
 	char in[BUFFER_SIZE], out[BUFFER_SIZE], tstr[32], seed_str[32];
 
@@ -1057,6 +1100,8 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 
 	partition_path(in, opt, "_MSA.fasta", which);
 	tree_out_path(out, opt, which);
+	char **single_env;
+	tree_t = partition_threads(in, opt, tree_t, &envp, &single_env);
 	snprintf(tstr, sizeof(tstr), "%d", tree_t > 0 ? tree_t : 1);
 
 	char *argv[16];
@@ -1078,7 +1123,10 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 	argv[ai++] = in;
 	argv[ai]   = NULL;
 
-	return spawn_tool(argv[0], argv, envp, out, O_WRONLY | O_CREAT | O_TRUNC);
+	/* posix_spawnp has copied argv and envp into the child when it returns */
+	pid_t pid = spawn_tool(argv[0], argv, envp, out, O_WRONLY | O_CREAT | O_TRUNC);
+	free_tool_env(single_env);
+	return pid;
 }
 
 /* Stage 4: reroot (RAxML only). */
@@ -2020,6 +2068,7 @@ int main(int argc, char **argv){
 	opt.legacy_sp = 0;
 	opt.tree_seed = 0;
 	opt.no_gamma  = 0;
+	opt.one_thread_below = -1;   /* auto: 10,000 with -J > 1, else never */
 	int i, j, k, numberOfTrees;
 	for(i=0; i<200; i++){
 		opt.partitions_directory[i] = '\0';
@@ -2029,6 +2078,9 @@ int main(int argc, char **argv){
 		opt.prefix[i] = '\0';
 	}
 	parse_options(argc, argv, &opt);
+	/* One-thread partitions pay off when -J workers keep the cores busy; with -J 1 only
+	   three tools run at a time and need their threads. */
+	if (opt.one_thread_below < 0) opt.one_thread_below = opt.parallel_jobs > 1 ? 10000 : 0;
 	if ( opt.partitions_directory[0] == '\0' ){
 		fprintf(stderr, "You must specify an output directory with -d\n");
 		exit(-1);

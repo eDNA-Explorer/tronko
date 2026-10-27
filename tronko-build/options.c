@@ -1,5 +1,7 @@
 #include "options.h"
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
 
 static struct option long_options[]=
 {
@@ -27,6 +29,7 @@ static struct option long_options[]=
 	{"tree-seed", required_argument, 0, 257},
 	{"no-gamma",  no_argument,       0, 258},
 	{"sequential-clusters", required_argument, 0, 259},
+	{"one-thread-below", required_argument, 0, 260},
 	{"export-subtrees", no_argument, 0, 'E'},
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
@@ -59,6 +62,10 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	--tree-tool [raxml|fasttree|veryfasttree], tree inference tool [default: raxml]\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
+	--one-thread-below [INT], align and build the tree of a partition with fewer sequences on one\n\
+		thread instead of -c (FAMSA, VeryFastTree/FastTree): with -J workers busy, a multithreaded\n\
+		run of a small alignment mostly waits for its own threads, and only one-thread runs repeat\n\
+		exactly; 0 = never [default: 10000 with -J > 1, else 0]\n\
 	--sequential-clusters [INT], process cluster indices [0,N) single-threaded before dispatching the rest to -J workers (resume replay) [default: 0]\n\
 	-W [FLOAT], mask alignment columns with gap fraction above threshold [default: 1.0 = no masking]\n\
 	-L, --legacy-sp, use legacy SP normalization (divides by numspec, pre-fix behavior) for comparison\n\
@@ -188,6 +195,18 @@ void parse_options(int argc, char **argv, Options *opt){
 				break;
 			case 258: /* --no-gamma */
 				opt->no_gamma = 1;
+				break;
+			case 260: /* --one-thread-below */
+				{
+					char *end;
+					errno = 0;
+					long v = strtol(optarg, &end, 10);
+					if (end == optarg || *end != '\0' || errno != 0 || v < 0 || v > INT_MAX){
+						fprintf(stderr, "Invalid --one-thread-below value: %s\n", optarg);
+						exit(-1);
+					}
+					opt->one_thread_below = (int)v;
+				}
 				break;
 			case 259: /* --sequential-clusters */
 				success = sscanf(optarg, "%d", &(opt->sequential_clusters));
