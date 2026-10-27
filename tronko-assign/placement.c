@@ -1,4 +1,5 @@
 #include "placement.h"
+#include "reduce.h"
 #include "nodestore.h"
 
 int perform_WFA_alignment(cigar_t* const cigar, mm_allocator_t* mm_allocator,char* seq1, char* seq2,char* const pattern_alg,char* const text_alg, char* const ops_alg, int begin_offset, int end_offset){
@@ -876,68 +877,26 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		}
 		}
 	}
-	type_of_PP maximum=-9999999999999999;
-	int minRoot=0;
-	int minNode=0;
-	int match_number=0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("finding minimum score...\n");
+	/* print_all_nodes: every node score, in the order the reduction visits them. */
 	FILE* node_scores_file;
 	if ( print_all_nodes == 1 ){
 		if (( node_scores_file = fopen("scores_all_nodes.txt","w")) == (FILE *) NULL ) fprintf(stderr, "File could not be opened.\n");
 		fprintf(node_scores_file,"Tree_Number\tNode_Number\tScore\n");
-	}
-	for (i=0; i<number_of_matches;i++){
-		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
+		for (i=0; i<number_of_matches;i++){
+			j=leaf_coordinates[i][0];
 			for(k=0; k<2*numspecArr[j]-1; k++){
-				//printf("Tree %d Node %d Taxonomy (%s) Score: %lf\n",j,k,taxonomyArr[j][treeArr[j][k].taxIndex[0]][treeArr[j][k].taxIndex[1]],nodeScores[i][j][k]);
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
-					match_number=i;
-					minRoot=j;
-					minNode=k;
-				}
-				if ( print_all_nodes == 1){
-					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
-				}
+				fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
 			}
 		}
-	}
-	if (print_all_nodes == 1){
 		fclose(node_scores_file);
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	//printf("match number: %d\n",match_number);
-	//printf("minimum score: %lf\n",maximum);
-	//printf("minimum root: %d\n",minRoot);
-	//printf("minimum node: %d\n",minNode);
-	//printf("C interval: %lf\n",Cinterval);
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("clearing voteroot...\n");
-	/*for(i=0; i<numberOfTotalRoots; i++){
-		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
-		}
-	}*/
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
-	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
-					index++;
-				}
-			}
-		//}
+	const type_of_PP *cand_scores[number_of_matches > 0 ? number_of_matches : 1];
+	int cand_tree[number_of_matches > 0 ? number_of_matches : 1];
+	for (i=0; i<number_of_matches; i++){
+		cand_tree[i]=leaf_coordinates[i][0];
+		cand_scores[i]=nodeScores[i][cand_tree[i]];
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;
@@ -1748,67 +1707,26 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		minimum_score[2] = reverse_mismatch;
 		return;
 	}
-	type_of_PP maximum=-9999999999999999;
-	int minRoot=0;
-	int minNode=0;
-	int match_number=0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("finding minimum score...\n");
+	/* print_all_nodes: every node score, in the order the reduction visits them. */
 	FILE* node_scores_file;
 	if ( print_all_nodes == 1 ){
 		if (( node_scores_file = fopen("scores_all_nodes.txt","w")) == (FILE *) NULL ) fprintf(stderr, "File could not be opened.\n");
 		fprintf(node_scores_file,"Tree_Number\tNode_Number\tScore\n");
-	}
-	for (i=0; i<number_of_matches;i++){
-		for (j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
+		for (i=0; i<number_of_matches;i++){
+			j=leaf_coordinates[i][0];
 			for(k=0; k<2*numspecArr[j]-1; k++){
-				if ( maximum < nodeScores[i][j][k]){
-					maximum=nodeScores[i][j][k];
-					match_number=i;
-					minRoot=j;
-					minNode=k;
-				}
-				if ( print_all_nodes == 1){
-					fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
-				}
+				fprintf(node_scores_file,"%d\t%d\t%lf\n",j,k,nodeScores[i][j][k]);
 			}
 		}
-	}
-	if (print_all_nodes == 1){
 		fclose(node_scores_file);
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	//printf("match number: %d\n",match_number);
-	//printf("minimum score: %lf\n",maximum);
-	//printf("minimum root: %d\n",minRoot);
-	//printf("minimum node: %d\n",minNode);
-	//printf("C interval: %lf\n",Cinterval);
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("clearing voteroot...\n");
-	/*for(i=0; i<numberOfTotalRoots; i++){
-		for(j=0;j<2*numspecArr[i]-1;j++){
-			voteRoot[i][j]=0;
-		}
-	}*/
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
-	int index = 0;
-	//clock_gettime(CLOCK_MONOTONIC, &tstart);
-	//printf("filling out voteroot...\n");
-	for(i=0; i<number_of_matches; i++){
-		//for(j=leaf_coordinates[i][0]; j<leaf_coordinates[i][0]+1; j++){
-			for(k=0; k<2*numspecArr[leaf_coordinates[i][0]]-1; k++){
-				if ( nodeScores[i][leaf_coordinates[i][0]][k] >= (maximum-Cinterval) && nodeScores[i][leaf_coordinates[i][0]][k] <= (maximum+Cinterval) ){
-					//printf("Match : %d Min Root: %d Min node: %d, score: %lf\n",i,j,k,nodeScores[i][leaf_coordinates[i][0]][k]);
-					voteRoot[leaf_coordinates[i][0]][k]=1;
-					index++;
-				}
-			}
-		//}
+	const type_of_PP *cand_scores[number_of_matches > 0 ? number_of_matches : 1];
+	int cand_tree[number_of_matches > 0 ? number_of_matches : 1];
+	for (i=0; i<number_of_matches; i++){
+		cand_tree[i]=leaf_coordinates[i][0];
+		cand_scores[i]=nodeScores[i][cand_tree[i]];
 	}
-	//clock_gettime(CLOCK_MONOTONIC, &tend);
-	//printf("finished... %.5f\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
+	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;

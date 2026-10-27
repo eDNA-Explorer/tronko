@@ -57,6 +57,7 @@
 #include <sys/mman.h>
 #include <time.h>
 #include "nodestore.h"
+#include "reduce.h"
 #include "assignment.h"
 #include "getSequenceinRoot.h"
 #if defined(__x86_64__)
@@ -931,27 +932,15 @@ const double *ns_read_scores(const ns_block_t *B, const ns_read_t *r, int i)
  * print_all_nodes output is not reproduced; that option keeps the legacy path. */
 void ns_reduce(const ns_block_t *B, const ns_read_t *r, int **voteRoot, type_of_PP *minimum_score)
 {
-	int i, k;
+	int i;
 	int number_of_matches = r->leaf_iter;
-	type_of_PP maximum=-9999999999999999;
-	for (i=0; i<number_of_matches;i++){
-		const double *sc = ns_read_scores(B, r, i);
-		int j = r->coords[i][0];
-		for(k=0; k<2*numspecArr[j]-1; k++){
-			if ( maximum < sc[k]){
-				maximum=sc[k];
-			}
-		}
+	const type_of_PP *cand_scores[number_of_matches > 0 ? number_of_matches : 1];
+	int cand_tree[number_of_matches > 0 ? number_of_matches : 1];
+	for (i=0; i<number_of_matches; i++){
+		cand_scores[i] = ns_read_scores(B, r, i);
+		cand_tree[i] = r->coords[i][0];
 	}
-	for(i=0; i<number_of_matches; i++){
-		const double *sc = ns_read_scores(B, r, i);
-		for(k=0; k<2*numspecArr[r->coords[i][0]]-1; k++){
-			if ( sc[k] >= (maximum-Cinterval) && sc[k] <= (maximum+Cinterval) ){
-				voteRoot[r->coords[i][0]][k]=1;
-			}
-		}
-	}
-	minimum_score[0] = maximum;
+	minimum_score[0] = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
 	minimum_score[1] = r->fwd_mm;
 	minimum_score[2] = r->rev_mm;
 }
