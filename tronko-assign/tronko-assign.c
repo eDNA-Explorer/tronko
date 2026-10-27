@@ -1030,6 +1030,7 @@ int main(int argc, char **argv){
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
+	opt.cinterval = 0.0; /* never set before when -c was omitted; 0 is what the goldens ran with */
 	opt.print_all_nodes=0;
 	opt.verbose_level = -1;  // Disabled by default
 	opt.log_file[0] = '\0';

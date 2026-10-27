@@ -71,7 +71,7 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	-g [FILE], compatible only with -s, path to single-end reads file\n\
 	-1 [FILE], compatible only with -p, path to paired-end forward read file\n\
 	-2 [FILE], compatible only with -p, path to paired-end reverse read file\n\
-	-c [INT], LCA cut-off to use [default:5]\n\
+	-c [FLOAT], LCA cut-off (Cinterval): nodes scoring within this of the best are voted [default: 0]\n\
 	-C [INT], number of cores [default:1] (use -C 1 for reproducible results)\n\
 	-L [INT], number of lines to read for assignment [default:50000]\n\
 	-P, print alignments to stdout\n\

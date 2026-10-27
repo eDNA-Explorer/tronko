@@ -34,15 +34,17 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		}
 	}
 	if ( use_portion==1){
-		results->starts_forward = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
+		/* MAX_NUM_BWA_MATCHES+1: after a read the main loop clears entry [leaf_iter], which is
+		 * one past the last match when the read filled every slot. */
+		results->starts_forward = (int *)malloc((MAX_NUM_BWA_MATCHES+1)*sizeof(int));
 		if (paired == 1 ){
-			results->starts_reverse = (int *)malloc(MAX_NUM_BWA_MATCHES*sizeof(int));
+			results->starts_reverse = (int *)malloc((MAX_NUM_BWA_MATCHES+1)*sizeof(int));
 		}
-		results->cigars_forward = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
+		results->cigars_forward = (char **)malloc((MAX_NUM_BWA_MATCHES+1)*sizeof(char *));
 		if (paired == 1){
-			results->cigars_reverse = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
+			results->cigars_reverse = (char **)malloc((MAX_NUM_BWA_MATCHES+1)*sizeof(char *));
 		}
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
+		for(i=0; i<MAX_NUM_BWA_MATCHES+1; i++){
 			results->starts_forward[i] = -1;
 			results->cigars_forward[i] = (char *)malloc(MAX_CIGAR*sizeof(char));
 			memset(results->cigars_forward[i],'\0',MAX_CIGAR);
@@ -117,7 +119,7 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 		free(results->LCAnames[i]);
 	}
 	if (use_portion == 1){
-		for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
+		for(i=0; i<MAX_NUM_BWA_MATCHES+1; i++){
 			free(results->cigars_forward[i]);
 			if (paired==1){
 				free(results->cigars_reverse[i]);
