@@ -176,9 +176,10 @@ void findMaxTaxName(FILE* file, int* specs){
 	char *s;
 	char *lineTaxonomy;
 	int max_line = 0;
+	char *save;
 	while( fgets(buffer,BUFFER_SIZE,file) != NULL ){
-		s = strtok(buffer,"\t");
-		lineTaxonomy = strtok(NULL,"\n");
+		s = strtok_r(buffer,"\t",&save);
+		lineTaxonomy = strtok_r(NULL,"\n",&save);
 		if (lineTaxonomy == NULL) continue;
 		int taxsize = strlen(lineTaxonomy);
 		if ( max_line < taxsize ){
@@ -230,9 +231,13 @@ void assignTaxonomyToLeavesArr(char *tax,struct masterArr *m, int max_nodename, 
 		fprintf(stderr, "*** taxonomy file could not be opened: %s\n", tax);
 		exit(-1);
 	}
+	/* strtok_r: partitions load on -J workers at once, and strtok's position is one
+	   static for the whole process (readSeqArr on another thread moved it, giving a leaf
+	   no taxonomy or a slice of an alignment row as its taxonomy) */
+	char *save;
 	while(fgets(buffer, BUFFER_SIZE, taxonomy_file) != NULL){
-		lineAccession = strtok(buffer, "\t");
-		lineTaxonomy = strtok(NULL, "\n");
+		lineAccession = strtok_r(buffer, "\t", &save);
+		lineTaxonomy = strtok_r(NULL, "\n", &save);
 		if (lineAccession == NULL || lineTaxonomy == NULL) continue;
 
 		int *leaf_ptr = hashmap_get(&name_map, lineAccession);
@@ -382,8 +387,9 @@ void readSeqArr(gzFile partitionsFile, int maxname, struct masterArr *master){
 	char *s;
 	int firstIter=1;
 	int index=0;
+	char *save;   /* strtok_r: concurrent -J workers (see assignTaxonomyToLeavesArr) */
 	while( gzgets(partitionsFile,buffer,FASTA_MAXLINE) != NULL){
-		s = strtok(buffer,"\n");
+		s = strtok_r(buffer,"\n",&save);
 		size = strlen(s);
 		if ( buffer[0] == '>'){
 			if ( size > maxname ){ size = maxname; }
