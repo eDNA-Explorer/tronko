@@ -26,18 +26,31 @@ typedef struct reduce_cfg {
 	int collect;     /* fill reduce_last() */
 	int per_base;    /* --cinterval-per-base: window = -c x the read's A/C/G/T bases */
 	int need_bases;  /* the callers count the read's bases (per_base, or a finite max_deficit) */
+	int full_read;   /* --score-full-read: a read's leading overhang bases are scored rows too */
 	/* --best-leaf-margin D (0 = off) and --best-leaf-max-deficit T (INFINITY = no bound): the
 	 * votes become {L1} when L1 is voted, S(L1) - S(L2) >= D, and n*log_match - S(L1) <= T,
 	 * n the read's A/C/G/T bases and log_match = log(1 - u), a base's score on a matching leaf. */
 	type_of_PP margin, max_deficit, log_match;
 } reduce_cfg_t;
 
-/* getscore_Arr's score for a read with no aligned position (positions[0] == -1), on every
- * node: not evidence, so the new options never let it be the maximum. */
+/* getscore_Arr's score for a job with no aligned position (positions[0] == -1), on every
+ * node: not evidence, so the new options never let it be the maximum. A paired slot adds the
+ * other mate's score to it, so a slot holding it is any score above REDUCE_SENTINEL_FLOOR
+ * (a real score is a sum of logs, at most 0). */
 #define REDUCE_SENTINEL 9999999999.0
+#define REDUCE_SENTINEL_FLOOR 1e9
 
 /* Set once in main, before any placement thread starts; read-only after. */
 extern reduce_cfg_t g_reduce;
+
+/* Whether a scoring job of *alength* rows gets the sentinel: its row 0 is -1, which the row
+ * builders never write, so a job with no aligned row. Under --score-full-read the rows start
+ * with the read's leading overhang (-1 rows) and every read base has a row, so only a job with
+ * no row at all. getscore_Arr and the node store both ask here. */
+static inline int reduce_job_unaligned(const int *positions, int alength)
+{
+	return g_reduce.full_read ? alength == 0 : positions[0] == -1;
+}
 
 /* Vote the read's candidates: sc[i] holds tree[i]'s 2*numspecArr[tree[i]]-1 node scores.
  * Candidates are visited in order and nodes in index order, and the first strictly greater

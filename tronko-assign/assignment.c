@@ -1,4 +1,5 @@
 #include "assignment.h"
+#include "reduce.h"
 
 /*type_of_PP **assignScores_Arr(int rootNum, int node, char *locQuery, int *positions, type_of_PP **scores, int alength){
 
@@ -184,7 +185,7 @@ type_of_PP getscore_Arr(int alength, int node, int rootNum, char *locQuery, int 
 	score=0;
 	type_of_PP overhang=0;
 	int isPolyA=0;
-	if (positions[i]==-1){
+	if (reduce_job_unaligned(positions, alength)){
 		score=9999999999;
 		return score;
 	}

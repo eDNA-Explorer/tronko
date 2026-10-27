@@ -207,7 +207,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 						forward_mismatch++;
 					}
 				}
-				if ( pattern_alg[i] == '-' && text_alg[i] != '-' && alength > 0 && counterinB<query_length){
+				if ( pattern_alg[i] == '-' && text_alg[i] != '-' && (alength > 0 || g_reduce.full_read) && counterinB<query_length){
 					positions[alength]=-1;
 					locQuery[alength] = text_alg[i];
 					alength++;
@@ -616,7 +616,7 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 						reverse_mismatch++;
 					}
 				}
-				if ( pattern_alg[i] == '-' && text_alg[i] != '-' && alength > 0 && counterinB<query_length){
+				if ( pattern_alg[i] == '-' && text_alg[i] != '-' && (alength > 0 || g_reduce.full_read) && counterinB<query_length){
 					positions[alength]=-1;
 					locQuery[alength] = text_alg[i];
 					alength++;
@@ -1030,7 +1030,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 						forward_mismatch++;
 					}
 				}
-				if (aln->result_a[i] == '-' && aln->result_b[i] != '-' && alength>0 && counterinB<query_length){
+				if (aln->result_a[i] == '-' && aln->result_b[i] != '-' && (alength>0 || g_reduce.full_read) && counterinB<query_length){
 					positions[alength]=-1;
 					locQuery[alength] = aln->result_b[i];
 					alength++;	
@@ -1433,7 +1433,7 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 						reverse_mismatch++;
 					}
 				}
-				if (aln->result_a[i] == '-' && aln->result_b[i] != '-' && alength>0 && counterinB<query_length){
+				if (aln->result_a[i] == '-' && aln->result_b[i] != '-' && (alength>0 || g_reduce.full_read) && counterinB<query_length){
 					positions[alength]=-1;
 					locQuery[alength] = aln->result_b[i];
 					alength++;

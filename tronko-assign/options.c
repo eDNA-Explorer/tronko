@@ -53,6 +53,7 @@ static struct option long_options[]=
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
 	{"cinterval-per-base",no_argument,0,0},
+	{"score-full-read",no_argument,0,0},
 	{"best-leaf-margin",required_argument,0,0},
 	{"best-leaf-max-deficit",required_argument,0,0},
 	{"trace-read",required_argument,0,0},
@@ -110,6 +111,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 		the read's A/C/G/T bases (both mates), so -c 0.057 tolerates about one mismatch per\n\
 		100 bases at -u 0.01 (0.01*log(3*(1-u)/u)). Not with pruning or early termination,\n\
 		whose thresholds are multiples of the raw -c [default: off]\n\
+	--score-full-read, Score every read base against every candidate: read bases before the\n\
+		first aligned column (leading overhang) cost log(0.01) each, as read bases after it\n\
+		already do, instead of nothing, so candidates' scores are likelihoods of the same bases\n\
+		[default: off]\n\
 	--best-leaf-margin [FLOAT], Vote the best leaf (L1) alone when it is in the voting window\n\
 		and scores at least FLOAT above the best leaf of every other species, so the read is\n\
 		assigned to L1's species. In score units: one mismatch costs log(3*(1-u)/u), 5.69 at\n\
@@ -222,6 +227,9 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "cinterval-per-base") == 0) {
 					opt->cinterval_per_base = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "score-full-read") == 0) {
+					opt->score_full_read = 1;
 				}
 				else if (strcmp(long_options[option_index].name, "best-leaf-margin") == 0 ||
 				         strcmp(long_options[option_index].name, "best-leaf-max-deficit") == 0) {

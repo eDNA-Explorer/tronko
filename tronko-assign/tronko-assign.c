@@ -1044,6 +1044,7 @@ int main(int argc, char **argv){
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
 	opt.cinterval_per_base = 0;
+	opt.score_full_read = 0;
 	opt.best_leaf_margin = 0;
 	opt.best_leaf_max_deficit = INFINITY;
 	opt.trace_read[0] = '\0';
@@ -1302,6 +1303,7 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 	g_reduce.per_base = opt.cinterval_per_base;
+	g_reduce.full_read = opt.score_full_read;
 	g_reduce.margin = opt.best_leaf_margin;
 	g_reduce.max_deficit = opt.best_leaf_max_deficit;
 	g_reduce.log_match = log(1 - opt.score_constant);

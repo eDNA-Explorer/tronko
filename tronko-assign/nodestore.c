@@ -5,7 +5,7 @@
  * for a job, one mate of one read aligned to the BWA leaf of one candidate tree, giving rows
  * (positions[i], locQuery[i]) for i = 0 .. alength-1, every node n of the tree receives
  *
- *     s(n) = 9999999999                                 if positions[0] == -1
+ *     s(n) = 9999999999                                 if reduce_job_unaligned (positions[0] == -1)
  *     s(n) = (...((+0.0 + x_0(n)) + x_1(n)) + ...) + x_{alength-1}(n)     otherwise
  *
  * with one IEEE binary64 addition per row, in row order, where x_i(n) is what getscore_Arr adds:
@@ -862,7 +862,7 @@ void ns_sink_add_job(ns_block_t *B, int match, const int *positions, const char 
 	const int L = ns_trees[sl->tree].L;
 	sl->code_off[j] = (int32_t)B->ncodes;
 	sl->ncode[j] = 0;
-	sl->big[j] = positions[0] == -1;
+	sl->big[j] = reduce_job_unaligned(positions, alength);
 	B->cnt.jobs++;
 	if (sl->big[j]) return;
 	if (B->ncodes + (size_t)alength > B->cap_codes) {

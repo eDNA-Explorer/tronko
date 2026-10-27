@@ -267,6 +267,7 @@ typedef struct Options{
 	char trace_read[BUFFER_SIZE];      // --trace-read: read name, "*" for all, empty = off
 	char trace_file[BUFFER_SIZE];      // --trace-file: trace output (empty = stderr)
 	int cinterval_per_base;            // --cinterval-per-base: window = -c x read A/C/G/T bases
+	int score_full_read;               // --score-full-read: leading overhang read bases are scored rows
 	double best_leaf_margin;           // --best-leaf-margin: L1 alone when it leads other species by this (0 = off)
 	double best_leaf_max_deficit;      // --best-leaf-max-deficit: and is within this of a perfect match (INFINITY = no bound)
 }Options;

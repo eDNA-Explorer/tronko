@@ -42,7 +42,7 @@ int reduce_read_bases(const char *q1, const char *q2)
 
 static int is_sentinel(type_of_PP s)
 {
-	return s >= REDUCE_SENTINEL;
+	return s >= REDUCE_SENTINEL_FLOOR;
 }
 
 /* Leaf (tree, node) scoring sc beats the current best (bt, bn, best): higher, or equal and
@@ -110,7 +110,7 @@ type_of_PP reduce_votes(int ncand, const type_of_PP *const *sc, const int *tree,
 	int max_tree=-1, max_node=-1;
 	int rule = g_reduce.margin > 0;
 	/* Every new option takes the maximum over real scores only: the sentinel would win it. */
-	int skip_sentinel = g_reduce.per_base || rule;
+	int skip_sentinel = g_reduce.per_base || g_reduce.full_read || rule;
 	for (i=0; i<ncand; i++){
 		for (k=0; k<2*numspecArr[tree[i]]-1; k++){
 			if ( maximum < sc[i][k] && !(skip_sentinel && is_sentinel(sc[i][k])) ){
