@@ -264,6 +264,8 @@ typedef struct Options{
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled
 #endif
+	char trace_read[BUFFER_SIZE];      // --trace-read: read name, "*" for all, empty = off
+	char trace_file[BUFFER_SIZE];      // --trace-file: trace output (empty = stderr)
 }Options;
 
 //extern node *tree;

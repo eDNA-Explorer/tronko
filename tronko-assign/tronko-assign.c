@@ -27,6 +27,7 @@
 #include "symbol_resolver.h"
 #include "tsv_memlog.h"
 #include "vote_tally.h"
+#include "trace.h"
 #include "nodestore.h"
 #ifdef ENABLE_PARQUET
 #include "parquet_writer.h"
@@ -784,6 +785,12 @@ static void finish_read(struct mystruct *mstr, resultsStruct *results, int lineN
 		//}
 		//free(appendScores);
 	}
+	if (g_reduce.collect){
+		const char *trace_name = paired != 0 ? pairedQueryMat->forward_name[lineNumber] : singleQueryMat->name[lineNumber];
+		if (trace_wanted(trace_name)){
+			trace_write(trace_name, leaf_iter, trees_search, reduce_last(), results->taxonPath[iter]);
+		}
+	}
 	crash_clear_bwa_context();  // Clear BWA context at end of read processing
 	results->minimum[0] = -1;
 	results->minimum[1] = -1;
@@ -1032,6 +1039,8 @@ int main(int argc, char **argv){
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
+	opt.trace_read[0] = '\0';
+	opt.trace_file[0] = '\0';
 	opt.cinterval = 0.0; /* never set before when -c was omitted; 0 is what the goldens ran with */
 	opt.print_all_nodes=0;
 	opt.verbose_level = -1;  // Disabled by default
@@ -1268,6 +1277,11 @@ int main(int argc, char **argv){
 	maxNumBase = specs[1];
 	free(specs);
 	Cinterval = opt.cinterval;
+	if (trace_init(opt.trace_read, opt.trace_file) != 0){
+		fprintf(stderr, "Cannot open --trace-file %s. Exiting...\n", opt.trace_file);
+		exit(1);
+	}
+	g_reduce.collect = opt.trace_read[0] != '\0';
 	/* Node-innermost store and blocked scoring (nodestore.c), for the production options only.
 	 * TRONKO_NODESTORE=0 keeps the legacy path; TRONKO_NS_KERNEL=plain|avx2|avx512 forces a kernel;
 	 * TRONKO_NS_BLOCK_READS and TRONKO_NS_BLOCK_MB size the blocks; TRONKO_NODESTORE_CHECK=1
@@ -2006,4 +2020,5 @@ int main(int argc, char **argv){
 		fclose(tsv_log);
 		g_tsv_log_file = NULL;
 	}
+	trace_close();
 }

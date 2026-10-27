@@ -51,6 +51,8 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+	{"trace-read",required_argument,0,0},
+	{"trace-file",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
 #endif
@@ -100,6 +102,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	--trace-read [NAME|*], Write a diagnostic record for the named read (or every read, *):\n\
+		its candidate trees, the best score and window, the votes, the best leaf and the best\n\
+		leaf of another species, and its output row. Changes no output [default: off]\n\
+	--trace-file [FILE], Where --trace-read writes [default: stderr]\n\
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
@@ -198,6 +204,15 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "disable-pruning") == 0) {
 					opt->enable_pruning = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "trace-read") == 0 ||
+				         strcmp(long_options[option_index].name, "trace-file") == 0) {
+					char *dst = long_options[option_index].name[6] == 'r' ? opt->trace_read : opt->trace_file;
+					if (strlen(optarg) >= BUFFER_SIZE) {
+						fprintf(stderr, "--%s is too long. Exiting...\n", long_options[option_index].name);
+						exit(1);
+					}
+					strcpy(dst, optarg);
 				}
 				else if (strcmp(long_options[option_index].name, "pruning-factor") == 0) {
 					if (sscanf(optarg, "%lf", &(opt->pruning_factor)) != 1) {
