@@ -78,11 +78,12 @@ typedef struct ns_slot {
 	int big[2];       /* positions[0] == -1: getscore_Arr returns 9999999999 for every node */
 } ns_slot_t;
 
-/* The per-read state that phase C needs, saved in phase A. */
+/* The per-read state that phase C needs, saved in phase A. A read has any number of
+ * candidates (--hits tied is not capped at MAX_NUM_BWA_MATCHES): its candidates' trees and
+ * slots are in the block's growable candidate table, from entry cand on. */
 typedef struct ns_read {
 	int lineNumber, iter, leaf_iter;
-	int coords[MAX_NUM_BWA_MATCHES][2];   /* results->leaf_coordinates[0..leaf_iter) */
-	int slot[MAX_NUM_BWA_MATCHES];        /* slot index per candidate */
+	int cand;                             /* first of its leaf_iter entries in the block's table */
 	type_of_PP fwd_mm, rev_mm;            /* forward and reverse mismatch counts */
 	int read_bases;                       /* A/C/G/T bases of both mates (--cinterval-per-base) */
 } ns_read_t;
@@ -91,6 +92,7 @@ typedef struct ns_block ns_block_t;
 
 typedef struct ns_counters {
 	long blocks, reads, slots, jobs, rows, kernel_calls, budget_closes;
+	long arena_grows;   /* reads that needed more than the arena alone (--hits tied) */
 } ns_counters_t;
 
 /* Kernel: every slot's jobs, tile by tile. Chosen once, before any placement thread starts. */
@@ -108,7 +110,8 @@ int ns_block_nreads(const ns_block_t *B);
 ns_read_t *ns_block_read(ns_block_t *B, int i);
 const ns_counters_t *ns_block_counters(const ns_block_t *B);
 /* 1 if a read with these candidates may join: the block is empty, or it has room for one more
- * read and its slots fit the arena budget. */
+ * read and its slots fit the arena budget. A read alone may exceed the budget: the empty block's
+ * arena grows to hold it, and shrinks back when the block is reset. */
 int ns_block_fits(ns_block_t *B, int **leaf_coordinates, int leaf_iter);
 /* Add a read: saves its candidates and gives each a zeroed slot. Its jobs arrive through
  * ns_sink_add_job until the next read is added. */
@@ -117,8 +120,9 @@ ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf
 void ns_sink_add_job(ns_block_t *B, int match, const int *positions, const char *locQuery, int alength);
 /* Phase B: score every slot of the block, tree by tree. */
 void ns_block_score(ns_block_t *B);
-/* The score vector of candidate i of read r. */
+/* The score vector of candidate i of read r, and its tree. */
 const double *ns_read_scores(const ns_block_t *B, const ns_read_t *r, int i);
+int ns_read_tree(const ns_block_t *B, const ns_read_t *r, int i);
 /* Phase C: the reduction of place_paired_with_nw (placement.c), on the read's slots. */
 void ns_reduce(const ns_block_t *B, const ns_read_t *r, int **voteRoot, type_of_PP *minimum_score);
 

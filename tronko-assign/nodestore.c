@@ -736,11 +736,15 @@ const char *ns_select_kernel(const char *name)
 struct ns_block {
 	int max_reads;
 	size_t budget;              /* doubles of slots per block, before the admission of a read */
-	double *arena;              /* 64-byte aligned, budget + one read's worst case */
+	double *arena;              /* 64-byte aligned: budget + MAX_NUM_BWA_MATCHES of the largest
+	                               tree, or one larger read's need while it is alone */
 	size_t cap, used;           /* doubles */
+	size_t cap0;                /* the arena's size as made, restored by ns_block_reset */
 	ns_slot_t *slots;
 	ns_slot_t **order;
 	int nslots, cap_slots;
+	int (*cand)[2];             /* per candidate of the block's reads: tree, slot */
+	int ncand, cap_cand;
 	int32_t *codes;
 	size_t ncodes, cap_codes;
 	ns_read_t *reads;
@@ -755,6 +759,24 @@ static void *ns_xmalloc(size_t bytes)
 	return p;
 }
 
+static void *ns_xrealloc(void *old, size_t bytes)
+{
+	void *p = realloc(old, bytes ? bytes : 1);
+	if (!p) { fprintf(stderr, "tronko-assign: out of memory (%zu bytes)\n", bytes); exit(1); }
+	return p;
+}
+
+/* A 64-byte-aligned arena of n doubles, with the 64 spare bytes it has always had. */
+static double *ns_arena(size_t n)
+{
+	void *a = NULL;
+	if (posix_memalign(&a, 64, n * sizeof(double) + 64) != 0) {
+		fprintf(stderr, "tronko-assign: out of memory for the scoring arena\n");
+		exit(1);
+	}
+	return a;
+}
+
 ns_block_t *ns_block_new(int max_reads, size_t budget_bytes)
 {
 	ns_block_t *B = calloc(1, sizeof(ns_block_t));
@@ -762,16 +784,12 @@ ns_block_t *ns_block_new(int max_reads, size_t budget_bytes)
 	if (max_reads < 1) max_reads = 1;
 	B->max_reads = max_reads;
 	B->budget = budget_bytes / sizeof(double);
-	B->cap = B->budget + (size_t)MAX_NUM_BWA_MATCHES * (size_t)ns_max_npad;
-	void *a = NULL;
-	if (posix_memalign(&a, 64, B->cap * sizeof(double) + 64) != 0) {
-		fprintf(stderr, "tronko-assign: out of memory for the scoring arena\n");
-		exit(1);
-	}
-	B->arena = a;
-	B->cap_slots = max_reads * MAX_NUM_BWA_MATCHES;
+	B->cap = B->cap0 = B->budget + (size_t)MAX_NUM_BWA_MATCHES * (size_t)ns_max_npad;
+	B->arena = ns_arena(B->cap);
+	B->cap_slots = B->cap_cand = max_reads * MAX_NUM_BWA_MATCHES;
 	B->slots = ns_xmalloc((size_t)B->cap_slots * sizeof(ns_slot_t));
 	B->order = ns_xmalloc((size_t)B->cap_slots * sizeof(ns_slot_t *));
+	B->cand = ns_xmalloc((size_t)B->cap_cand * sizeof(*B->cand));
 	B->reads = ns_xmalloc((size_t)max_reads * sizeof(ns_read_t));
 	B->cap_codes = 1 << 16;
 	B->codes = ns_xmalloc(B->cap_codes * sizeof(int32_t));
@@ -786,6 +804,7 @@ void ns_block_free(ns_block_t *B)
 	free(B->order);
 	free(B->reads);
 	free(B->codes);
+	free(B->cand);
 	free(B);
 }
 
@@ -795,6 +814,12 @@ void ns_block_reset(ns_block_t *B)
 	B->nslots = 0;
 	B->used = 0;
 	B->ncodes = 0;
+	B->ncand = 0;
+	if (B->cap > B->cap0) {   /* grown for one large read: give the memory back */
+		free(B->arena);
+		B->cap = B->cap0;
+		B->arena = ns_arena(B->cap);
+	}
 }
 
 int ns_block_nreads(const ns_block_t *B) { return B->nreads; }
@@ -816,26 +841,44 @@ int ns_block_fits(ns_block_t *B, int **leaf_coordinates, int leaf_iter)
 
 ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf_coordinates, int leaf_iter)
 {
-	if (B->nreads >= B->max_reads || leaf_iter > MAX_NUM_BWA_MATCHES) {
+	if (B->nreads >= B->max_reads) {
 		fprintf(stderr, "tronko-assign: scoring block overflow\n");
 		abort();
+	}
+	size_t need = 0;
+	for (int k = 0; k < leaf_iter; k++) need += (size_t)ns_trees[leaf_coordinates[k][0]].Npad;
+	if (B->used + need > B->cap) {
+		/* ns_block_fits admits a read past the budget only into an empty block */
+		if (B->nreads > 0) {
+			fprintf(stderr, "tronko-assign: scoring arena overflow\n");
+			abort();
+		}
+		free(B->arena);
+		B->cap = need;
+		B->arena = ns_arena(B->cap);
+		B->cnt.arena_grows++;
+	}
+	if (B->nslots + leaf_iter > B->cap_slots) {
+		while (B->nslots + leaf_iter > B->cap_slots) B->cap_slots *= 2;
+		B->slots = ns_xrealloc(B->slots, (size_t)B->cap_slots * sizeof(ns_slot_t));
+		B->order = ns_xrealloc(B->order, (size_t)B->cap_slots * sizeof(ns_slot_t *));   /* built in phase B */
+	}
+	if (B->ncand + leaf_iter > B->cap_cand) {
+		while (B->ncand + leaf_iter > B->cap_cand) B->cap_cand *= 2;
+		B->cand = ns_xrealloc(B->cand, (size_t)B->cap_cand * sizeof(*B->cand));
 	}
 	ns_read_t *r = &B->reads[B->nreads++];
 	r->lineNumber = lineNumber;
 	r->iter = iter;
 	r->leaf_iter = leaf_iter;
+	r->cand = B->ncand;
 	r->fwd_mm = 0;
 	r->rev_mm = 0;
 	r->read_bases = 0;
 	for (int k = 0; k < leaf_iter; k++) {
 		int t = leaf_coordinates[k][0];
 		size_t np = (size_t)ns_trees[t].Npad;
-		if (B->used + np > B->cap || B->nslots >= B->cap_slots) {
-			fprintf(stderr, "tronko-assign: scoring arena overflow\n");
-			abort();
-		}
-		r->coords[k][0] = t;
-		r->coords[k][1] = leaf_coordinates[k][1];
+		B->cand[B->ncand + k][0] = t;
 		ns_slot_t *sl = &B->slots[B->nslots];
 		sl->out = B->used;
 		sl->tree = t;
@@ -843,8 +886,9 @@ ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf
 		/* +0.0 in every lane: what nodeScores holds when a read starts */
 		memset(B->arena + B->used, 0, np * sizeof(double));
 		B->used += np;
-		r->slot[k] = B->nslots++;
+		B->cand[B->ncand + k][1] = B->nslots++;
 	}
+	B->ncand += leaf_iter;
 	B->cnt.reads++;
 	B->cnt.slots += leaf_iter;
 	return r;
@@ -853,7 +897,7 @@ ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf
 void ns_sink_add_job(ns_block_t *B, int match, const int *positions, const char *locQuery, int alength)
 {
 	ns_read_t *r = &B->reads[B->nreads - 1];
-	ns_slot_t *sl = &B->slots[r->slot[match]];
+	ns_slot_t *sl = &B->slots[B->cand[r->cand + match][1]];
 	if (sl->njob >= 2) {
 		fprintf(stderr, "tronko-assign: more than two scoring jobs for one candidate\n");
 		abort();
@@ -925,7 +969,12 @@ void ns_block_score(ns_block_t *B)
 
 const double *ns_read_scores(const ns_block_t *B, const ns_read_t *r, int i)
 {
-	return B->arena + B->slots[r->slot[i]].out;
+	return B->arena + B->slots[B->cand[r->cand + i][1]].out;
+}
+
+int ns_read_tree(const ns_block_t *B, const ns_read_t *r, int i)
+{
+	return B->cand[r->cand + i][0];
 }
 
 /* The reduction at the end of place_paired_with_nw (placement.c), reading the read's slots where
@@ -939,7 +988,7 @@ void ns_reduce(const ns_block_t *B, const ns_read_t *r, int **voteRoot, type_of_
 	int cand_tree[number_of_matches > 0 ? number_of_matches : 1];
 	for (i=0; i<number_of_matches; i++){
 		cand_scores[i] = ns_read_scores(B, r, i);
-		cand_tree[i] = r->coords[i][0];
+		cand_tree[i] = ns_read_tree(B, r, i);
 	}
 	minimum_score[0] = reduce_votes(number_of_matches, cand_scores, cand_tree, r->read_bases, voteRoot);
 	minimum_score[1] = r->fwd_mm;

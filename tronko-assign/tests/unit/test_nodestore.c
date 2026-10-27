@@ -136,13 +136,18 @@ typedef struct {
 	char *q;
 } job_t;
 
+/* Candidates a test read may have: every tree of test_random (past MAX_NUM_BWA_MATCHES at cap
+ * 10) and of test_wide (past it at any cap), as --hits tied allows (the store's per-read table
+ * and arena grow for them). */
+#define TEST_MAX_CAND (MAX_NUM_BWA_MATCHES + 6 > 16 ? MAX_NUM_BWA_MATCHES + 6 : 16)
+
 typedef struct {
 	int leaf_iter;
-	int coords[MAX_NUM_BWA_MATCHES][2];
-	int has_job[MAX_NUM_BWA_MATCHES];   /* 0: empty leaf string, no job */
-	job_t f[MAX_NUM_BWA_MATCHES], r[MAX_NUM_BWA_MATCHES];
+	int coords[TEST_MAX_CAND][2];
+	int has_job[TEST_MAX_CAND];   /* 0: empty leaf string, no job */
+	job_t f[TEST_MAX_CAND], r[TEST_MAX_CAND];
 	int paired;
-	double *legacy[MAX_NUM_BWA_MATCHES];   /* nodeScores[k][tree][*] after both mates */
+	double *legacy[TEST_MAX_CAND];   /* nodeScores[k][tree][*] after both mates */
 	double fwd_mm, rev_mm;
 } read_t;
 
@@ -187,7 +192,7 @@ static void legacy_scores(read_t *rd, int k, int ntrees)
 {
 	int t = rd->coords[k][0];
 	int N = 2 * numspecArr[t] - 1;
-	type_of_PP ***nodeScores = calloc(MAX_NUM_BWA_MATCHES, sizeof(type_of_PP **));
+	type_of_PP ***nodeScores = calloc(TEST_MAX_CAND, sizeof(type_of_PP **));
 	nodeScores[k] = calloc((size_t)ntrees, sizeof(type_of_PP *));
 	nodeScores[k][t] = calloc((size_t)N, sizeof(type_of_PP));
 	if (rd->has_job[k]) {
@@ -276,13 +281,14 @@ static void compare_block(ns_block_t *B, read_t *reads, int ntrees, int **va, in
 	ns_block_reset(B);
 }
 
-static void run_blocked(read_t *reads, int nreads, int ntrees, int max_reads, size_t budget, const char *what)
+/* Returns how many reads grew the arena. */
+static long run_blocked(read_t *reads, int nreads, int ntrees, int max_reads, size_t budget, const char *what)
 {
 	ns_block_t *B = ns_block_new(max_reads, budget);
 	int **va = alloc_votes(ntrees), **vb = alloc_votes(ntrees);
-	int *coord_rows[MAX_NUM_BWA_MATCHES];
-	int coords[MAX_NUM_BWA_MATCHES][2];
-	for (int k = 0; k < MAX_NUM_BWA_MATCHES; k++) coord_rows[k] = coords[k];
+	int *coord_rows[TEST_MAX_CAND];
+	int coords[TEST_MAX_CAND][2];
+	for (int k = 0; k < TEST_MAX_CAND; k++) coord_rows[k] = coords[k];
 	for (int i = 0; i < nreads; i++) {
 		read_t *rd = &reads[i];
 		for (int k = 0; k < rd->leaf_iter; k++) { coords[k][0] = rd->coords[k][0]; coords[k][1] = rd->coords[k][1]; }
@@ -300,7 +306,9 @@ static void run_blocked(read_t *reads, int nreads, int ntrees, int max_reads, si
 	compare_block(B, reads, ntrees, va, vb, what);
 	free_votes(va, ntrees);
 	free_votes(vb, ntrees);
+	long grows = ns_block_counters(B)->arena_grows;
 	ns_block_free(B);
+	return grows;
 }
 
 /* ---------------------------------------------------------------- scenarios */
@@ -341,9 +349,10 @@ static void test_random(int seed_round)
 		read_t *rd = &reads[i];
 		rd->paired = rndi(4) != 0;
 		int u = rndi(100);
-		/* candidates are distinct trees: at most min(MAX_NUM_BWA_MATCHES, ntrees), whatever the cap */
+		/* candidates are distinct trees: at most min(MAX_NUM_BWA_MATCHES, ntrees), whatever the cap,
+		 * except a few reads with every tree (more than the cap of 10, as --hits tied allows) */
 		int maxc = MAX_NUM_BWA_MATCHES < ntrees ? MAX_NUM_BWA_MATCHES : ntrees;
-		rd->leaf_iter = u < 4 ? 0 : u < 70 ? 1 : u < 90 ? 2 : 1 + rndi(maxc);
+		rd->leaf_iter = u < 4 ? 0 : u < 70 ? 1 : u < 90 ? 2 : u < 97 ? 1 + rndi(maxc) : ntrees;
 		int used[sizeof(specs) / sizeof(specs[0])] = {0};
 		for (int k = 0; k < rd->leaf_iter; k++) {
 			int t;
@@ -453,6 +462,58 @@ static void test_random(int seed_round)
 	free(seq); free(seq2); free(posr); free(posr2);
 }
 
+/* Reads with more candidates than MAX_NUM_BWA_MATCHES, as --hits tied gives: two trees more than
+ * the cap, all of one size, and every other read on all of them, so such a read needs more than
+ * the arena holds (the budget plus MAX_NUM_BWA_MATCHES of the largest tree) and the empty block's
+ * arena grows for it; the scores and votes must still equal production's. */
+static void test_wide(void)
+{
+	const int ntrees = MAX_NUM_BWA_MATCHES + 2;
+	treeArr = calloc((size_t)ntrees, sizeof(node *));
+	numspecArr = calloc((size_t)ntrees, sizeof(int));
+	numbaseArr = calloc((size_t)ntrees, sizeof(int));
+	rootArr = calloc((size_t)ntrees, sizeof(int));
+	for (int t = 0; t < ntrees; t++) make_tree(t, 40, 60, -1);
+	Cinterval = 5;
+	char *seq = malloc(61);
+	int *posr = malloc(sizeof(int) * 61);
+	const int nreads = 40;
+	read_t *reads = calloc((size_t)nreads, sizeof(read_t));
+	for (int i = 0; i < nreads; i++) {
+		read_t *rd = &reads[i];
+		rd->paired = i % 4 < 2;
+		rd->leaf_iter = i % 2 ? ntrees : 1 + rndi(3);
+		for (int k = 0; k < rd->leaf_iter; k++) {
+			int t = (k + i) % ntrees;   /* distinct trees */
+			rd->coords[k][0] = t;
+			rd->coords[k][1] = numspecArr[t] - 1 + rndi(numspecArr[t]);
+			rd->has_job[k] = !leaf_is_empty(t, rd->coords[k][1], seq, posr);
+			if (rd->has_job[k]) {
+				make_job(&rd->f[k], numbaseArr[t]);
+				if (rd->paired) make_job(&rd->r[k], numbaseArr[t]);
+			}
+			legacy_scores(rd, k, ntrees);
+		}
+		rd->fwd_mm = rndi(20);
+		rd->rev_mm = rd->paired ? rndi(20) : 0;
+	}
+	ns_build_stats_t st;
+	CHECK(ns_build(ntrees, 1, 1, 0, &st) == 1, "ns_build for the wide test: %s", st.reason);
+	long grows = run_blocked(reads, nreads, ntrees, 64, 1024, "wide reads, budget 1 KiB");
+	grows += run_blocked(reads, nreads, ntrees, 1, (size_t)64 << 20, "wide reads, block 1");
+	CHECK(grows > 0, "no read with more candidates than the cap grew the arena");
+	ns_free_store(ntrees);
+	for (int i = 0; i < nreads; i++)
+		for (int k = 0; k < reads[i].leaf_iter; k++) {
+			if (reads[i].has_job[k]) { free_job(&reads[i].f[k]); if (reads[i].paired) free_job(&reads[i].r[k]); }
+			free(reads[i].legacy[k]);
+		}
+	free(reads);
+	for (int t = 0; t < ntrees; t++) free_tree(t);
+	free(treeArr); free(numspecArr); free(numbaseArr); free(rootArr);
+	free(seq); free(posr);
+}
+
 /* The reduction on crafted scores: nodes exactly on the lower edge of the vote window, one ulp
  * inside and outside it, NaN, and the maximum in the second candidate. Deterministic, so the
  * window's >= is covered whatever the random rounds happen to produce. */
@@ -560,6 +621,7 @@ int main(void)
 		test_random(round);
 	}
 	test_irregular();
+	test_wide();
 	test_reduce_edges();
 	CHECK(g_boundary_votes > 0, "no node score fell on the vote window boundary");
 	printf("test_nodestore: %ld checks, %ld failed: %s\n", g_checks, g_fail, g_fail ? "FAIL" : "PASS");

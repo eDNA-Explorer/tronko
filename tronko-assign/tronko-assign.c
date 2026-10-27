@@ -584,16 +584,18 @@ static void finish_read(struct mystruct *mstr, resultsStruct *results, int lineN
 	 * global of the same name, every placement thread wrote it without synchronisation, a data
 	 * race that ThreadSanitizer reports. */
 	struct timespec tstart;
-	// Votes exist only in the trees this read was scored against (vote_tally.h).
-	int hitTree[MAX_NUM_BWA_MATCHES], countVotes[MAX_NUM_BWA_MATCHES];
+	// Votes exist only in the trees this read was scored against (vote_tally.h). --hits tied
+	// gives a read any number of candidate trees; others are capped at MAX_NUM_BWA_MATCHES.
+	const int ncap = leaf_iter > MAX_NUM_BWA_MATCHES ? leaf_iter : MAX_NUM_BWA_MATCHES;
+	int hitTree[ncap], countVotes[ncap];
 	int nhit = vote_hit_trees(trees_search, leaf_iter, mstr->ntree, hitTree);
-	int LCA, LCAs[MAX_NUM_BWA_MATCHES], maxRoots[MAX_NUM_BWA_MATCHES];
+	int LCA, LCAs[ncap], maxRoots[ncap];
 	vote_tally_t tally = vote_tally_hit_trees(results->voteRoot, numspecArr, hitTree, nhit, countVotes, minNodes, maxRoots);
 	int numMinNodes = tally.numMinNodes;
 	int count = tally.count;
 	int maxRoot = tally.maxRoot;
 #ifdef VOTE_SHADOW_CHECK
-	vote_shadow_check(results->voteRoot, numspecArr, mstr->ntree, trees_search, leaf_iter, MAX_NUM_BWA_MATCHES, hitTree, nhit, countVotes, tally, minNodes, maxRoots, lineNumber);
+	vote_shadow_check(results->voteRoot, numspecArr, mstr->ntree, trees_search, leaf_iter, ncap, hitTree, nhit, countVotes, tally, minNodes, maxRoots, lineNumber);
 #endif
 	int unassigned=0;
 	int minLevel=0;
@@ -835,10 +837,10 @@ static void finish_block(struct mystruct *mstr, ns_block_t *B, char *resultsPath
 			cand[i]=-1;
 		}
 #else
-		int cand[MAX_NUM_BWA_MATCHES];
+		int cand[r->leaf_iter > MAX_NUM_BWA_MATCHES ? r->leaf_iter : MAX_NUM_BWA_MATCHES];
 #endif
 		for (i=0; i<r->leaf_iter; i++){
-			cand[i]=r->coords[i][0];
+			cand[i]=ns_read_tree(B, r, i);
 		}
 		finish_read(mstr, results, r->lineNumber, r->iter, r->leaf_iter, cand, resultsPath);
 	}
