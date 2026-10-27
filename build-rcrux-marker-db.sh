@@ -343,6 +343,14 @@ cp "$TAX2"     "$OUT/input_taxonomy.txt"
 # source release's hashes and how labels were collapsed) travels with it.
 [ "$TIER" = imported ] && cp "$RC_TIER_DIR/lca_tier.json" "$OUT/imported_lca_tier.json"
 db_status "$OUT" INPUTS_RECORDED
+# tronko-assign -6 builds a missing BWA-MEM3 index beside the FASTA on first
+# use, which would write into a DVC-tracked master: ship it built instead.
+command -v bwa-mem3 >/dev/null || die "bwa-mem3 not on PATH (make -C tronko-assign bwa-mem3)"
+echo "  BWA-MEM3 index of ${PRIMER}.fasta ($(bwa-mem3 version 2>&1 | head -1))"
+bwa-mem3 version > "$OUT/bwa_mem3_version.txt" 2>&1
+bwa-mem3 index "$OUT/${PRIMER}.fasta" > "$OUT/bwa_mem3_index.log" 2>&1 \
+    || die "bwa-mem3 index failed; see $OUT/bwa_mem3_index.log"
+db_status "$OUT" BWA_MEM3_INDEXED
 alias_marker_files "$OUT" "$PRIMER" || die "aliasing failed"
 db_status "$OUT" ALIASED
 db_status "$OUT" DONE

@@ -14,8 +14,10 @@ TRONKO_DB_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TRONKO_REPO_DIR=$(dirname "$TRONKO_DB_LIB_DIR")
 RCRUX_REPO="${RCRUX_REPO:-$HOME/rcrux-py}"
 
-# BWA index suffixes, in the order bwa writes them.
-BWA_EXTS=(amb ann bwt pac sa)
+# Aligner index suffixes: bwa's (amb ann bwt pac sa), then bwt.2bit.64, the one
+# BWA-MEM3 adds (it shares amb ann pac). tronko-assign -6 loads the BWA-MEM3
+# set and builds any missing file beside the FASTA, so a master carries it.
+BWA_EXTS=(amb ann bwt pac sa bwt.2bit.64)
 
 # The taxonomy always carries these 7 ranks, semicolon-delimited.
 TAX_RANKS=7
