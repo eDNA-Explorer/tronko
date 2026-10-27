@@ -35,6 +35,12 @@
 #   --tb-jobs N         tronko-build -J: clusters partitioned in parallel in
 #                       step 4 (default 1, the sequential path)
 #   --tb-threads N      tronko-build -c per worker (default threads/3/tb-jobs)
+#   --imported DIR      build from an imported (non-rCRUX) reference instead:
+#                       DIR/lca/{lca.fasta,lca_taxonomy.txt,lca_tier.json}, as
+#                       make-imported-lca-tier.py writes them. The positional
+#                       name then names it; output goes to
+#                       databases/imported/<name>/lca/..., and lca_tier.json is
+#                       kept beside the master as its provenance.
 #   --force             discard any existing build AND cache, then rebuild
 #   --allow-rcrux-drift proceed when the working tree differs from the tag
 #   --no-verify         skip the post-build verification (not recommended)
@@ -61,10 +67,12 @@ TIER=dedup
 TAG_OVERRIDE=""
 TB_JOBS=1
 TB_THREADS=""
+IMPORTED=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --tier)              TIER="$2"; shift 2 ;;
+        --imported)          IMPORTED="$2"; shift 2 ;;
         --rcrux-tag)         TAG_OVERRIDE="$2"; shift 2 ;;
         --tb-jobs)           TB_JOBS="$2"; shift 2 ;;
         --tb-threads)        TB_THREADS="$2"; shift 2 ;;
@@ -78,7 +86,7 @@ while [ $# -gt 0 ]; do
         --force)             FORCE=1; shift ;;
         --allow-rcrux-drift) ALLOW_DRIFT=1; shift ;;
         --no-verify)         DO_VERIFY=0; shift ;;
-        -h|--help)           sed -n '2,41p' "$0"; exit 0 ;;
+        -h|--help)           sed -n '2,47p' "$0"; exit 0 ;;
         -*)                  die "unknown option: $1" ;;
         *)                   [ -z "$MARKER" ] && MARKER="$1" || die "unexpected argument: $1"; shift ;;
     esac
@@ -91,10 +99,16 @@ export PATH="$TRONKO_REPO_DIR/bin:$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR
 # A. Resolve, validate, lock
 # ===========================================================================
 echo "=== A. resolve and lock ==="
-resolve_marker "$MARKER" "$TIER" || exit 1
+if [ -n "$IMPORTED" ]; then
+    [ "$TIER" = dedup ] || die "--imported takes no --tier (its input is its own lca tier)"
+    TIER=imported
+    resolve_imported "$MARKER" "$IMPORTED" || exit 1
+else
+    resolve_marker "$MARKER" "$TIER" || exit 1
+fi
 # A curated tier is not what a <M>_v* release tag pins, so a curated build must
 # name the tag that holds its tier's .dvc rather than inherit the dedup release.
-if [ "$TIER" != dedup ]; then
+if [ "$TIER" = curated ]; then
     [ -n "$TAG_OVERRIDE" ] || die "--tier $TIER needs --rcrux-tag (the tag holding its $TIER.dvc)"
 fi
 [ -n "$TAG_OVERRIDE" ] && RC_TAG="$TAG_OVERRIDE"
@@ -126,6 +140,8 @@ esac
 # master cannot be mistaken for (or overwrite) the dedup one.
 if [ "$TIER" = dedup ]; then
     CONFIG="$OUT_ROOT/databases/$MARKER/lca/ac/$AC_CONFIG"
+elif [ "$TIER" = imported ]; then
+    CONFIG="$OUT_ROOT/databases/imported/$MARKER/lca/ac/$AC_CONFIG"
 else
     CONFIG="$OUT_ROOT/databases/$MARKER/$TIER/lca/ac/$AC_CONFIG"
 fi
@@ -166,7 +182,13 @@ echo "    tronko repo: $TRONKO_HEAD ($TRONKO_DIRTY)"
 # ===========================================================================
 # B. Acquire and verify inputs
 # ===========================================================================
-echo "=== B. acquire and verify rCRUX inputs ==="
+echo "=== B. acquire and verify inputs ==="
+if [ "$TIER" = imported ]; then
+    # No DVC pointer or tag: the lca tier's own record pins its inputs and
+    # outputs, so check the files are still the ones it hashed.
+    verify_imported_tier "$RC_TIER_DIR" || die "$RC_TIER_DIR/lca_tier.json does not match its files"
+    echo "  lca_tier.json matches lca.fasta and lca_taxonomy.txt"
+else
 # Unconditional: 4 of the 7 buildable markers are pointer-only, and an EMPTY
 # dedup/ directory exists for them, so "is lca.fasta missing" is too weak a test.
 TIER_DVC="databases/$MARKER/$TIER.dvc"
@@ -198,6 +220,7 @@ elif [ -n "$TAG_MD5" ] && [ "$TAG_MD5" != "$WT_MD5" ]; then
     fi
 else
     echo "  $TIER.dvc matches tag $RC_TAG"
+fi
 fi
 
 echo "  preflighting $(basename "$RC_TAX") ..."
@@ -316,6 +339,9 @@ fi
 echo "=== G. record inputs and alias ==="
 cp "$RC_FASTA" "$OUT/input.fasta"
 cp "$TAX2"     "$OUT/input_taxonomy.txt"
+# An imported master has no rCRUX tier to point at: its lca tier's record (the
+# source release's hashes and how labels were collapsed) travels with it.
+[ "$TIER" = imported ] && cp "$RC_TIER_DIR/lca_tier.json" "$OUT/imported_lca_tier.json"
 db_status "$OUT" INPUTS_RECORDED
 alias_marker_files "$OUT" "$PRIMER" || die "aliasing failed"
 db_status "$OUT" ALIASED

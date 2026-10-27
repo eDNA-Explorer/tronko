@@ -175,6 +175,40 @@ resolve_marker() {
     return 0
 }
 
+# An imported (non-rCRUX) reference: <dir>/lca/ as make-imported-lca-tier.py
+# writes it. Sets the same RC_* variables resolve_marker does.
+resolve_imported() {
+    local name="$1" dir="$2"
+    case "$name" in
+        */*|"") echo "name must be a bare directory name, not a path: '$name'" >&2; return 1 ;;
+    esac
+    [ -d "$dir/lca" ] || { echo "no lca tier at $dir/lca (run make-imported-lca-tier.py)" >&2; return 1; }
+    RC_MARKER_DIR=$(cd "$dir" && pwd)
+    RC_TIER=imported
+    RC_TIER_DIR="$RC_MARKER_DIR/lca"
+    RC_FASTA="$RC_TIER_DIR/lca.fasta"
+    RC_TAX="$RC_TIER_DIR/lca_taxonomy.txt"
+    RC_TAG="imported:$(basename "$RC_MARKER_DIR")"
+    local f
+    for f in "$RC_FASTA" "$RC_TAX" "$RC_TIER_DIR/lca_tier.json"; do
+        [ -s "$f" ] || { echo "missing $f" >&2; return 1; }
+    done
+}
+
+# True when an imported lca tier's files still hash to what lca_tier.json recorded.
+verify_imported_tier() {
+    python3 - "$1" <<'PYEOF'
+import hashlib, json, sys
+from pathlib import Path
+tier = Path(sys.argv[1])
+record = json.loads((tier / "lca_tier.json").read_text())
+for name, want in record["outputs"].items():
+    got = hashlib.sha256((tier / name).read_bytes()).hexdigest()
+    if got != want:
+        sys.exit(f"{tier / name}: sha256 {got} != recorded {want}")
+PYEOF
+}
+
 # ---------------------------------------------------------------------------
 # Input preflight
 #
