@@ -147,6 +147,7 @@ typedef struct Options{
 	int legacy_sp;
 	int tree_seed;   /* seed for VeryFastTree/FastTree (-seed N); 0 = no seed (random) */
 	int no_gamma;    /* if 1, omit -gamma from VeryFastTree/FastTree invocation */
+	int one_thread_below; /* FAMSA and VeryFastTree/FastTree on one thread for partitions of fewer sequences (0 = never, -1 = auto by -J) */
 }Options;
 
 typedef struct masterArr{
