@@ -1190,6 +1190,42 @@ static unsigned int polytomy_seed(const char *newick){
 	return h ? h : 1u;
 }
 
+void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m);
+
+/* Step 4's splits as tasks while the -J pool runs: a partition that needs splitting goes on
+   this stack instead of being split depth-first by the thread that made it, so the splits of
+   a large cluster spread over every worker rather than queueing behind one (18S V8f: one
+   cluster of 73,722 sequences, thousands of splits). A split reads and frees only its own
+   partition (m), and everything shared is under its own mutex, as between clusters. */
+typedef struct { int root; struct masterArr *m; } split_task_t;
+static struct {
+	int active;                 /* the pool is running: queue, do not recurse */
+	pthread_mutex_t lock;       /* the stack, busy, and the pool's next cluster */
+	pthread_cond_t cond;
+	split_task_t *tasks;
+	int ntasks, cap;
+	int busy;                   /* workers running a cluster or a split */
+} split_pool = { 0, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, NULL, 0, 0, 0 };
+
+/* Split m (partition root+1) now, or queue it for the pool. */
+static void split_partition(int root, Options *opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
+	if (!split_pool.active){
+		createNewRoots(root, opt, max_nodename, max_lineTaxonomy, m);
+		return;
+	}
+	pthread_mutex_lock(&split_pool.lock);
+	if (split_pool.ntasks == split_pool.cap){
+		split_pool.cap = split_pool.cap ? 2 * split_pool.cap : 64;
+		split_pool.tasks = realloc(split_pool.tasks, sizeof(split_task_t) * split_pool.cap);
+		if (!split_pool.tasks){ fprintf(stderr, "out of memory for the split queue\n"); exit(EXIT_FAILURE); }
+	}
+	split_pool.tasks[split_pool.ntasks].root = root;
+	split_pool.tasks[split_pool.ntasks].m = m;
+	split_pool.ntasks++;
+	pthread_cond_signal(&split_pool.cond);
+	pthread_mutex_unlock(&split_pool.lock);
+}
+
 void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineTaxonomy, struct masterArr *m){
 	int i,j,k,count;
 	char buffer[BUFFER_SIZE];
@@ -1477,7 +1513,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=0;
 					pthread_mutex_unlock(&spscore_mutex);
-					createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
+					split_partition(which-1,opt,max_nodename,max_lineTaxonomy,t);
 				}else{
 					pthread_mutex_lock(&spscore_mutex);
 					SPscoreArr[which-1]=1;
@@ -1489,7 +1525,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=0;
 				pthread_mutex_unlock(&spscore_mutex);
-				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
+				split_partition(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
 				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=1;
@@ -1499,7 +1535,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		if ( opt->use_spscore==1 && opt->use_min_leaves==1 ){
 			initialSPscore = calculateSPArr(t, opt->legacy_sp, sp_threads);
 			if (initialSPscore < opt->sp_score && t->numspec > opt->min_leaves){
-				createNewRoots(which-1,opt,max_nodename,max_lineTaxonomy,t);
+				split_partition(which-1,opt,max_nodename,max_lineTaxonomy,t);
 			}else{
 				pthread_mutex_lock(&spscore_mutex);
 				SPscoreArr[which-1]=1;
@@ -1980,24 +2016,43 @@ static void process_one_cluster(int i, Options *opt, partition_files *pf, int ma
 	free(pf->tree_files[i]);
 }
 typedef struct {
-	int next_idx, partition_count;
+	int next_idx, partition_count;   /* next_idx under split_pool.lock */
 	int *order;      /* cluster indices in dispatch order (largest first) */
 	int n_order;
-	pthread_mutex_t lock;
 	Options *opt;
 	partition_files *pf;
 	int max_nodename, max_lineTaxonomy;
 } cluster_dispatch_t;
 
+/* A -J worker: queued splits first (the stack keeps the frontier small), then the next
+   cluster; done when neither is left and no worker can queue more. */
 static void *cluster_worker(void *arg){
 	cluster_dispatch_t *ctx = arg;
+	pthread_mutex_lock(&split_pool.lock);
 	for (;;){
-		pthread_mutex_lock(&ctx->lock);
-		if (ctx->next_idx >= ctx->n_order){ pthread_mutex_unlock(&ctx->lock); break; }
-		int my_idx = ctx->order[ctx->next_idx++];
-		pthread_mutex_unlock(&ctx->lock);
-		process_one_cluster(my_idx, ctx->opt, ctx->pf, ctx->max_nodename, ctx->max_lineTaxonomy);
+		if (split_pool.ntasks > 0){
+			split_task_t t = split_pool.tasks[--split_pool.ntasks];
+			split_pool.busy++;
+			pthread_mutex_unlock(&split_pool.lock);
+			createNewRoots(t.root, ctx->opt, ctx->max_nodename, ctx->max_lineTaxonomy, t.m);
+			pthread_mutex_lock(&split_pool.lock);
+			split_pool.busy--;
+			pthread_cond_broadcast(&split_pool.cond);
+		}else if (ctx->next_idx < ctx->n_order){
+			int my_idx = ctx->order[ctx->next_idx++];
+			split_pool.busy++;
+			pthread_mutex_unlock(&split_pool.lock);
+			process_one_cluster(my_idx, ctx->opt, ctx->pf, ctx->max_nodename, ctx->max_lineTaxonomy);
+			pthread_mutex_lock(&split_pool.lock);
+			split_pool.busy--;
+			pthread_cond_broadcast(&split_pool.cond);
+		}else if (split_pool.busy == 0){
+			break;
+		}else{
+			pthread_cond_wait(&split_pool.cond, &split_pool.lock);
+		}
 	}
+	pthread_mutex_unlock(&split_pool.lock);
 	return NULL;
 }
 
@@ -2081,6 +2136,12 @@ int main(int argc, char **argv){
 	/* One-thread partitions pay off when -J workers keep the cores busy; with -J 1 only
 	   three tools run at a time and need their threads. */
 	if (opt.one_thread_below < 0) opt.one_thread_below = opt.parallel_jobs > 1 ? 10000 : 0;
+	/* -b reloads partition files by number, and with -J > 1 the numbers depend on which
+	   worker finishes first, so a resume would load other subsets as its own */
+	if (opt.restart > 0 && opt.parallel_jobs > 1){
+		fprintf(stderr, "-b (resume at a partition number) needs -J 1: with -J > 1 partition numbers depend on scheduling\n");
+		exit(-1);
+	}
 	if ( opt.partitions_directory[0] == '\0' ){
 		fprintf(stderr, "You must specify an output directory with -d\n");
 		exit(-1);
@@ -2274,22 +2335,32 @@ int main(int argc, char **argv){
 				ctx.order = malloc(sizeof(int) * (ctx.n_order > 0 ? ctx.n_order : 1));
 				for (i = 0; i < ctx.n_order; i++) ctx.order[i] = seq_bound + i;
 			}
-			pthread_mutex_init(&ctx.lock, NULL);
 			ctx.opt = &opt;
 			ctx.pf = pf;
 			ctx.max_nodename = max_nodename;
 			ctx.max_lineTaxonomy = max_lineTaxonomy;
+			/* not capped at the cluster count: splits keep every worker busy */
 			int nworkers = opt.parallel_jobs;
-			int remaining = partition_count - seq_bound;
-			if (nworkers > remaining) nworkers = remaining;
 			if (nworkers < 1) nworkers = 1;
 			pthread_t *workers = malloc(sizeof(pthread_t)*nworkers);
 			int w;
-			for (w=0; w<nworkers; w++) pthread_create(&workers[w], NULL, cluster_worker, &ctx);
-			for (w=0; w<nworkers; w++) pthread_join(workers[w], NULL);
+			split_pool.active = 1;
+			int started = 0;
+			for (w=0; w<nworkers; w++){
+				if (pthread_create(&workers[started], NULL, cluster_worker, &ctx) == 0) started++;
+			}
+			if (started == 0){
+				fprintf(stderr, "could not start any -J worker thread\n");
+				exit(EXIT_FAILURE);
+			}
+			if (started < nworkers) fprintf(stderr, "started %d of %d -J workers\n", started, nworkers);
+			for (w=0; w<started; w++) pthread_join(workers[w], NULL);
+			split_pool.active = 0;
+			free(split_pool.tasks);
+			split_pool.tasks = NULL;
+			split_pool.cap = 0;
 			free(workers);
 			free(ctx.order);
-			pthread_mutex_destroy(&ctx.lock);
 		}
 		free(pf->tax_files);
 		free(pf->msa_files);
