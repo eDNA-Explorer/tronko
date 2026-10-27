@@ -1,6 +1,7 @@
 #include "options.h"
 #include <getopt.h>
 #include <ctype.h>
+#include <math.h>
 #include <string.h>
 
 static struct option long_options[]=
@@ -52,6 +53,8 @@ static struct option long_options[]=
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
 	{"cinterval-per-base",no_argument,0,0},
+	{"best-leaf-margin",required_argument,0,0},
+	{"best-leaf-max-deficit",required_argument,0,0},
 	{"trace-read",required_argument,0,0},
 	{"trace-file",required_argument,0,0},
 #ifdef ENABLE_PARQUET
@@ -107,6 +110,13 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 		the read's A/C/G/T bases (both mates), so -c 0.057 tolerates about one mismatch per\n\
 		100 bases at -u 0.01 (0.01*log(3*(1-u)/u)). Not with pruning or early termination,\n\
 		whose thresholds are multiples of the raw -c [default: off]\n\
+	--best-leaf-margin [FLOAT], Vote the best leaf (L1) alone when it is in the voting window\n\
+		and scores at least FLOAT above the best leaf of every other species, so the read is\n\
+		assigned to L1's species. In score units: one mismatch costs log(3*(1-u)/u), 5.69 at\n\
+		-u 0.01. A tie never fires. Not with pruning or early termination, which leave leaves\n\
+		unscored [default: off]\n\
+	--best-leaf-max-deficit [FLOAT], With --best-leaf-margin: L1 must also score within FLOAT\n\
+		of a perfect match, the read's A/C/G/T bases times log(1-u) [default: no bound]\n\
 	--trace-read [NAME|*], Write a diagnostic record for the named read (or every read, *):\n\
 		its candidate trees, the best score and window, the votes, the best leaf and the best\n\
 		leaf of another species, and its output row. Changes no output [default: off]\n\
@@ -212,6 +222,22 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "cinterval-per-base") == 0) {
 					opt->cinterval_per_base = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "best-leaf-margin") == 0 ||
+				         strcmp(long_options[option_index].name, "best-leaf-max-deficit") == 0) {
+					int margin = strcmp(long_options[option_index].name, "best-leaf-margin") == 0;
+					char *end;
+					double v = strtod(optarg, &end);
+					if (end == optarg || *end != '\0' || !isfinite(v) || (margin ? v <= 0 : v < 0)) {
+						fprintf(stderr, "--%s must be a %s number, not '%s'. Exiting...\n",
+						        long_options[option_index].name, margin ? "positive" : "non-negative", optarg);
+						exit(1);
+					}
+					if (margin) {
+						opt->best_leaf_margin = v;
+					} else {
+						opt->best_leaf_max_deficit = v;
+					}
 				}
 				else if (strcmp(long_options[option_index].name, "trace-read") == 0 ||
 				         strcmp(long_options[option_index].name, "trace-file") == 0) {

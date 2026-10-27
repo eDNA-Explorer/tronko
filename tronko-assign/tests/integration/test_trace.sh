@@ -19,7 +19,7 @@ mem3_index "$MT/multitree.fasta" || exit 2
 
 COMMON=(-r -f "$MT/reference_tree.trkb" -a "$MT/multitree.fasta" -w -6 --Cinterval 10)
 GOLDENS=$(golden_dir "$MT/goldens")
-TRACE_COLUMNS=15
+TRACE_COLUMNS=16
 echo "trace: multi-tree fixture, cap $MATCH_CAP, threads $CORES"
 
 run_case() {
@@ -36,7 +36,7 @@ run_case() {
 		check_output "$c" "$GOLDENS/expected_$c.tsv" "$out" "$c traced, --number-of-cores $n"
 		rows=$(grep -vc '^Readname' "$out")
 		records=$(grep -c '^trace	' "$trace")
-		# 14 trace columns, then the output row (its own tab-separated fields)
+		# 15 trace columns, then the output row (its own tab-separated fields)
 		bad=$(awk -F'\t' -v min=$TRACE_COLUMNS '$1=="trace" && NF<min' "$trace" | wc -l)
 		if [[ $records -ne $rows || $bad -ne 0 ]]; then
 			echo "FAIL: $c, -C $n: $records trace records for $rows rows, $bad short" >&2

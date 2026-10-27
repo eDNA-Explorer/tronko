@@ -9,8 +9,9 @@
 
 /* What the last reduction on this thread found. Filled only while g_reduce.collect is set
  * (--trace-read); finish_read, which runs right after the reduction on the same thread for
- * the same read, reads it. Leaves are nodes with no children; L2 is the best leaf of a
- * species other than L1's (-1 when there is none). Scores are raw, as the window sees them. */
+ * the same read, reads it. Leaves are nodes with no children; L1 is the best leaf (ties to
+ * the lowest tree, then node), L2 the best leaf of a species other than L1's (-1 when there
+ * is none). Scores are raw, as the window sees them. */
 typedef struct reduce_info {
 	int ncand;
 	type_of_PP maximum, window;
@@ -18,11 +19,17 @@ typedef struct reduce_info {
 	int votes;
 	int l1_tree, l1_node, l2_tree, l2_node;
 	type_of_PP l1, l2;
+	int best_leaf;   /* 1 when --best-leaf-margin replaced the votes with L1 */
 } reduce_info_t;
 
 typedef struct reduce_cfg {
-	int collect;   /* fill reduce_last() */
-	int per_base;  /* --cinterval-per-base: window = -c x the read's A/C/G/T bases */
+	int collect;     /* fill reduce_last() */
+	int per_base;    /* --cinterval-per-base: window = -c x the read's A/C/G/T bases */
+	int need_bases;  /* the callers count the read's bases (per_base, or a finite max_deficit) */
+	/* --best-leaf-margin D (0 = off) and --best-leaf-max-deficit T (INFINITY = no bound): the
+	 * votes become {L1} when L1 is voted, S(L1) - S(L2) >= D, and n*log_match - S(L1) <= T,
+	 * n the read's A/C/G/T bases and log_match = log(1 - u), a base's score on a matching leaf. */
+	type_of_PP margin, max_deficit, log_match;
 } reduce_cfg_t;
 
 /* getscore_Arr's score for a read with no aligned position (positions[0] == -1), on every
@@ -35,7 +42,7 @@ extern reduce_cfg_t g_reduce;
 /* Vote the read's candidates: sc[i] holds tree[i]'s 2*numspecArr[tree[i]]-1 node scores.
  * Candidates are visited in order and nodes in index order, and the first strictly greater
  * score wins the maximum, as every path did. *read_bases* (A/C/G/T bases across both mates)
- * is read only under --cinterval-per-base. Returns M. */
+ * is read only when g_reduce.need_bases. Returns M. */
 type_of_PP reduce_votes(int ncand, const type_of_PP *const *sc, const int *tree, int read_bases, int **voteRoot);
 
 /* A/C/G/T bases in a read (q2 may be NULL for single-end). */

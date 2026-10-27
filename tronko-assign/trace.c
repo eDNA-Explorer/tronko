@@ -20,7 +20,7 @@ int trace_init(const char *pattern, const char *path)
 	trace_pattern = strdup(pattern);
 	fputs("#trace\tread\tcandidates\ttrees\tmaximum\tmax_tree:node\twindow\tvotes"
 	      "\tbest_leaf\tbest_leaf_species\tbest_leaf_score"
-	      "\tother_species_leaf\tother_species\tother_species_score\trow\n", trace_fp);
+	      "\tother_species_leaf\tother_species\tother_species_score\tbest_leaf_rule\trow\n", trace_fp);
 	return 0;
 }
 
@@ -55,13 +55,14 @@ void trace_write(const char *name, int ncand, const int *trees, const reduce_inf
 		fprintf(f, i ? ",%d" : "%d", trees[i]);
 	}
 	if (ncand == 0) {
-		/* no candidates: no trees and nothing reduced (10 columns) */
-		fputs("-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-", f);
+		/* no candidates: no trees and nothing reduced (11 columns) */
+		fputs("-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-\t-", f);
 	} else {
 		fprintf(f, "\t%.17g\t%d:%d\t%.17g\t%d", info->maximum, info->max_tree, info->max_node,
 		        info->window, info->votes);
 		put_leaf(f, info->l1_tree, info->l1_node, info->l1);
 		put_leaf(f, info->l2_tree, info->l2_node, info->l2);
+		fprintf(f, "\t%d", info->best_leaf);
 	}
 	fprintf(f, "\t%s\n", row);
 	fclose(f);

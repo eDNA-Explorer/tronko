@@ -7,6 +7,7 @@
 #   integration/test_multitree_parity.sh      three-tree fixture (reads with several candidate trees)
 #   integration/test_trace.sh                 --trace-read changes no output, one record per read
 #   integration/test_cinterval_per_base.sh    --cinterval-per-base: goldens, each read's window, refused with pruning
+#   integration/test_best_leaf.sh             --best-leaf-margin: goldens, each read's rule decision and row, refusals
 #   integration/test_gap_fixtures.sh          mate rescue, production's command line, read content, read names
 #   integration/test_bwamem3.sh               the BWA-MEM3 run's checks and failures (a stand-in aligner)
 #   integration/test_pinned_aligner.sh        BWA-MEM3 gives the stored SAM on four fixture batches
@@ -38,6 +39,7 @@ run integration/test_multibatch_parity.sh bash "$HERE/integration/test_multibatc
 run integration/test_multitree_parity.sh bash "$HERE/integration/test_multitree_parity.sh"
 run integration/test_trace.sh bash "$HERE/integration/test_trace.sh"
 run integration/test_cinterval_per_base.sh bash "$HERE/integration/test_cinterval_per_base.sh"
+run integration/test_best_leaf.sh bash "$HERE/integration/test_best_leaf.sh"
 run integration/test_gap_fixtures.sh bash "$HERE/integration/test_gap_fixtures.sh"
 run integration/test_bwamem3.sh bash "$HERE/integration/test_bwamem3.sh"
 run integration/test_pinned_aligner.sh bash "$HERE/integration/test_pinned_aligner.sh"

@@ -872,7 +872,7 @@ static void run_blocked_slice(struct mystruct *mstr, bwaMatches *bwa_results, in
 			finish_block(mstr, B, resultsPath);
 		}
 		ns_read_t *r = ns_block_add_read(B, lineNumber, iter, results->leaf_coordinates, leaf_iter);
-		if (g_reduce.per_base){
+		if (g_reduce.need_bases){
 			r->read_bases = paired != 0 ? reduce_read_bases(pairedQueryMat->query1Mat[lineNumber], pairedQueryMat->query2Mat[lineNumber])
 			                            : reduce_read_bases(singleQueryMat->queryMat[lineNumber], NULL);
 		}
@@ -1044,6 +1044,8 @@ int main(int argc, char **argv){
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
 	opt.cinterval_per_base = 0;
+	opt.best_leaf_margin = 0;
+	opt.best_leaf_max_deficit = INFINITY;
 	opt.trace_read[0] = '\0';
 	opt.trace_file[0] = '\0';
 	opt.cinterval = 0.0; /* never set before when -c was omitted; 0 is what the goldens ran with */
@@ -1291,7 +1293,19 @@ int main(int argc, char **argv){
 		fprintf(stderr, "--cinterval-per-base cannot be combined with --enable-pruning or --early-termination: their thresholds are multiples of the raw -c. Exiting...\n");
 		exit(1);
 	}
+	if (opt.best_leaf_margin > 0 && (opt.enable_pruning || opt.early_termination)){
+		fprintf(stderr, "--best-leaf-margin cannot be combined with --enable-pruning or --early-termination: they leave leaves unscored, so the best leaf of another species is unknown. Exiting...\n");
+		exit(1);
+	}
+	if (isfinite(opt.best_leaf_max_deficit) && opt.best_leaf_margin <= 0){
+		fprintf(stderr, "--best-leaf-max-deficit needs --best-leaf-margin. Exiting...\n");
+		exit(1);
+	}
 	g_reduce.per_base = opt.cinterval_per_base;
+	g_reduce.margin = opt.best_leaf_margin;
+	g_reduce.max_deficit = opt.best_leaf_max_deficit;
+	g_reduce.log_match = log(1 - opt.score_constant);
+	g_reduce.need_bases = g_reduce.per_base || (g_reduce.margin > 0 && isfinite(g_reduce.max_deficit));
 	/* Node-innermost store and blocked scoring (nodestore.c), for the production options only.
 	 * TRONKO_NODESTORE=0 keeps the legacy path; TRONKO_NS_KERNEL=plain|avx2|avx512 forces a kernel;
 	 * TRONKO_NS_BLOCK_READS and TRONKO_NS_BLOCK_MB size the blocks; TRONKO_NODESTORE_CHECK=1
