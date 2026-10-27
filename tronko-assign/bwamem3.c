@@ -91,6 +91,68 @@ static struct {
 	long batch;
 } A;
 
+static int hits_tied;          /* --hits tied: outside A, which bwamem3_init clears */
+
+void bwamem3_set_hits_tied(int tied)
+{
+	hits_tied = tied;
+}
+
+/* --hits tied, the options that make BWA-MEM3's XA hold exactly the hits tied with the primary:
+ *   -z 1           an alternative enters XA only at the primary's score (XA_drop_ratio 1.0)
+ *   -h 2147483647  max_XA_hits: above it a record gets no XA at all, so never reached
+ *   -u             each XA entry ends in its alignment score (XB), for the tie test
+ * They change the XA text only; every field Tronko reads otherwise is the same. */
+static const char *const mem3_tied_options[] = { "-z", "1", "-h", "2147483647", "-u" };
+
+/* The field after the tag (e.g. "\tAS:i:") in one SAM line [line, eol), or 0; *len its length. */
+static const char *sam_tag(const char *line, const char *eol, const char *tag, size_t *len)
+{
+	size_t tl = strlen(tag);
+	const char *p = line;
+	while ((p = memchr(p, '\t', eol - p)) != 0 && (size_t)(eol - p) > tl) {
+		if (memcmp(p, tag, tl) == 0) {
+			const char *v = p + tl, *e = memchr(v, '\t', eol - v);
+			*len = (e ? e : eol) - v;
+			return v;
+		}
+		p++;
+	}
+	return 0;
+}
+
+/* --hits tied: each mate's primary record (FLAG & 0x900 == 0) gives its leaf (RNAME), AS and
+ * XA, and rc says whether Tronko's copy of the mate was turned around (rule H8), which picks
+ * the XA strand that Tronko's alignment can use. */
+static void capture_tied(int n, int paired, bwaMatches *results, char **text, const int *p10, const int *p20)
+{
+	int s, n_seqs = paired ? 2 * n : n;
+	for (s = 0; s < n_seqs; s++) {
+		int q = paired ? s / 2 : s, m = paired ? s % 2 : 0;
+		results[q].tied_rc[m] = paired ? ((m == 0 ? p10[2*q] : p20[2*q]) & 1) : (p10[s] & 1);
+		const char *line = text[s];
+		while (*line) {
+			const char *eol = strchr(line, '\n'), *f1, *f2, *f3;
+			if (!eol) eol = line + strlen(line);
+			f1 = memchr(line, '\t', eol - line);
+			f2 = f1 ? memchr(f1 + 1, '\t', eol - f1 - 1) : 0;
+			f3 = f2 ? memchr(f2 + 1, '\t', eol - f2 - 1) : 0;
+			int flag = f1 ? atoi(f1 + 1) : 0x4;
+			if (f3 && (flag & 0x900) == 0) {
+				if (!(flag & 0x4)) {
+					size_t len = 0;
+					const char *v;
+					results[q].tied_rname[m] = strndup(f2 + 1, f3 - f2 - 1);
+					if ((v = sam_tag(line, eol, "\tAS:i:", &len)) != 0) results[q].tied_as[m] = atoi(v);
+					if ((v = sam_tag(line, eol, "\tXA:Z:", &len)) != 0) results[q].tied_xa[m] = strndup(v, len);
+				}
+				break;
+			}
+			line = *eol ? eol + 1 : eol;
+		}
+	}
+}
+
 /* Stopping by a signal (see the header): the signals, the aligner running now (0 if none), and a
  * lock that makes bwamem3_finish run once while any other caller waits for it */
 static const int mem3_stop_signals[] = { SIGTERM, SIGINT, SIGHUP };
@@ -550,6 +612,8 @@ void bwamem3_run_batch(int n, int paired, bwaMatches *results, int concordant, i
 	argv[argc++] = A.bin;
 	argv[argc++] = "mem";
 	for (k = 0; k < sizeof mem3_mem_options / sizeof *mem3_mem_options; k++) argv[argc++] = (char *)mem3_mem_options[k];
+	if (hits_tied)
+		for (k = 0; k < sizeof mem3_tied_options / sizeof *mem3_tied_options; k++) argv[argc++] = (char *)mem3_tied_options[k];
 	argv[argc++] = "-t";
 	argv[argc++] = A.threads;
 	argv[argc++] = "-o";
@@ -631,6 +695,7 @@ void bwamem3_run_batch(int n, int paired, bwaMatches *results, int concordant, i
 		}
 	}
 
+	if (hits_tied) capture_tied(n, paired, results, text, p10, p20);   /* before the parse cuts the text */
 	{
 		sam_parse_ctx_t ctx = { results, concordant, ntree, 0, paired, max_readname_length, max_acc_name };
 		sam_parse_batch(&ctx, n_seqs, text);

@@ -53,6 +53,7 @@ static struct option long_options[]=
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
 	{"cinterval-per-base",no_argument,0,0},
+	{"hits",required_argument,0,0},
 	{"score-full-read",no_argument,0,0},
 	{"best-leaf-margin",required_argument,0,0},
 	{"best-leaf-max-deficit",required_argument,0,0},
@@ -111,6 +112,12 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 		the read's A/C/G/T bases (both mates), so -c 0.057 tolerates about one mismatch per\n\
 		100 bases at -u 0.01 (0.01*log(3*(1-u)/u)). Not with pruning or early termination,\n\
 		whose thresholds are multiples of the raw -c [default: off]\n\
+	--hits [primary|tied], The candidate leaves of a read: primary, BWA-MEM3's primary,\n\
+		supplementary and mate hits, at most MAX_NUM_BWA_MATCHES trees; tied, those and every\n\
+		alternative hit whose alignment score equals the primary's (XA, either mate; for a\n\
+		pair, the trees both mates tie on when there are any), with no limit. One leaf per\n\
+		tree, the lowest tied one. Node-store path only (-w, no -e, pruning or early\n\
+		termination) [default: primary]\n\
 	--score-full-read, Score every read base against every candidate: read bases before the\n\
 		first aligned column (leading overhang) cost log(0.01) each, as read bases after it\n\
 		already do, instead of nothing, so candidates' scores are likelihoods of the same bases\n\
@@ -227,6 +234,16 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "cinterval-per-base") == 0) {
 					opt->cinterval_per_base = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "hits") == 0) {
+					if (strcmp(optarg, "primary") == 0) {
+						opt->hits_tied = 0;
+					} else if (strcmp(optarg, "tied") == 0) {
+						opt->hits_tied = 1;
+					} else {
+						fprintf(stderr, "--hits must be primary or tied, not '%s'. Exiting...\n", optarg);
+						exit(1);
+					}
 				}
 				else if (strcmp(long_options[option_index].name, "score-full-read") == 0) {
 					opt->score_full_read = 1;

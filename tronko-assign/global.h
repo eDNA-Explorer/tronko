@@ -201,6 +201,13 @@ typedef struct bwaMatches{
 	char **cigars_reverse;
 	int *starts_reverse;
 	int use_portion;
+	/* --hits tied, per mate (0, and 1 for the second of a pair): the primary record's leaf
+	 * (NULL when unmapped), its AS:i, its XA:Z text (NULL when absent), and whether Tronko's
+	 * copy of the mate was reverse-complemented (rule H8). Filled per batch by bwamem3.c. */
+	char *tied_rname[2];
+	char *tied_xa[2];
+	int tied_as[2];
+	int tied_rc[2];
 }bwaMatches;
 
 typedef struct scoresStruct{
@@ -267,6 +274,7 @@ typedef struct Options{
 	char trace_read[BUFFER_SIZE];      // --trace-read: read name, "*" for all, empty = off
 	char trace_file[BUFFER_SIZE];      // --trace-file: trace output (empty = stderr)
 	int cinterval_per_base;            // --cinterval-per-base: window = -c x read A/C/G/T bases
+	int hits_tied;                     // --hits tied: also every alternative hit tied with the primary
 	int score_full_read;               // --score-full-read: leading overhang read bases are scored rows
 	double best_leaf_margin;           // --best-leaf-margin: L1 alone when it leads other species by this (0 = off)
 	double best_leaf_max_deficit;      // --best-leaf-max-deficit: and is within this of a perfect match (INFINITY = no bound)

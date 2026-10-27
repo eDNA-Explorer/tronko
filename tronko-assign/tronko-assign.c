@@ -17,6 +17,7 @@
 #include "options.h"
 #include "printAlignments.h"
 #include "bwamem3.h"
+#include "sam_parse.h"
 #include "hashmap.h"
 #include "allocateMemoryForResults.h"
 #include "WFA2/wavefront_align.h"
@@ -221,12 +222,22 @@ bwaMatches* allocateBWAResults(int number_of_reads, int use_leaf_portion, int pa
 			}
 		}
 		bwa_results[i].n_matches = 0;
+		for (j=0; j<2; j++){
+			bwa_results[i].tied_rname[j] = NULL;
+			bwa_results[i].tied_xa[j] = NULL;
+			bwa_results[i].tied_as[j] = 0;
+			bwa_results[i].tied_rc[j] = 0;
+		}
 	}
 	return bwa_results;
 }
 void freeBWAResults(bwaMatches* bwa_results, int number_of_reads, int use_leaf_portion, int paired){
 	int i,iter;
 	for (iter=0; iter<number_of_reads; iter++){
+		for (i=0; i<2; i++){
+			free(bwa_results[iter].tied_rname[i]);
+			free(bwa_results[iter].tied_xa[i]);
+		}
 		//free(bwa_results[iter].concordant_matches);
 		//free(bwa_results[iter].discordant_matches);
 		if (use_leaf_portion == 1){
@@ -568,6 +579,134 @@ static int collect_candidates(struct mystruct *mstr, resultsStruct *results, bwa
 	(void)j;
 	return leaf_iter;
 }
+/* --hits tied (set in main before any placement thread starts), and what it did over the run. */
+static int g_hits_tied = 0;
+static long g_tied_reads_gained, g_tied_most_trees, g_tied_drop_score, g_tied_drop_strand, g_tied_drop_unknown;
+
+/* collect_tied's per-thread scratch, ntree entries each, allocated on first use: for each tree,
+ * where its candidacy comes from (bit 0: mate 1 ties on it, bit 1: mate 2, bit 2: main's
+ * candidates), its lowest tied node and main's leaf; touched lists the trees to reset. */
+static __thread int *tied_from, *tied_seed, *tied_pleaf, *tied_touched;
+
+static void tied_mark(int tree, int node, int mate, int *nt)
+{
+	if (tied_from[tree] == 0){
+		tied_touched[(*nt)++] = tree;
+		tied_seed[tree] = node;
+	}else if (!(tied_from[tree] & 3) || node < tied_seed[tree]){
+		tied_seed[tree] = node;
+	}
+	tied_from[tree] |= 1 << mate;
+}
+
+static int int_cmp(const void *a, const void *b)
+{
+	int x = *(const int *)a, y = *(const int *)b;
+	return (x > y) - (x < y);
+}
+
+/* --hits tied: the read's candidates are main's (collect_candidates, leaf_iter of them) and the
+ * trees of every hit tied with a mate's primary. A mate's tied leaves are its primary record's
+ * leaf and each XA entry whose score equals the record's AS:i and whose strand is the one Tronko
+ * aligns that mate on (rule H8); for a pair the ties select the trees both mates tie on, if any,
+ * else every tree either does. One candidate per tree, in ascending tree order, seeded with its
+ * lowest selected tied node (main's leaf for a tree with none), so neither depends on BWA's
+ * order among equal hits. Rewrites leaf_coordinates and trees_search; returns the count. */
+static int collect_tied(struct mystruct *mstr, resultsStruct *results, bwaMatches *bwa_results, int iter, int leaf_iter, int *trees_search){
+	int ntree = mstr->ntree, paired = mstr->paired;
+	int i, m, t, nd, nt = 0, n = 0;
+	long drop_score = 0, drop_strand = 0, drop_unknown = 0;
+	if (tied_from == NULL){
+		tied_from = calloc_check(ntree, sizeof(int));
+		tied_seed = calloc_check(ntree, sizeof(int));
+		tied_pleaf = calloc_check(ntree, sizeof(int));
+		tied_touched = calloc_check(ntree, sizeof(int));
+	}
+	const bwaMatches *b = &bwa_results[iter];
+	for (m=0; m<(paired ? 2 : 1); m++){
+		if (b->tied_rname[m] == NULL){
+			continue;
+		}
+		if (sam_leaf_lookup(b->tied_rname[m], &t, &nd)){
+			tied_mark(t, nd, m, &nt);
+		}else if (strcmp(b->tied_rname[m], "*") != 0){
+			drop_unknown++;
+		}
+		/* XA:Z entries: rname,(+|-)pos,CIGAR,NM,score,mapq; (score and mapq from -u) */
+		for (const char *e = b->tied_xa[m]; e != NULL && *e; ){
+			const char *end = strchr(e, ';'), *f[6];
+			int nf = 1;
+			if (end == NULL){
+				end = e + strlen(e);
+			}
+			f[0] = e;
+			for (const char *c = e; c < end && nf < 6; c++){
+				if (*c == ','){
+					f[nf++] = c + 1;
+				}
+			}
+			if (nf < 6){
+				drop_unknown++;
+			}else if (atoi(f[4]) != b->tied_as[m]){
+				drop_score++;
+			}else if ((f[1][0] == '-') != b->tied_rc[m]){
+				drop_strand++;
+			}else{
+				int len = (int)(f[1] - 1 - f[0]);
+				char name[len + 1];
+				memcpy(name, f[0], len);
+				name[len] = '\0';
+				if (sam_leaf_lookup(name, &t, &nd)){
+					tied_mark(t, nd, m, &nt);
+				}else{
+					drop_unknown++;
+				}
+			}
+			e = *end ? end + 1 : end;
+		}
+	}
+	int both = 0;
+	for (i=0; paired && i<nt; i++){
+		if ((tied_from[tied_touched[i]] & 3) == 3){
+			both = 1;
+		}
+	}
+	for (i=0; i<leaf_iter; i++){
+		t = results->leaf_coordinates[i][0];
+		if (tied_from[t] == 0){
+			tied_touched[nt++] = t;
+		}
+		tied_from[t] |= 4;
+		tied_pleaf[t] = results->leaf_coordinates[i][1];
+	}
+	for (i=0; i<nt; i++){
+		int from = tied_from[tied_touched[i]] & 3;
+		if ((from && (!both || from == 3)) || (tied_from[tied_touched[i]] & 4)){
+			trees_search[n++] = tied_touched[i];
+		}
+	}
+	qsort(trees_search, n, sizeof(int), int_cmp);
+	for (i=0; i<n; i++){
+		t = trees_search[i];
+		int from = tied_from[t] & 3;
+		results->leaf_coordinates[i][0] = t;
+		results->leaf_coordinates[i][1] = (from && (!both || from == 3)) ? tied_seed[t] : tied_pleaf[t];
+	}
+	for (i=0; i<nt; i++){
+		tied_from[tied_touched[i]] = 0;
+	}
+	if (n > leaf_iter){
+		__atomic_add_fetch(&g_tied_reads_gained, 1, __ATOMIC_RELAXED);
+	}
+	long most = __atomic_load_n(&g_tied_most_trees, __ATOMIC_RELAXED);
+	while (n > most && !__atomic_compare_exchange_n(&g_tied_most_trees, &most, n, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED)){
+	}
+	if (drop_score) __atomic_add_fetch(&g_tied_drop_score, drop_score, __ATOMIC_RELAXED);
+	if (drop_strand) __atomic_add_fetch(&g_tied_drop_strand, drop_strand, __ATOMIC_RELAXED);
+	if (drop_unknown) __atomic_add_fetch(&g_tied_drop_unknown, drop_unknown, __ATOMIC_RELAXED);
+	return n;
+}
+
 /* Votes, LCA and the output row of one read, then the per-read resets. Moved unchanged from the
  * per-read loop of runAssignmentOnChunk_WithBWA so that the node-store path can run it too.
  * trees_search[0 .. leaf_iter) lists the read's candidate trees (vote_tally.h): the thread's
@@ -870,6 +1009,9 @@ static void run_blocked_slice(struct mystruct *mstr, bwaMatches *bwa_results, in
 		crash_set_processing_stage("BWA alignment and tree search");
 
 		int leaf_iter = collect_candidates(mstr, results, bwa_results, iter, lineNumber, trees_search);
+		if (g_hits_tied){
+			leaf_iter = collect_tied(mstr, results, bwa_results, iter, leaf_iter, trees_search);
+		}
 		if (!ns_block_fits(B, results->leaf_coordinates, leaf_iter)){
 			finish_block(mstr, B, resultsPath);
 		}
@@ -1046,6 +1188,7 @@ int main(int argc, char **argv){
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
 	opt.cinterval_per_base = 0;
+	opt.hits_tied = 0;
 	opt.score_full_read = 0;
 	opt.best_leaf_margin = 0;
 	opt.best_leaf_max_deficit = INFINITY;
@@ -1349,6 +1492,14 @@ int main(int argc, char **argv){
 			}
 		}
 	}
+	/* --hits tied gives a read any number of candidates: only the node store's per-read
+	 * candidate table and arena grow for them (the per-node arrays are MAX_NUM_BWA_MATCHES) */
+	if (opt.hits_tied && ns_trees == NULL){
+		fprintf(stderr, "--hits tied needs the node-store path (-w without -e, pruning, early termination, --print-all-nodes or alignment printing, and TRONKO_NODESTORE not 0). Exiting...\n");
+		exit(1);
+	}
+	g_hits_tied = opt.hits_tied;
+	bwamem3_set_hits_tied(opt.hits_tied);
 	//HASHMAP(char, leafMap) map;
 	//hashmap_init(&map, hashmap_hash_string, strcmp);
 	//for(i=0; i<numberOfTrees; i++){
@@ -2042,6 +2193,14 @@ int main(int argc, char **argv){
 		log_current_resource_usage("After freeing all tree data");
 	}
 
+	if (g_hits_tied){
+		TSV_LOG(tsv_log, "TIED_HITS", "reads_gained=%ld,most_trees=%ld,dropped_score=%ld,dropped_strand=%ld,dropped_unknown=%ld",
+			g_tied_reads_gained, g_tied_most_trees, g_tied_drop_score, g_tied_drop_strand, g_tied_drop_unknown);
+		if (opt.verbose_level >= 0){
+			LOG_INFO("--hits tied: %ld reads gained candidate trees (at most %ld trees for a read); XA entries left out: %ld not tied, %ld on the other strand, %ld unknown",
+				g_tied_reads_gained, g_tied_most_trees, g_tied_drop_score, g_tied_drop_strand, g_tied_drop_unknown);
+		}
+	}
 	// Close TSV log file
 	TSV_LOG_SIMPLE(tsv_log, "FINAL");
 	if (tsv_log) {

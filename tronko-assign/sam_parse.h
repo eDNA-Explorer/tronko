@@ -15,4 +15,8 @@ typedef struct {
 
 void sam_parse_batch(const sam_parse_ctx_t *ctx, int n_seqs, char **sam);
 
+/* The tree and node of the leaf named name (a reference name in the SAM), from the leaf map the
+ * first batch built; 0 if there is no such leaf. Read-only, so placement threads may call it. */
+int sam_leaf_lookup(const char *name, int *tree, int *node);
+
 #endif

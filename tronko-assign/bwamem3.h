@@ -22,6 +22,11 @@ void bwamem3_init(const char *bin_option, const char *fasta, int threads, int sk
 void bwamem3_run_batch(int n, int paired, bwaMatches *results, int concordant, int ntree,
                        int max_readname_length, int max_acc_name);
 
+/* --hits tied: from the next batch on, the aligner reports every alternative hit tied with
+ * the primary (-z 1 -h 2147483647 -u), and each read's results get its mates' primary leaf, AS,
+ * XA and orientation (bwaMatches.tied_*). Call before the first batch, before or after bwamem3_init. */
+void bwamem3_set_hits_tied(int tied);
+
 /* Drops the shared-memory index if this process staged it and removes the temporary directory.
  * Registered with atexit by bwamem3_init; safe to call more than once. */
 void bwamem3_finish(void);

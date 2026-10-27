@@ -18,6 +18,17 @@
 #include "hashmap_base.h"
 #include "sam_parse.h"
 
+static HASHMAP(char, leafMap) map; // built by the first batch and kept for the process: read-only once built
+
+int sam_leaf_lookup(const char *name, int *tree, int *node)
+{
+	struct leafMap *l = hashmap_size(&map) ? hashmap_get(&map, name) : NULL;
+	if (!l) return 0;
+	*tree = l->root;
+	*node = l->node;
+	return 1;
+}
+
 void sam_parse_batch(const sam_parse_ctx_t *ctx, int n_seqs, char **sam)
 {
 	int i;
@@ -26,7 +37,6 @@ void sam_parse_batch(const sam_parse_ctx_t *ctx, int n_seqs, char **sam)
 		int k=0;
 		int no_add=0;
 		int success=1;
-	static HASHMAP(char, leafMap) map; // built by the first batch and kept for the process: read-only once built
 	int build_map = hashmap_size(&map) == 0;
 	if (build_map) hashmap_init(&map, hashmap_hash_string, strcmp);
 	for(i=0; build_map && i<ctx->ntree; i++){
