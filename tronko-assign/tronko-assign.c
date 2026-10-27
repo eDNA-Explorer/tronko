@@ -627,14 +627,16 @@ static void finish_read(struct mystruct *mstr, resultsStruct *results, int lineN
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 		LCA = LCAs[0];
 #pragma GCC diagnostic pop
-		int correctTax=0;
 		int stop=0;
 		while(stop==0 && minLevel<=6){
+		/* Pairs of trees that name the same, real taxon at this level, counted afresh at each
+		 * level: carried over, agreements at a deeper level let a coarser one stop early. */
+		int correctTax=0;
 		for(i=0; i<count;i++){
 			if (treeArr[maxRoots[i]][LCAs[i]].taxIndex[0] != -1){
 			for(j=i+1; j<count; j++){
 				if ( treeArr[maxRoots[j]][LCAs[j]].taxIndex[0] != -1){
-				if ( strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel],taxonomyArr[maxRoots[j]][treeArr[maxRoots[j]][LCAs[j]].taxIndex[0]][minLevel])==0 && taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel] != "NA" ){
+				if ( strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel],taxonomyArr[maxRoots[j]][treeArr[maxRoots[j]][LCAs[j]].taxIndex[0]][minLevel])==0 && strcmp(taxonomyArr[maxRoots[i]][treeArr[maxRoots[i]][LCAs[i]].taxIndex[0]][minLevel],"NA")!=0 ){
 					correctTax++;
 				}
 				}
