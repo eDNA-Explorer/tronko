@@ -27,6 +27,14 @@
 #   --descendants N     AncestralClust -p (default 75)
 #   --primer-name NAME  output FASTA stem (default: the marker directory name)
 #   --out-root DIR      databases/ root (default: this repo)
+#   --tier T            rCRUX tier to build from: dedup (default) or curated.
+#                       A curated build goes to databases/<M>/curated/lca/...,
+#                       so it never shares a path with the dedup master.
+#   --rcrux-tag TAG     tag to record (curated: the tag that will hold the
+#                       tier's .dvc; dedup: default the newest <M>_v* tag)
+#   --tb-jobs N         tronko-build -J: clusters partitioned in parallel in
+#                       step 4 (default 1, the sequential path)
+#   --tb-threads N      tronko-build -c per worker (default threads/3/tb-jobs)
 #   --force             discard any existing build AND cache, then rebuild
 #   --allow-rcrux-drift proceed when the working tree differs from the tag
 #   --no-verify         skip the post-build verification (not recommended)
@@ -49,9 +57,17 @@ OUT_ROOT="$TRONKO_REPO_DIR"
 FORCE=0
 ALLOW_DRIFT=0
 DO_VERIFY=1
+TIER=dedup
+TAG_OVERRIDE=""
+TB_JOBS=1
+TB_THREADS=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --tier)              TIER="$2"; shift 2 ;;
+        --rcrux-tag)         TAG_OVERRIDE="$2"; shift 2 ;;
+        --tb-jobs)           TB_JOBS="$2"; shift 2 ;;
+        --tb-threads)        TB_THREADS="$2"; shift 2 ;;
         --sp)                SP="$2"; shift 2 ;;
         --threads)           THREADS="$2"; shift 2 ;;
         --jobs)              JOBS="$2"; shift 2 ;;
@@ -62,7 +78,7 @@ while [ $# -gt 0 ]; do
         --force)             FORCE=1; shift ;;
         --allow-rcrux-drift) ALLOW_DRIFT=1; shift ;;
         --no-verify)         DO_VERIFY=0; shift ;;
-        -h|--help)           sed -n '2,32p' "$0"; exit 0 ;;
+        -h|--help)           sed -n '2,41p' "$0"; exit 0 ;;
         -*)                  die "unknown option: $1" ;;
         *)                   [ -z "$MARKER" ] && MARKER="$1" || die "unexpected argument: $1"; shift ;;
     esac
@@ -75,7 +91,13 @@ export PATH="$TRONKO_REPO_DIR/bin:$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR
 # A. Resolve, validate, lock
 # ===========================================================================
 echo "=== A. resolve and lock ==="
-resolve_marker "$MARKER" || exit 1
+resolve_marker "$MARKER" "$TIER" || exit 1
+# A curated tier is not what a <M>_v* release tag pins, so a curated build must
+# name the tag that holds its tier's .dvc rather than inherit the dedup release.
+if [ "$TIER" != dedup ]; then
+    [ -n "$TAG_OVERRIDE" ] || die "--tier $TIER needs --rcrux-tag (the tag holding its $TIER.dvc)"
+fi
+[ -n "$TAG_OVERRIDE" ] && RC_TAG="$TAG_OVERRIDE"
 [ -n "$PRIMER" ] || PRIMER="$MARKER"
 
 # The primer name decides the DB FASTA filename, and the harness picks the
@@ -100,7 +122,13 @@ case "$BIN_SIZE" in
     *)     AC_CONFIG="bin$BIN_SIZE" ;;
 esac
 
-CONFIG="$OUT_ROOT/databases/$MARKER/lca/ac/$AC_CONFIG"
+# dedup keeps its original path; any other tier is a path segment, so a curated
+# master cannot be mistaken for (or overwrite) the dedup one.
+if [ "$TIER" = dedup ]; then
+    CONFIG="$OUT_ROOT/databases/$MARKER/lca/ac/$AC_CONFIG"
+else
+    CONFIG="$OUT_ROOT/databases/$MARKER/$TIER/lca/ac/$AC_CONFIG"
+fi
 OUT="$CONFIG/sp$SP"
 mkdir -p "$CONFIG" || die "cannot create $CONFIG"
 CONFIG=$(cd "$CONFIG" && pwd)
@@ -123,6 +151,7 @@ exec 9>"$CONFIG/.build.lock"
 flock -n 9 || die "another build holds the lock on $CONFIG"
 
 echo "  marker : $MARKER"
+echo "  tier   : $TIER"
 echo "  tag    : $RC_TAG"
 echo "  primer : $PRIMER"
 echo "  output : $OUT"
@@ -140,24 +169,35 @@ echo "    tronko repo: $TRONKO_HEAD ($TRONKO_DIRTY)"
 echo "=== B. acquire and verify rCRUX inputs ==="
 # Unconditional: 4 of the 7 buildable markers are pointer-only, and an EMPTY
 # dedup/ directory exists for them, so "is lca.fasta missing" is too weak a test.
-( cd "$RCRUX_REPO" && dvc pull "databases/$MARKER/dedup.dvc" ) >/dev/null 2>&1 \
+TIER_DVC="databases/$MARKER/$TIER.dvc"
+# The tier on disk must be the one its .dvc pins before anything is pulled: a
+# rebuilt tier not yet re-added would be overwritten by the old pointer's copy.
+if [ -d "$RC_TIER_DIR" ] && [ -n "$(ls -A "$RC_TIER_DIR")" ] \
+   && ( cd "$RCRUX_REPO" && dvc status "$TIER_DVC" 2>&1 ) | grep -q 'modified'; then
+    die "$RC_TIER_DIR differs from $TIER_DVC: dvc add it in $RCRUX_REPO first"
+fi
+( cd "$RCRUX_REPO" && dvc pull "$TIER_DVC" ) >/dev/null 2>&1 \
     || warn "dvc pull returned non-zero (continuing if files are present)"
 [ -s "$RC_FASTA" ] || die "no $RC_FASTA after dvc pull"
 [ -s "$RC_TAX" ]   || die "no $RC_TAX after dvc pull"
 
 # The tag is what provenance will claim; make sure the working tree still
-# matches it, rather than asserting it in a comment as the old scripts did.
-TAG_MD5=$(git -C "$RCRUX_REPO" show "$RC_TAG:databases/$MARKER/dedup.dvc" 2>/dev/null | awk '/md5:/{print $3; exit}')
-WT_MD5=$(awk '/md5:/{print $3; exit}' "$RC_MARKER_DIR/dedup.dvc")
-if [ -n "$TAG_MD5" ] && [ "$TAG_MD5" != "$WT_MD5" ]; then
+# matches it, rather than asserting it in a comment as the old scripts did. A
+# curated tag may not exist yet (it is cut once every tier is added): then the
+# tier's md5 in build_metadata.json is the identity the tag must later match.
+TAG_MD5=$(git -C "$RCRUX_REPO" show "$RC_TAG:$TIER_DVC" 2>/dev/null | awk '/md5:/{print $3; exit}')
+WT_MD5=$(awk '/md5:/{print $3; exit}' "$RC_MARKER_DIR/$TIER.dvc")
+if [ -z "$TAG_MD5" ] && [ "$TIER" != dedup ]; then
+    echo "  tag $RC_TAG does not hold $TIER_DVC yet; recording tier md5 $WT_MD5"
+elif [ -n "$TAG_MD5" ] && [ "$TAG_MD5" != "$WT_MD5" ]; then
     if [ "$ALLOW_DRIFT" = "1" ]; then
         warn "working tree dedup.dvc ($WT_MD5) != tag $RC_TAG ($TAG_MD5) -- proceeding"
     else
-        die "working tree dedup.dvc ($WT_MD5) differs from tag $RC_TAG ($TAG_MD5).
+        die "working tree $TIER.dvc ($WT_MD5) differs from tag $RC_TAG ($TAG_MD5).
        Provenance would claim a tag this build did not use. Re-run with --allow-rcrux-drift to override."
     fi
 else
-    echo "  dedup.dvc matches tag $RC_TAG"
+    echo "  $TIER.dvc matches tag $RC_TAG"
 fi
 
 echo "  preflighting $(basename "$RC_TAX") ..."
@@ -241,6 +281,8 @@ bash "$TRONKO_REPO_DIR/build-tronko-db.sh" \
     -B "$BIN_SIZE" \
     -P "$DESCENDANTS" \
     -J "$JOBS" \
+    --tb-jobs "$TB_JOBS" \
+    ${TB_THREADS:+--tb-threads "$TB_THREADS"} \
     --cache-dir "$CACHE" \
     --rcrux-tag "$RC_TAG" 2>&1 | tee -a "$OUT/build.log"
 rc=${PIPESTATUS[0]}
@@ -289,7 +331,7 @@ if [ "$DO_VERIFY" = "1" ]; then
 fi
 
 echo "=== I. summary ==="
-echo "  marker        : $MARKER  (tag $RC_TAG)"
+echo "  marker        : $MARKER  (tier $TIER, tag $RC_TAG)"
 echo "  output        : $OUT"
 echo "  build time    : ${BUILD_SECS}s"
 echo "  input seqs    : $NSEQ"
@@ -300,6 +342,6 @@ echo "  Not done (deliberately): dvc add / dvc push / git commit."
 echo "  The benchmark harness looks under TRONKO_DB_ROOT (default ~/tronko/databases)"
 echo "  and its presets use short marker names, so to benchmark this build either:"
 echo "    export TRONKO_DB_ROOT=$OUT_ROOT/databases"
-echo "  and point the preset's tronko_db_dir at $MARKER/lca/ac/$AC_CONFIG/sp$SP"
+echo "  and point the preset's tronko_db_dir at ${CONFIG#"$OUT_ROOT/databases/"}/sp$SP"
 
 exit $VERIFY_RC

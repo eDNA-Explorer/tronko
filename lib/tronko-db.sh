@@ -140,28 +140,38 @@ alias_marker_files() {
 # filenames and have no tag.
 # ---------------------------------------------------------------------------
 resolve_marker() {
-    local m="$1"
+    local m="$1" tier="${2:-dedup}"
     case "$m" in
         */*|"") echo "marker must be a bare directory name, not a path: '$m'" >&2; return 1 ;;
     esac
+    case "$tier" in
+        dedup|curated) ;;
+        *) echo "tier must be dedup or curated, not '$tier'" >&2; return 1 ;;
+    esac
     RC_MARKER_DIR="$RCRUX_REPO/databases/$m"
     [ -d "$RC_MARKER_DIR" ] || { echo "no such marker directory: $RC_MARKER_DIR" >&2; return 1; }
-    if [ ! -f "$RC_MARKER_DIR/dedup.dvc" ]; then
+    if [ ! -f "$RC_MARKER_DIR/$tier.dvc" ]; then
         {
-            echo "marker '$m' has no dedup.dvc (legacy raw/unfiltered/filtered layout)."
+            echo "marker '$m' has no $tier.dvc (legacy raw/unfiltered/filtered layout)."
             echo "Buildable markers:"
             local d
-            for d in "$RCRUX_REPO"/databases/*/dedup.dvc; do
+            for d in "$RCRUX_REPO"/databases/*/"$tier".dvc; do
                 [ -f "$d" ] && echo "  $(basename "$(dirname "$d")")"
             done
         } >&2
         return 1
     fi
-    RC_TIER_DIR="$RC_MARKER_DIR/dedup"
+    RC_TIER="$tier"
+    RC_TIER_DIR="$RC_MARKER_DIR/$tier"
     RC_FASTA="$RC_TIER_DIR/lca.fasta"
     RC_TAX="$RC_TIER_DIR/lca_taxonomy.txt"
     RC_TAG=$(git -C "$RCRUX_REPO" tag -l "${m}_v*" --sort=-v:refname 2>/dev/null | head -1)
-    [ -n "$RC_TAG" ] || { echo "marker '$m' has no ${m}_v* tag in $RCRUX_REPO" >&2; return 1; }
+    # A dedup build records the marker's release tag; any other tier is named
+    # by the caller (build-rcrux-marker-db.sh --rcrux-tag).
+    if [ -z "$RC_TAG" ] && [ "$tier" = dedup ]; then
+        echo "marker '$m' has no ${m}_v* tag in $RCRUX_REPO" >&2
+        return 1
+    fi
     return 0
 }
 

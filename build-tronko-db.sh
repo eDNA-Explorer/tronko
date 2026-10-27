@@ -25,6 +25,10 @@
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
 #   -J  Parallel jobs for Step 2 cluster processing (default: 1)
+#   --tb-jobs N     tronko-build -J in Step 4: input clusters partitioned in
+#                   parallel (default: 1, the sequential path)
+#   --tb-threads N  tronko-build -c per Step 4 worker (default:
+#                   threads / 3 / tb-jobs, at least 1)
 #   --rcrux-tag  rCRUX marker git tag this build's input came from, recorded
 #                verbatim in build_metadata.json for provenance (optional)
 
@@ -43,6 +47,8 @@ AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 AC_DESCENDANTS=75
 RCRUX_TAG=""
+TB_JOBS=1
+TB_THREADS=""
 
 # Handle long options by shifting them out before getopts
 ARGS=()
@@ -56,6 +62,10 @@ while [[ $# -gt 0 ]]; do
         --cache-dir=*) SHARED_CACHE_DIR="${1#*=}"; shift ;;
         --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
         --rcrux-tag=*) RCRUX_TAG="${1#*=}"; shift ;;
+        --tb-jobs) TB_JOBS="$2"; shift 2 ;;
+        --tb-jobs=*) TB_JOBS="${1#*=}"; shift ;;
+        --tb-threads) TB_THREADS="$2"; shift 2 ;;
+        --tb-threads=*) TB_THREADS="${1#*=}"; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -587,16 +597,18 @@ if [[ "${TREE_SEED:-0}" != "0" ]]; then
 fi
 
 if [[ "$NUM_FINAL_CLUSTERS" -ge 1 ]]; then
-    # tronko-build forks 3 partition pipelines; give each 1/3 of threads
-    TRONKO_THREADS=$(( THREADS / 3 ))
+    # tronko-build forks 3 partition pipelines per worker; with -J workers
+    # partitioning clusters at once, each pipeline gets threads/3/J.
+    TRONKO_THREADS=${TB_THREADS:-$(( THREADS / 3 / TB_JOBS ))}
     if [[ "$TRONKO_THREADS" -lt 1 ]]; then TRONKO_THREADS=1; fi
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -c $TRONKO_THREADS"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -J $TB_JOBS -c $TRONKO_THREADS"
     time tronko-build -y \
         -e "$MERGED_DIR" \
         -n "$NUM_FINAL_CLUSTERS" \
         -d "$OUTPUT_DIR" \
         -s -u "$SP_THRESHOLD" \
         $TRONKO_FLAGS \
+        -J "$TB_JOBS" \
         -c "$TRONKO_THREADS"
 fi
 
@@ -680,7 +692,7 @@ N_REF_SEQS=$(grep -c '^>' "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || echo 0)
 # build.log and the tier's content hash in <tier>.dvc. An explicit --rcrux-tag
 # still wins; everything else is best-effort and emits null when unavailable.
 RCRUX_COMMIT=""; RCRUX_DATE=""; RCRUX_RUN_ID=""; RCRUX_STACK=""
-RCRUX_TIER=""; RCRUX_TIER_MD5=""
+RCRUX_TIER=""; RCRUX_TIER_MD5=""; RCRUX_TIER_PROV_SHA=""
 detect_rcrux_provenance() {
     local fasta_dir marker_dir repo marker
     fasta_dir=$(cd "$(dirname "$1")" 2>/dev/null && pwd) || return 0
@@ -691,6 +703,11 @@ detect_rcrux_provenance() {
     [ "$(basename "$(dirname "$marker_dir")")" = "databases" ] || { RCRUX_TIER=""; return 0; }
     if [ -f "$marker_dir/${RCRUX_TIER}.dvc" ]; then
         RCRUX_TIER_MD5=$(awk '/md5:/{print $3; exit}' "$marker_dir/${RCRUX_TIER}.dvc")
+    fi
+    # A rebuilt tier records how it was made (rcrux commit, NCBI snapshot,
+    # curation decisions) beside its files.
+    if [ -f "$fasta_dir/curated_reference.json" ]; then
+        RCRUX_TIER_PROV_SHA=$(sha256sum "$fasta_dir/curated_reference.json" | cut -d' ' -f1)
     fi
     repo=$(git -C "$marker_dir" rev-parse --show-toplevel 2>/dev/null) || return 0
     [ -n "$RCRUX_TAG" ] || RCRUX_TAG=$(git -C "$repo" tag -l "${marker}_v*" --sort=-v:refname 2>/dev/null | head -1)
@@ -722,6 +739,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "rcrux_stack": $(jstr "$RCRUX_STACK"),
   "rcrux_tier": $(jstr "$RCRUX_TIER"),
   "rcrux_tier_md5": $(jstr "$RCRUX_TIER_MD5"),
+  "rcrux_tier_provenance_sha256": $(jstr "$RCRUX_TIER_PROV_SHA"),
   "clustering": "ancestralclust",
   "ac_bin_size": $AC_BIN_SIZE,
   "ac_descendants": $AC_DESCENDANTS,
@@ -738,7 +756,8 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "ablation_ready": $([ "$EXPORT_SUBTREES" -eq 1 ] && echo true || echo false),
   "threads": $THREADS,
   "parallel_jobs": $PARALLEL_JOBS,
-  "tronko_build_flags": "$TRONKO_FLAGS -c $TRONKO_THREADS",
+  "tronko_build_jobs": $TB_JOBS,
+  "tronko_build_flags": "$TRONKO_FLAGS -J $TB_JOBS -c $TRONKO_THREADS",
   "build_started_at": "$BUILD_STARTED_AT",
   "build_completed_at": "$(date -Is)"
 }
