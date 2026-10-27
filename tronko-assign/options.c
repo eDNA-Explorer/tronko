@@ -51,6 +51,7 @@ static struct option long_options[]=
 	{"enable-pruning",no_argument,0,0},
 	{"disable-pruning",no_argument,0,0},
 	{"pruning-factor",required_argument,0,0},
+	{"cinterval-per-base",no_argument,0,0},
 	{"trace-read",required_argument,0,0},
 	{"trace-file",required_argument,0,0},
 #ifdef ENABLE_PARQUET
@@ -102,6 +103,10 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	--enable-pruning, Enable subtree pruning\n\
 	--disable-pruning, Disable subtree pruning (default)\n\
 	--pruning-factor [FLOAT], Pruning threshold = factor * Cinterval [default: 2.0]\n\
+	--cinterval-per-base, Read -c as a tolerance per read base: the voting window is -c times\n\
+		the read's A/C/G/T bases (both mates), so -c 0.057 tolerates about one mismatch per\n\
+		100 bases at -u 0.01 (0.01*log(3*(1-u)/u)). Not with pruning or early termination,\n\
+		whose thresholds are multiples of the raw -c [default: off]\n\
 	--trace-read [NAME|*], Write a diagnostic record for the named read (or every read, *):\n\
 		its candidate trees, the best score and window, the votes, the best leaf and the best\n\
 		leaf of another species, and its output row. Changes no output [default: off]\n\
@@ -204,6 +209,9 @@ void parse_options(int argc, char **argv, Options *opt){
 				}
 				else if (strcmp(long_options[option_index].name, "disable-pruning") == 0) {
 					opt->enable_pruning = 0;
+				}
+				else if (strcmp(long_options[option_index].name, "cinterval-per-base") == 0) {
+					opt->cinterval_per_base = 1;
 				}
 				else if (strcmp(long_options[option_index].name, "trace-read") == 0 ||
 				         strcmp(long_options[option_index].name, "trace-file") == 0) {

@@ -826,6 +826,7 @@ ns_read_t *ns_block_add_read(ns_block_t *B, int lineNumber, int iter, int **leaf
 	r->leaf_iter = leaf_iter;
 	r->fwd_mm = 0;
 	r->rev_mm = 0;
+	r->read_bases = 0;
 	for (int k = 0; k < leaf_iter; k++) {
 		int t = leaf_coordinates[k][0];
 		size_t np = (size_t)ns_trees[t].Npad;
@@ -940,7 +941,7 @@ void ns_reduce(const ns_block_t *B, const ns_read_t *r, int **voteRoot, type_of_
 		cand_scores[i] = ns_read_scores(B, r, i);
 		cand_tree[i] = r->coords[i][0];
 	}
-	minimum_score[0] = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
+	minimum_score[0] = reduce_votes(number_of_matches, cand_scores, cand_tree, r->read_bases, voteRoot);
 	minimum_score[1] = r->fwd_mm;
 	minimum_score[2] = r->rev_mm;
 }

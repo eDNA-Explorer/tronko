@@ -84,6 +84,7 @@ typedef struct ns_read {
 	int coords[MAX_NUM_BWA_MATCHES][2];   /* results->leaf_coordinates[0..leaf_iter) */
 	int slot[MAX_NUM_BWA_MATCHES];        /* slot index per candidate */
 	type_of_PP fwd_mm, rev_mm;            /* forward and reverse mismatch counts */
+	int read_bases;                       /* A/C/G/T bases of both mates (--cinterval-per-base) */
 } ns_read_t;
 
 typedef struct ns_block ns_block_t;

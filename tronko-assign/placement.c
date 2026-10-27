@@ -896,7 +896,8 @@ void place_paired( char *query_1, char *query_2, char **rootSeqs, int numberOfTo
 		cand_tree[i]=leaf_coordinates[i][0];
 		cand_scores[i]=nodeScores[i][cand_tree[i]];
 	}
-	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
+	int read_bases = g_reduce.per_base ? reduce_read_bases(query_1, query_2) : 0;
+	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, read_bases, voteRoot);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;
@@ -1726,7 +1727,8 @@ void place_paired_with_nw( char *query_1, char *query_2, char **rootSeqs, int nu
 		cand_tree[i]=leaf_coordinates[i][0];
 		cand_scores[i]=nodeScores[i][cand_tree[i]];
 	}
-	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, voteRoot);
+	int read_bases = g_reduce.per_base ? reduce_read_bases(query_1, query_2) : 0;
+	type_of_PP maximum = reduce_votes(number_of_matches, cand_scores, cand_tree, read_bases, voteRoot);
 	minimum_score[0] = maximum;
 	minimum_score[1] = forward_mismatch;
 	minimum_score[2] = reverse_mismatch;

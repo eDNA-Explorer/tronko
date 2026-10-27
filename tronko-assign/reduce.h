@@ -22,15 +22,24 @@ typedef struct reduce_info {
 
 typedef struct reduce_cfg {
 	int collect;   /* fill reduce_last() */
+	int per_base;  /* --cinterval-per-base: window = -c x the read's A/C/G/T bases */
 } reduce_cfg_t;
+
+/* getscore_Arr's score for a read with no aligned position (positions[0] == -1), on every
+ * node: not evidence, so the new options never let it be the maximum. */
+#define REDUCE_SENTINEL 9999999999.0
 
 /* Set once in main, before any placement thread starts; read-only after. */
 extern reduce_cfg_t g_reduce;
 
 /* Vote the read's candidates: sc[i] holds tree[i]'s 2*numspecArr[tree[i]]-1 node scores.
  * Candidates are visited in order and nodes in index order, and the first strictly greater
- * score wins the maximum, as every path did. Returns M. */
-type_of_PP reduce_votes(int ncand, const type_of_PP *const *sc, const int *tree, int **voteRoot);
+ * score wins the maximum, as every path did. *read_bases* (A/C/G/T bases across both mates)
+ * is read only under --cinterval-per-base. Returns M. */
+type_of_PP reduce_votes(int ncand, const type_of_PP *const *sc, const int *tree, int read_bases, int **voteRoot);
+
+/* A/C/G/T bases in a read (q2 may be NULL for single-end). */
+int reduce_read_bases(const char *q1, const char *q2);
 
 /* This thread's last reduction (valid while g_reduce.collect). */
 const reduce_info_t *reduce_last(void);

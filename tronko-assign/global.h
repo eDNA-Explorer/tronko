@@ -266,6 +266,7 @@ typedef struct Options{
 #endif
 	char trace_read[BUFFER_SIZE];      // --trace-read: read name, "*" for all, empty = off
 	char trace_file[BUFFER_SIZE];      // --trace-file: trace output (empty = stderr)
+	int cinterval_per_base;            // --cinterval-per-base: window = -c x read A/C/G/T bases
 }Options;
 
 //extern node *tree;

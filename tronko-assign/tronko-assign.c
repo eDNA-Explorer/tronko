@@ -872,6 +872,10 @@ static void run_blocked_slice(struct mystruct *mstr, bwaMatches *bwa_results, in
 			finish_block(mstr, B, resultsPath);
 		}
 		ns_read_t *r = ns_block_add_read(B, lineNumber, iter, results->leaf_coordinates, leaf_iter);
+		if (g_reduce.per_base){
+			r->read_bases = paired != 0 ? reduce_read_bases(pairedQueryMat->query1Mat[lineNumber], pairedQueryMat->query2Mat[lineNumber])
+			                            : reduce_read_bases(singleQueryMat->queryMat[lineNumber], NULL);
+		}
 		if (leaf_iter > 0){
 			if (paired != 0){
 				place_paired_with_nw(pairedQueryMat->query1Mat[lineNumber],pairedQueryMat->query2Mat[lineNumber],mstr->rootSeqs,mstr->ntree,results->positions,results->locQuery,results->nw,results->aln,results->scoring,results->nodeScores,results->voteRoot, leaf_iter, results->leaf_coordinates,paired,results->minimum,mstr->alignmentsdir,pairedQueryMat->forward_name[lineNumber],pairedQueryMat->reverse_name[lineNumber],results->print_alignments,leaf_sequence,positionsInRoot,mstr->maxNumSpec,results->starts_forward,results->cigars_forward,results->starts_reverse,results->cigars_reverse,mstr->print_alignments_to_file,mstr->use_leaf_portion,mstr->padding,mstr->max_query_length,mstr->max_numbase,mstr->print_all_nodes,mstr->early_termination,mstr->strike_box,mstr->max_strikes,mstr->enable_pruning,mstr->pruning_factor,B);
@@ -1039,6 +1043,7 @@ int main(int argc, char **argv){
 	opt.number_of_cores=1;
 	opt.number_of_lines_to_read=50000;
 	opt.score_constant = 0.01;
+	opt.cinterval_per_base = 0;
 	opt.trace_read[0] = '\0';
 	opt.trace_file[0] = '\0';
 	opt.cinterval = 0.0; /* never set before when -c was omitted; 0 is what the goldens ran with */
@@ -1282,6 +1287,11 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 	g_reduce.collect = opt.trace_read[0] != '\0';
+	if (opt.cinterval_per_base && (opt.enable_pruning || opt.early_termination)){
+		fprintf(stderr, "--cinterval-per-base cannot be combined with --enable-pruning or --early-termination: their thresholds are multiples of the raw -c. Exiting...\n");
+		exit(1);
+	}
+	g_reduce.per_base = opt.cinterval_per_base;
 	/* Node-innermost store and blocked scoring (nodestore.c), for the production options only.
 	 * TRONKO_NODESTORE=0 keeps the legacy path; TRONKO_NS_KERNEL=plain|avx2|avx512 forces a kernel;
 	 * TRONKO_NS_BLOCK_READS and TRONKO_NS_BLOCK_MB size the blocks; TRONKO_NODESTORE_CHECK=1
