@@ -49,6 +49,13 @@ AC_DESCENDANTS=75
 RCRUX_TAG=""
 TB_JOBS=1
 TB_THREADS=""
+# With -J > 1, one thread for a cluster of fewer sequences (FAMSA, VeryFastTree/FastTree; not
+# RAxML, which takes no fewer than 2): on a busy machine a multithreaded run of a small
+# alignment mostly waits for its own descheduled threads (a 162-sequence 18S partition: 0.6 s
+# on 1 thread, 149 s on 8), and only one-thread runs repeat exactly. Lower than tronko-build's
+# --one-thread-below (10,000): step 2 runs only -J clusters at once, so a large cluster needs
+# its threads when the machine is free, while step 4's many workers keep the cores busy.
+ONE_THREAD_BELOW=2000
 
 # Handle long options by shifting them out before getopts
 ARGS=()
@@ -344,6 +351,9 @@ build_cluster_tree() {
     awk '/^>/{gsub(/:/, "_"); split($0,a," "); h=a[1]; if(seen[h]++){p=0; next} p=1; print; next} p{print}' "$cluster_fasta" > "$dedup_fasta"
     local n_dedup
     n_dedup=$(grep -c '^>' "$dedup_fasta")
+    if [[ "$PARALLEL_JOBS" -gt 1 && "$TREE_TOOL" != "raxml" && "$n_dedup" -lt "$ONE_THREAD_BELOW" ]]; then
+        cluster_threads=1
+    fi
     if [[ "$n_dedup" -ne "$n_seqs" ]]; then
         echo "  Cluster $cluster_id ($n_seqs seqs, $n_dedup unique, $cluster_threads threads): aligning..."
     else
