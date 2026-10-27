@@ -70,7 +70,7 @@ void getReverseComplement(char *read, char *reverseComplement, int max_query_len
 		}
 	}
 	int j=0;
-	for (i=length-1; i>0; i--){
+	for (i=length-1; i>=0; i--){
 		reverseComplement[j] = basemap[(int)read[i]];
 		j++;
 	}
