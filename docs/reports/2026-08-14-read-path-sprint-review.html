@@ -1,0 +1,613 @@
+<title>Where reads were lost — sprint review</title>
+<style>
+  :root{
+    --paper:#fbfbf7; --card:#ffffff; --ink:#243447; --navy:#17324d;
+    --muted:#6b7785; --line:#d8e1e6; --mist:#edf3f5;
+    --teal:#1f9d8a; --blue:#4e87bd; --green:#5da271; --orange:#e7784f; --red:#bf4a48;
+    --maxw:1120px;
+    --font:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);
+       line-height:1.45;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:34px 24px 72px}
+  h1,h2,h3{color:var(--navy);margin:0;text-wrap:balance;font-weight:700;letter-spacing:-.01em}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--teal);font-weight:700}
+  .dek{color:var(--muted);font-size:15px;margin-top:6px;max-width:64ch}
+
+  /* hero */
+  .hero{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:26px}
+  .hero h1{font-size:30px;margin-top:6px}
+
+  /* sections */
+  section{margin-top:40px}
+  .sectionTitle{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+  .sectionTitle h2{font-size:20px}
+  .sectionTitle .n{font-size:12px;font-weight:700;color:var(--teal);letter-spacing:.1em}
+  .cap{color:var(--muted);font-size:13px;margin:2px 0 16px}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+
+  /* bullets */
+  ul.bullets{margin:0 0 16px;padding:0;list-style:none;max-width:76ch}
+  ul.bullets li{position:relative;padding-left:18px;font-size:13.5px;
+                color:var(--muted);margin:5px 0;line-height:1.5}
+  ul.bullets li::before{content:"—";position:absolute;left:0;top:0;color:var(--line)}
+  ul.bullets b{color:var(--navy);font-weight:700}
+  ul.bullets code{font-family:var(--mono);font-size:12.5px;color:var(--navy)}
+
+  /* legend */
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin:14px 0 0;font-size:13px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+  /* before/after sub-panel */
+  .ba{background:var(--mist);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+      overflow-x:auto}
+  .baHead{font-size:12.5px;font-weight:700;margin-bottom:11px;line-height:1.4}
+  .baHead.bad{color:var(--red)} .baHead.good{color:var(--green)}
+  .baHead code{font-family:var(--mono);font-size:12px;font-weight:700}
+  .pip{width:9px;height:9px;border-radius:50%;background:currentColor;
+       display:inline-block;vertical-align:middle;margin-right:7px;flex:none}
+
+  .row{display:flex;align-items:baseline;gap:10px;margin:3px 0}
+  .rowTag{font-family:var(--mono);font-size:11px;color:var(--muted);min-width:62px;
+          text-align:right;flex:none}
+
+  .seq{font-family:var(--mono);font-size:12.5px;display:flex;white-space:nowrap;line-height:1.5}
+  .seg.adapter{color:var(--muted)}
+  .seg.spacer{color:#fff;background:var(--orange);border-radius:3px;padding:0 2px;font-weight:700}
+  .seg.primer{color:var(--teal);font-weight:700}
+  .seg.template{color:var(--blue)}
+
+  .bases{display:flex;font-family:var(--mono);font-size:12.5px}
+  .b{width:1.05ch;text-align:center}
+  .b.ok{color:var(--ink)} .b.mm{color:var(--red);font-weight:700}
+  .ticks{display:flex}
+  .t{width:1.05ch;text-align:center;font-family:var(--mono);font-size:11px}
+  .t.ok{color:var(--green)} .t.mm{color:var(--red)}
+  .anchor{display:flex;font-family:var(--mono);font-size:12px}
+  .anchor .a{width:1.05ch;text-align:center}
+
+  .verdict{margin-top:11px;padding-top:9px;border-top:1px dashed var(--line);
+           font-size:12.5px;color:var(--muted)}
+  .verdict b{color:var(--navy);font-weight:700}
+
+  /* candidate hits */
+  .hit{display:grid;grid-template-columns:34px 1fr;align-items:center;gap:10px;
+       font-size:12.5px;margin:5px 0}
+  .hit .sc{text-align:right;font-family:var(--mono);color:var(--muted);font-weight:700}
+  .hit .nm{display:flex;align-items:center;gap:9px;font-style:italic}
+  .bar{height:9px;border-radius:3px;flex:none;background:var(--teal)}
+  .hit.drop .bar{background:var(--line)}
+  .hit.drop .nm,.hit.drop .sc{color:#a2adb8;text-decoration:line-through;
+       text-decoration-thickness:1px;text-decoration-color:var(--red)}
+
+  /* map track (primer collision) */
+  .mt{margin:12px 0 10px}
+  .mtBar{position:relative;height:30px;border-radius:5px;background:var(--blue);
+         display:flex;align-items:center;padding-left:10px;overflow:hidden}
+  .mtLab{font-family:var(--mono);font-size:11.5px;color:#fff;position:relative;z-index:1}
+  .mtPrimer{position:absolute;top:0;bottom:0;background:var(--orange);
+            border-left:2px solid var(--red);border-right:2px solid var(--red)}
+  .mtAxis{display:flex;justify-content:space-between;font-family:var(--mono);
+          font-size:11px;color:var(--muted);margin-top:4px}
+  .mtAxis .hit-pos{color:var(--red);font-weight:700}
+
+  /* flaw / aside callout */
+  .flaw{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--orange);
+        border-radius:8px;padding:14px 16px;margin-top:18px}
+  .flaw h4{margin:0 0 8px;font-size:14px;color:var(--navy)}
+  .flaw ul.bullets{margin-bottom:0}
+
+  .modes{margin-top:11px}
+  .mode{font-size:12.5px;color:var(--muted);margin:5px 0;line-height:1.5}
+  .mode code{font-family:var(--mono);font-size:12px;color:var(--navy);font-weight:700}
+  .mode b{color:var(--navy)}
+  .mode .pip.g{background:var(--green)} .mode .pip.r{background:var(--red)}
+
+  /* kpi strip */
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  @media (max-width:760px){.kpis{grid-template-columns:1fr}}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .kpi .lbl{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .kpi .num{font-size:19px;font-weight:700;color:var(--navy);line-height:1.25;margin-top:4px}
+  .kpi .num s{color:#a2adb8;text-decoration-color:var(--red);font-weight:600}
+  .kpi .num em{font-style:normal;color:var(--green)}
+  .kpi .num small{font-size:13.5px;font-weight:600;color:var(--muted)}
+
+  /* results tables */
+  .tblWrap{overflow-x:auto;margin-top:4px}
+  table.tbl{border-collapse:collapse;width:100%;font-size:12.5px;min-width:460px}
+  table.tbl th{text-align:right;font-weight:700;color:var(--muted);font-size:11px;
+               letter-spacing:.05em;text-transform:uppercase;padding:0 10px 7px;
+               border-bottom:1px solid var(--line);white-space:nowrap}
+  table.tbl th:first-child{text-align:left}
+  table.tbl td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--mist);
+               font-family:var(--mono);color:var(--ink);white-space:nowrap}
+  table.tbl td:first-child{text-align:left;font-family:var(--font);color:var(--navy);font-weight:700}
+  table.tbl tr:last-child td{border-bottom:none}
+  .was{color:#a2adb8}
+  .arrow{color:var(--line);padding:0 3px}
+  .now{color:var(--green);font-weight:700}
+  .up{color:var(--green);font-weight:700}
+
+  /* ratio bar inside a cell */
+  .ratio{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+  .ratio .track{width:78px;height:8px;border-radius:3px;background:var(--mist);
+                overflow:hidden;flex:none;display:flex}
+  .ratio .fill{height:100%;background:var(--green)}
+  .ratio .rest{height:100%;background:#e2c9c4}
+  .subhead{font-size:12.5px;font-weight:700;color:var(--navy);margin:18px 0 8px;
+           display:flex;align-items:baseline;gap:8px}
+  .subhead .tie{font-weight:600;color:var(--teal);font-size:11px;
+                letter-spacing:.08em;text-transform:uppercase}
+
+  /* case-study stage strip */
+  .stages{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+  @media (max-width:820px){.stages{grid-template-columns:1fr}}
+  .stg{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--card)}
+  .stg.now{border-color:var(--green);background:#f4faf6}
+  .stgN{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--teal);
+        letter-spacing:.1em;text-transform:uppercase}
+  .stg h4{margin:5px 0 9px;font-size:14px;color:var(--navy)}
+  .stgM{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+        font-size:12.5px;padding:4px 0;border-top:1px solid var(--mist)}
+  .stgM:first-of-type{border-top:none}
+  .stgM .k{color:var(--muted)}
+  .stgM .v{font-family:var(--mono);font-weight:700;color:var(--navy);white-space:nowrap}
+  .stgM .v.bad{color:var(--red)} .stgM .v.good{color:var(--green)}
+  .stgNote{margin-top:10px;padding-top:9px;border-top:1px dashed var(--line);
+           font-size:12px;color:var(--muted);line-height:1.45}
+
+  /* provenance footer */
+  .prov{margin-top:44px;padding-top:18px;border-top:1px solid var(--line)}
+  .provH{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+         color:var(--teal);font-weight:700;margin-bottom:10px}
+  .provRow{display:grid;grid-template-columns:230px 1fr;gap:12px;font-size:12.5px;
+           padding:4px 0;color:var(--muted)}
+  @media (max-width:640px){.provRow{grid-template-columns:1fr}}
+  .provRow .v{color:var(--navy)}
+  .provRow code{font-family:var(--mono);font-size:12px;color:var(--navy);font-weight:700}
+</style>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">Sprint review · Pipeline</div>
+    <h1>Where reads were lost</h1>
+    <p class="dek">Three bugs on the path from raw FASTQ to a taxonomic call. Each one silently discarded or misassigned reads that were never actually bad.</p>
+  </div>
+
+  <!-- ============ CASE STUDY ============ -->
+  <section style="margin-top:0">
+    <div class="sectionTitle">
+      <span class="n">Case study</span>
+      <h2>One marker, three bugs — each one hiding the next</h2>
+    </div>
+    <p class="cap">vert12S · BioScape · same samples throughout, only the pipeline changed</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>vert12S looked like a marker that simply didn’t work: out of a 27M-read run, <b>1,100 sequences</b> reached assignment and produced <b>122 taxa</b>.</li>
+        <li>Each fix exposed the one behind it. Trimming spacers recovered the reads — and revealed that almost all of them were being scored against the <b>wrong strand</b>.</li>
+      </ul>
+
+      <div class="stages">
+        <div class="stg">
+          <div class="stgN">Stage 1</div>
+          <h4>As found</h4>
+          <div class="stgM"><span class="k">Sequences assigned</span><span class="v bad">1,100</span></div>
+          <div class="stgM"><span class="k">Distinct taxa</span><span class="v bad">122</span></div>
+          <div class="stgM"><span class="k">Median divergence</span><span class="v bad">0.363</span></div>
+          <div class="stgNote">Nearly the whole library was landing in <code>unknown</code> at demultiplexing.</div>
+        </div>
+
+        <div class="stg">
+          <div class="stgN">Stage 2 · spacers trimmed</div>
+          <h4>Reads recovered — still unusable</h4>
+          <div class="stgM"><span class="k">Sequences assigned</span><span class="v good">1,442,464</span></div>
+          <div class="stgM"><span class="k">vs stage 1</span><span class="v good">1,311×</span></div>
+          <div class="stgM"><span class="k">Divergent assignments</span><span class="v bad">1,696,829</span></div>
+          <div class="stgNote">The reads were there at last — and almost every one scored as a bad match.</div>
+        </div>
+
+        <div class="stg now">
+          <div class="stgN">Stage 3 · strand corrected</div>
+          <h4>The data was fine all along</h4>
+          <div class="stgM"><span class="k">Median divergence</span><span class="v good">0.363 → 0.028</span></div>
+          <div class="stgM"><span class="k">Divergent assignments</span><span class="v good">1.70M → 14,050</span></div>
+          <div class="stgM"><span class="k">Distinct taxa</span><span class="v good">122 → 2,620</span></div>
+          <div class="stgNote">Same reads as stage 2. Only the orientation handed to scoring changed.</div>
+        </div>
+      </div>
+
+      <div class="flaw">
+        <h4>Why this matters beyond one marker</h4>
+        <ul class="bullets">
+          <li>Stage 1 is indistinguishable from “this marker didn’t amplify well.” Nothing failed loudly — the reads were quietly discarded upstream.</li>
+          <li>The two bugs below are what stage 2 and stage 3 turned out to be, and both reach markers well beyond vert12S.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 01 ============ -->
+  <section>
+    <div class="sectionTitle">
+      <span class="n">01</span>
+      <h2>Heterogeneity spacers broke the primer anchor</h2>
+    </div>
+    <p class="cap">Demultiplexing</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>Some preps insert <b>1–8 random bases</b> between adapter and primer, to raise base diversity on the flow cell.</li>
+        <li><code>^PRIMER</code> requires the primer at position <b>0</b> — a spacered read never matches.</li>
+        <li>Nearly every read lands in <code>unknown</code>.</li>
+      </ul>
+
+      <div class="grid2">
+        <div class="ba">
+          <div class="baHead bad"><span class="pip"></span>Before — 2 bp spacer</div>
+          <div class="row">
+            <span class="rowTag">read</span>
+            <div class="seq"><span class="seg spacer">GT</span><span class="seg primer">TAGAACAGGCTCCTCTAG</span><span class="seg template">CCTAGGCAAT…</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag">^anchor</span>
+            <div class="anchor" style="color:var(--red)"><span class="a">↑</span><span class="a"></span><span class="a">✗</span></div>
+          </div>
+          <div class="verdict">marker → <b>unknown</b></div>
+        </div>
+
+        <div class="ba">
+          <div class="baHead good"><span class="pip"></span>After — spacer hard-trimmed first</div>
+          <div class="row">
+            <span class="rowTag">read</span>
+            <div class="seq"><span class="seg primer">TAGAACAGGCTCCTCTAG</span><span class="seg template">CCTAGGCAAT…</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag">^anchor</span>
+            <div class="anchor" style="color:var(--green)"><span class="a">↑</span><span class="a">✓</span></div>
+          </div>
+          <div class="verdict">marker → <b>vert12S</b></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><i class="sw" style="background:var(--orange)"></i>spacer</span>
+        <span><i class="sw" style="background:var(--teal)"></i>locus primer</span>
+        <span><i class="sw" style="background:var(--blue)"></i>template</span>
+      </div>
+
+      <div class="flaw">
+        <h4>Why not just drop the anchor?</h4>
+        <ul class="bullets">
+          <li>Primers aren’t unique to their own marker.</li>
+          <li><b>ITS5</b> (ITS1 forward) sits in the 3′ end of the <b>18S</b> gene — inside what <code>Euk1391f → EukBr</code> amplifies.</li>
+          <li>Unanchored, cutadapt matches it mid-read and files an 18S read under ITS1.</li>
+          <li>It occurs internally in <b>32,892 of 362,046</b> 18S reference amplicons — <b>9.1%</b> — at a median <b>103 bp</b> into a 132 bp amplicon.</li>
+        </ul>
+
+        <div class="mt">
+          <div class="mtBar" role="img" aria-label="An 18S amplicon of 132 base pairs, with the ITS1 forward primer occurring internally at offset 103.">
+            <span class="mtLab">18S_Euk amplicon · 132 bp</span>
+            <span class="mtPrimer" style="left:78%;width:16.7%"></span>
+          </div>
+          <div class="mtAxis"><span>0</span><span class="hit-pos">↑ ITS5 at 103 bp</span><span>132</span></div>
+        </div>
+
+        <div class="modes">
+          <div class="mode"><span class="pip g"></span><code>^anchored</code> primer must sit at 0 → read stays <b>18S</b></div>
+          <div class="mode"><span class="pip r"></span><code>unanchored</code> matches at 103 → read becomes <b>ITS1</b></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section>
+    <div class="sectionTitle">
+      <span class="n">02</span>
+      <h2>Reverse-strand reads were scored against the wrong strand</h2>
+    </div>
+    <p class="cap">Alignment</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>Where the reference stores the amplicon in the opposite orientation, every read arrives <b>reverse-complemented</b>.</li>
+        <li>The aligner flagged the strand correctly — but scoring got the read <b>unchanged</b>.</li>
+        <li>Each read was compared base-for-base against its own reverse complement.</li>
+        <li><b>Synthetic data couldn’t catch this.</b> Simulated reads are built forward off the reference (<code>forward_primer + amplicon + …</code>), so every hit returns forward-strand and the reorientation path never runs. The trigger is a property of the <b>reference database</b>, not of the reads.</li>
+      </ul>
+
+      <div class="grid2">
+        <div class="ba">
+          <div class="baHead bad"><span class="pip"></span>Before — compared as-is</div>
+          <div class="row">
+            <span class="rowTag">reference</span>
+            <div class="bases"><span class="b ok">A</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">G</span><span class="b ok">T</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">A</span><span class="b ok">T</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">A</span><span class="b ok">G</span><span class="b ok">T</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag"></span>
+            <div class="ticks"><span class="t ok">|</span><span class="t ok">|</span><span class="t mm">×</span><span class="t mm">×</span><span class="t ok">|</span><span class="t mm">×</span><span class="t mm">×</span><span class="t mm">×</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t mm">×</span><span class="t mm">×</span><span class="t mm">×</span><span class="t ok">|</span><span class="t mm">×</span><span class="t mm">×</span><span class="t ok">|</span><span class="t ok">|</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag">read</span>
+            <div class="bases"><span class="b ok">A</span><span class="b ok">C</span><span class="b mm">T</span><span class="b mm">G</span><span class="b ok">G</span><span class="b mm">C</span><span class="b mm">A</span><span class="b mm">G</span><span class="b ok">G</span><span class="b ok">A</span><span class="b ok">T</span><span class="b ok">C</span><span class="b mm">A</span><span class="b mm">A</span><span class="b mm">C</span><span class="b ok">C</span><span class="b mm">A</span><span class="b mm">G</span><span class="b ok">G</span><span class="b ok">T</span></div>
+          </div>
+          <div class="verdict">mismatch <b>50%</b> → discarded, or forced onto a distant relative</div>
+        </div>
+
+        <div class="ba">
+          <div class="baHead good"><span class="pip"></span>After — read reverse-complemented first</div>
+          <div class="row">
+            <span class="rowTag">reference</span>
+            <div class="bases"><span class="b ok">A</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">G</span><span class="b ok">T</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">A</span><span class="b ok">T</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">A</span><span class="b ok">G</span><span class="b ok">T</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag"></span>
+            <div class="ticks"><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span><span class="t ok">|</span></div>
+          </div>
+          <div class="row">
+            <span class="rowTag">read (rc)</span>
+            <div class="bases"><span class="b ok">A</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">G</span><span class="b ok">T</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">A</span><span class="b ok">T</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">T</span><span class="b ok">G</span><span class="b ok">C</span><span class="b ok">C</span><span class="b ok">A</span><span class="b ok">G</span><span class="b ok">T</span></div>
+          </div>
+          <div class="verdict">mismatch <b>0%</b> → placed correctly</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section>
+    <div class="sectionTitle">
+      <span class="n">03</span>
+      <h2>The top-hits cap didn’t survive the move from BWA to minimap2</h2>
+    </div>
+    <p class="cap">Placement</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>The aligner swap handed our existing <code>--max-leaf-matches</code> cap straight to minimap2 as <code>best_n</code>.</li>
+        <li>The number carried over, the meaning didn’t: under BWA it bounded a list of <b>genuine top hits</b>; under minimap2 it only bounds <b>how many</b> alignments come back, however much worse they score.</li>
+        <li>Every returned hit then voted in the consensus. We now apply the cap on <b>score</b>, so it means what it always meant.</li>
+      </ul>
+
+      <div class="grid2">
+        <div class="ba">
+          <div class="baHead bad"><span class="pip"></span>Before — <code>best_n = 10</code>, all returned hits vote</div>
+          <div class="hit"><span class="sc">128</span><span class="nm"><i class="bar" style="width:64px"></i>Chironomus riparius</span></div>
+          <div class="hit"><span class="sc">128</span><span class="nm"><i class="bar" style="width:64px"></i>Chironomus plumosus</span></div>
+          <div class="hit"><span class="sc">74</span><span class="nm"><i class="bar" style="width:37px"></i>Belgica antarctica</span></div>
+          <div class="hit"><span class="sc">61</span><span class="nm"><i class="bar" style="width:31px"></i>Wyeomyia sp.</span></div>
+          <div class="verdict">consensus → <b>Diptera</b> (order)</div>
+        </div>
+
+        <div class="ba">
+          <div class="baHead good"><span class="pip"></span>After — keep <code>score == best</code></div>
+          <div class="hit"><span class="sc">128</span><span class="nm"><i class="bar" style="width:64px"></i>Chironomus riparius</span></div>
+          <div class="hit"><span class="sc">128</span><span class="nm"><i class="bar" style="width:64px"></i>Chironomus plumosus</span></div>
+          <div class="hit drop"><span class="sc">74</span><span class="nm"><i class="bar" style="width:37px"></i>Belgica antarctica</span></div>
+          <div class="hit drop"><span class="sc">61</span><span class="nm"><i class="bar" style="width:31px"></i>Wyeomyia sp.</span></div>
+          <div class="verdict">consensus → <b>Chironomus</b> (genus)</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section>
+    <div class="sectionTitle">
+      <span class="n">04</span>
+      <h2>Both fixes, measured against known truth</h2>
+    </div>
+    <p class="cap">Validation · 4 markers · synthetic communities</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>Same reads, same reference, same parameters — only the binary changes (<code>f3bdfac</code> → <code>530caf9</code>).</li>
+        <li>Every read carries a known source species, so each assignment is scored as <b>closer to</b> or <b>further from</b> truth.</li>
+        <li><b>§02 is now testable.</b> Simulated reads are built forward off the reference, so the reorientation path never ran. Reverse-complementing the query before placement reproduces the broken condition — and it reproduces the production signature exactly (<b>32–34%</b> mismatch, matching the <b>36%</b> seen on real vert12S).</li>
+      </ul>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="lbl">§02 · strand — mismatch rate</div>
+          <div class="num"><s>33%</s> → <em>2%</em></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">§03 · cap — reassignments toward truth</div>
+          <div class="num"><em>71%</em> <small>1,944 vs 794</small></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">ASV F1</div>
+          <div class="num"><em>up</em> <small>on 4 of 4 markers</small></div>
+        </div>
+      </div>
+
+      <div class="subhead"><span class="tie">Ties to §02</span> Reverse-strand reads — before → after</div>
+      <div class="tblWrap">
+        <table class="tbl">
+          <tr><th>Marker</th><th>Mismatch rate</th><th>Reads &gt;25% mismatch</th><th>ASV F1</th></tr>
+          <tr><td>vert12S</td>
+            <td><span class="was">0.32</span><span class="arrow">→</span><span class="now">0.04</span></td>
+            <td><span class="was">78%</span><span class="arrow">→</span><span class="now">2%</span></td>
+            <td><span class="was">0.12</span><span class="arrow">→</span><span class="now">0.46</span></td></tr>
+          <tr><td>18S_Euk</td>
+            <td><span class="was">0.33</span><span class="arrow">→</span><span class="now">0.02</span></td>
+            <td><span class="was">76%</span><span class="arrow">→</span><span class="now">1%</span></td>
+            <td><span class="was">0.10</span><span class="arrow">→</span><span class="now">0.43</span></td></tr>
+          <tr><td>ITS2_Plants</td>
+            <td><span class="was">0.34</span><span class="arrow">→</span><span class="now">0.02</span></td>
+            <td><span class="was">97%</span><span class="arrow">→</span><span class="now">1%</span></td>
+            <td><span class="was">0.33</span><span class="arrow">→</span><span class="now">0.54</span></td></tr>
+          <tr><td>16Smamm</td>
+            <td><span class="was">0.32</span><span class="arrow">→</span><span class="now">0.03</span></td>
+            <td><span class="was">73%</span><span class="arrow">→</span><span class="now">0%</span></td>
+            <td><span class="was">0.20</span><span class="arrow">→</span><span class="now">0.54</span></td></tr>
+        </table>
+      </div>
+
+      <div class="subhead"><span class="tie">Ties to §03</span> Forward reads — the cap alone (strand is a no-op here)</div>
+      <div class="tblWrap">
+        <table class="tbl">
+          <tr><th>Marker</th><th>Reassignments toward truth</th><th>ASV F1</th><th>Reads &gt;25% mismatch</th></tr>
+          <tr><td>vert12S</td>
+            <td><div class="ratio"><span>72.8%</span><span class="track"><i class="fill" style="width:72.8%"></i><i class="rest" style="width:27.2%"></i></span></div></td>
+            <td><span class="up">+0.035</span></td>
+            <td><span class="was">5.0%</span><span class="arrow">→</span><span class="now">1.6%</span></td></tr>
+          <tr><td>18S_Euk</td>
+            <td><div class="ratio"><span>61.8%</span><span class="track"><i class="fill" style="width:61.8%"></i><i class="rest" style="width:38.2%"></i></span></div></td>
+            <td><span class="up">+0.009</span></td>
+            <td><span class="was">6.0%</span><span class="arrow">→</span><span class="now">0.7%</span></td></tr>
+          <tr><td>ITS2_Plants</td>
+            <td><div class="ratio"><span>78.0%</span><span class="track"><i class="fill" style="width:78%"></i><i class="rest" style="width:22%"></i></span></div></td>
+            <td><span class="up">+0.013</span></td>
+            <td><span class="was">2.3%</span><span class="arrow">→</span><span class="now">0.5%</span></td></tr>
+          <tr><td>16Smamm</td>
+            <td><div class="ratio"><span>64.7%</span><span class="track"><i class="fill" style="width:64.7%"></i><i class="rest" style="width:35.3%"></i></span></div></td>
+            <td><span class="up">+0.005</span></td>
+            <td><span class="was">2.4%</span><span class="arrow">→</span><span class="now">0.4%</span></td></tr>
+        </table>
+      </div>
+
+      <div class="legend">
+        <span><i class="sw" style="background:var(--green)"></i>moved toward truth</span>
+        <span><i class="sw" style="background:#e2c9c4"></i>moved away</span>
+      </div>
+
+      <div class="flaw">
+        <h4>Reading these numbers</h4>
+        <ul class="bullets">
+          <li>vert12S is 3 independent communities; the other three are 1 each — direction is replicated, magnitude is not yet.</li>
+          <li>Reference is a held-out build (30% of species removed), so absolute F1 is deliberately low. The <b>deltas</b> are the result, not the levels.</li>
+          <li><b>ASV F1</b> scores each ASV at its own deepest truthful rank — for a held-out species the right answer <i>is</i> genus, so naming a species anyway counts against you.</li>
+          <li>Re-running the same binary twice is byte-identical, so no delta above is run-to-run noise.</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section>
+    <div class="sectionTitle">
+      <span class="n">05</span>
+      <h2>The same fixes on production data</h2>
+    </div>
+    <p class="cap">3 projects · 8 marker runs · 31.5M paired reads re-assigned</p>
+
+    <div class="panel">
+      <ul class="bullets">
+        <li>Every project re-run on <b>identical reads</b> — same QC output, same reference. Only the binary changed.</li>
+        <li>The <b>strand</b> fix fired on <b>vert12S alone</b>. Every other marker’s mismatch rate is flat before → after, so their movement is the <b>cap</b> fix by itself.</li>
+        <li>Mean assignment depth rose on <b>8 of 8</b> marker runs, and distinct taxa rose on 7 of 8.</li>
+      </ul>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="lbl">vert12S · reads &gt;25% mismatch</div>
+          <div class="num"><s>77%</s> → <em>0%</em></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">vert12S · divergent assignments</div>
+          <div class="num"><s>1,696,829</s> → <em>14,050</em></div>
+        </div>
+        <div class="kpi">
+          <div class="lbl">Mean assignment depth</div>
+          <div class="num"><em>up</em> <small>on 8 of 8 marker runs</small></div>
+        </div>
+      </div>
+
+      <div class="subhead"><span class="tie">Ties to §02</span> vert12S — the one marker the strand bug reached</div>
+      <div class="tblWrap">
+        <table class="tbl">
+          <tr><th>Project</th><th>Mismatch rate</th><th>Reads &gt;25% mismatch</th><th>Median divergence</th><th>Divergent assignments</th></tr>
+          <tr><td>BioScape</td>
+            <td><span class="was">34.5%</span><span class="arrow">→</span><span class="now">2.5%</span></td>
+            <td><span class="was">77.3%</span><span class="arrow">→</span><span class="now">0.0%</span></td>
+            <td><span class="was">0.363</span><span class="arrow">→</span><span class="now">0.028</span></td>
+            <td><span class="was">1,696,829</span><span class="arrow">→</span><span class="now">14,050</span></td></tr>
+          <tr><td>Jalama Creek</td>
+            <td colspan="3" style="text-align:right;color:var(--muted);font-family:var(--font)">same signature, smaller library</td>
+            <td><span class="was">275,958</span><span class="arrow">→</span><span class="now">518</span></td></tr>
+        </table>
+      </div>
+
+      <div class="subhead"><span class="tie">Ties to §03</span> Every marker — the cap’s footprint on real samples</div>
+      <div class="tblWrap">
+        <table class="tbl">
+          <tr><th>Marker · project</th><th>Reads compared</th><th>Assignments changed</th><th>Mean depth</th><th>Distinct taxa</th></tr>
+          <tr><td>ITS2_Plants · BioScape</td><td>2,976,391</td><td>54.2%</td>
+            <td><span class="was">4.58</span><span class="arrow">→</span><span class="now">4.98</span></td>
+            <td><span class="was">1,902</span><span class="arrow">→</span><span class="now">2,170</span></td></tr>
+          <tr><td>CO1_Metazoa · CAT</td><td>6,427,087</td><td>49.7%</td>
+            <td><span class="was">4.48</span><span class="arrow">→</span><span class="now">4.68</span></td>
+            <td><span class="was">8,332</span><span class="arrow">→</span><span class="now">8,441</span></td></tr>
+          <tr><td>18S_Euk · BioScape</td><td>5,438,616</td><td>45.4%</td>
+            <td><span class="was">3.68</span><span class="arrow">→</span><span class="now">4.11</span></td>
+            <td><span class="was">9,536</span><span class="arrow">→</span><span class="now">9,854</span></td></tr>
+          <tr><td>CO1_Metazoa · Jalama</td><td>1,245,476</td><td>42.6%</td>
+            <td><span class="was">3.74</span><span class="arrow">→</span><span class="now">3.91</span></td>
+            <td><span class="was">3,629</span><span class="arrow">→</span><span class="now">3,760</span></td></tr>
+          <tr><td>ITS1_Fungi · BioScape</td><td>3,436,501</td><td>32.9%</td>
+            <td><span class="was">4.13</span><span class="arrow">→</span><span class="now">4.27</span></td>
+            <td><span class="was">8,323</span><span class="arrow">→</span><span class="now">8,531</span></td></tr>
+          <tr><td>CO1_Metazoa · BioScape</td><td>3,761,696</td><td>31.9%</td>
+            <td><span class="was">3.68</span><span class="arrow">→</span><span class="now">3.85</span></td>
+            <td><span class="was">5,953</span><span class="arrow">→</span><span class="now">5,934</span></td></tr>
+          <tr><td>CO1_fwhF2 · CAT</td><td>4,522,375</td><td>29.6%</td>
+            <td><span class="was">3.42</span><span class="arrow">→</span><span class="now">3.46</span></td>
+            <td><span class="was">2,973</span><span class="arrow">→</span><span class="now">2,974</span></td></tr>
+          <tr><td>CO1_BF3_BR2 · CAT</td><td>3,673,973</td><td>9.5%</td>
+            <td><span class="was">1.83</span><span class="arrow">→</span><span class="now">1.93</span></td>
+            <td><span class="was">872</span><span class="arrow">→</span><span class="now">900</span></td></tr>
+        </table>
+      </div>
+
+      <div class="flaw">
+        <h4>Reading these numbers</h4>
+        <ul class="bullets">
+          <li><b>Production has no ground truth.</b> These tables show what <i>moved</i>, not whether it moved correctly — §04 is what establishes the direction.</li>
+          <li>Depth rising is consistent with the cap change: dropping worse candidates shrinks the consensus set, so the answer resolves further down the lineage.</li>
+          <li>Paired partition only (&gt;90% of reads); the unpaired partitions lack the mate-length columns needed for the mismatch comparison.</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="prov">
+    <div class="provH">Provenance</div>
+    <div class="provRow">
+      <span>Code this report describes</span>
+      <span class="v"><code>530caf9</code> — head of <code>high-perf-aligner</code>, PR #8 merged 2026-08-13</span>
+    </div>
+    <div class="provRow">
+      <span>Baseline compared against</span>
+      <span class="v"><code>f3bdfac</code> — first parent of that merge</span>
+    </div>
+    <div class="provRow">
+      <span>§04 validation</span>
+      <span class="v">Both binaries built from the two commits above with <code>OPTIMIZE_MEMORY=1</code>, run at production parameters, <code>--number-of-cores 1</code></span>
+    </div>
+    <div class="provRow">
+      <span>§05 production runs</span>
+      <span class="v">BioScape <code>cm4n7f2bb</code> · CAT Watersheds <code>cmrphey44</code> · Jalama Creek <code>cmrv09djy</code></span>
+    </div>
+    <div class="provRow">
+      <span>Report revision</span>
+      <span class="v">2026-08-14</span>
+    </div>
+  </footer>
+
+</div>
