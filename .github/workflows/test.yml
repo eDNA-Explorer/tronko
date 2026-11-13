@@ -37,6 +37,9 @@ jobs:
         cd tronko-build
         make clean && make
     
+    - name: tronko-build regression tests (single tree exact; partition mode at -J 1 and -J 3)
+      run: PATH="$PWD/bin:$PATH" tests/test_tronko_build_golden.sh
+    
     - name: Build tronko-assign
       run: |
         cd tronko-assign
