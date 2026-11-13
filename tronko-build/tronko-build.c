@@ -878,6 +878,13 @@ cleanup:
 	free(seqs);
 }
 /* Copy a file using native C I/O (replaces system("cp ...")) */
+/* An unsplit input cluster's tree: the binarised copy in the output dir when
+   FastTree/VeryFastTree mode wrote one, else the input file. */
+static void cluster_tree_path(char *dst, const Options *opt, const char *id){
+	snprintf(dst, BUFFER_SIZE, "%s/RAxML_bestTree.%s.reroot", opt->partitions_directory, id);
+	if (access(dst, F_OK) != 0)
+		snprintf(dst, BUFFER_SIZE, "%s/RAxML_bestTree.%s.reroot", opt->readdir, id);
+}
 static void copy_file(const char *src, const char *dst){
 	FILE *in = fopen(src, "rb");
 	if (!in){ fprintf(stderr, "copy_file: cannot open %s\n", src); return; }
@@ -1888,6 +1895,9 @@ static void process_one_cluster(int i, Options *opt, partition_files *pf, int ma
 		parseNewick(m, newick, max_nodename);
 		free(newick);
 		makeBinary(m, max_nodename, &poly_seed);
+		/* Write the binarised tree to the output dir, never over the input. */
+		mkdir(opt->partitions_directory, 0700);
+		snprintf(buffer,BUFFER_SIZE,"%s/%s",opt->partitions_directory,pf->tree_files[i]);
 		exportTreeToNewick(m, buffer);
 		int idx;
 		for(idx=0; idx<m->numNodes; idx++){
@@ -2372,9 +2382,9 @@ int main(int argc, char **argv){
 						char src_path[BUFFER_SIZE];
 						char dst_path[BUFFER_SIZE];
 						printf("copying %s/RAxML_bestTree.%s.reroot to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						snprintf(src_path,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.readdir,substring);
+						cluster_tree_path(src_path,&opt,substring);
 						snprintf(dst_path,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.partitions_directory,substring);
-						copy_file(src_path, dst_path);
+						if (strcmp(src_path, dst_path) != 0) copy_file(src_path, dst_path);
 						printf("copying %s/%s_MSA.fasta to %s...\n",opt.readdir,substring,opt.partitions_directory);
 						snprintf(src_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,substring);
 						snprintf(dst_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.partitions_directory,substring);
@@ -2495,7 +2505,7 @@ int main(int argc, char **argv){
 									snprintf(src,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.readdir,id);
 									snprintf(dst,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt.partitions_directory,newIdx);
 									copy_file(src,dst);
-									snprintf(src,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.readdir,id);
+									cluster_tree_path(src,&opt,id);
 									snprintf(dst,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,newIdx);
 									copy_file(src,dst);
 									/* Point tree_list.txt at the materialised copy. The
