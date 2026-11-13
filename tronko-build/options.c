@@ -34,7 +34,7 @@ static struct option long_options[]=
 	{"parallel-jobs", required_argument, 0, 'J'},
 	{"column-gap-mask", required_argument, 0, 'W'},
 	{"legacy-sp", no_argument, 0, 'L'},
-	{"corrected-sp", no_argument, 0, 260},
+	{"corrected-sp", no_argument, 0, 261},
 	{0, 0, 0, 0}
 };
 
@@ -269,7 +269,7 @@ void parse_options(int argc, char **argv, Options *opt){
 			case 'L':
 				opt->legacy_sp = 1;
 				break;
-			case 260: /* --corrected-sp */
+			case 261: /* --corrected-sp */
 				opt->legacy_sp = 0;
 				break;
 		}

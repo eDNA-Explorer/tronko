@@ -1124,14 +1124,7 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 		/* VeryFastTree 4.0.3 with 2+ threads segfaults or writes a truncated
 		   tree on alignments of 4-12 sequences (every run, any thread count;
 		   13+ and one thread are fine), so small alignments get one thread. */
-		int nseq = 0;
-		char line[FASTA_MAXLINE];
-		FILE *msa = fopen(in, "r");
-		if (msa){
-			while (fgets(line, sizeof(line), msa)) if (line[0] == '>') nseq++;
-			fclose(msa);
-		}
-		if (nseq < 16) snprintf(tstr, sizeof(tstr), "1");
+		if (count_fasta_records(in, 16) < 16) snprintf(tstr, sizeof(tstr), "1");
 		argv[ai++] = "VeryFastTree";
 		argv[ai++] = "-threads"; argv[ai++] = tstr;
 	}else{
