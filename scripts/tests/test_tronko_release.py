@@ -37,6 +37,12 @@ def write_build(build_dir: Path, marker: str = MARKER) -> Path:
     return build_dir
 
 
+def write_params(tmp_path: Path) -> Path:
+    path = tmp_path / "params.json"
+    path.write_text(json.dumps({"sp_threshold": 0.1, "partition_mode": "-y"}))
+    return path
+
+
 def test_required_files_are_the_eight_assign_reads():
     assert tr.required_files("M") == [
         "M.fasta",
@@ -61,34 +67,35 @@ def test_dvc_out_md5_reads_the_single_output():
     ("listing", "expected"),
     [
         (
-            ["species.fasta", "species_taxonomy.txt", "lca.fasta"],
-            ("species.fasta", "species_taxonomy.txt"),
+            ["lca.fasta", "lca_taxonomy.txt", "species.fasta", "species_taxonomy.txt"],
+            ("lca.fasta", "lca_taxonomy.txt"),
         ),
         (
-            [f"{MARKER}_species.fasta", f"{MARKER}_species_taxonomy.txt"],
-            (f"{MARKER}_species.fasta", f"{MARKER}_species_taxonomy.txt"),
+            [f"{MARKER}_lca.fasta", f"{MARKER}_lca_taxonomy.txt"],
+            (f"{MARKER}_lca.fasta", f"{MARKER}_lca_taxonomy.txt"),
         ),
     ],
 )
 def test_curated_input_names_handles_both_layouts(listing, expected):
-    assert tr.curated_input_names(listing, MARKER, "species") == expected
+    assert tr.curated_input_names(listing, MARKER) == expected
 
 
 @pytest.mark.parametrize(
     "listing",
     [
-        ["species.fasta"],  # taxonomy missing
+        ["lca.fasta"],  # taxonomy missing
+        ["species.fasta", "species_taxonomy.txt"],  # only the species tier
         [
-            "species.fasta",
-            "species_taxonomy.txt",
-            f"{MARKER}_species.fasta",
-            f"{MARKER}_species_taxonomy.txt",
+            "lca.fasta",
+            "lca_taxonomy.txt",
+            f"{MARKER}_lca.fasta",
+            f"{MARKER}_lca_taxonomy.txt",
         ],  # ambiguous
     ],
 )
 def test_curated_input_names_rejects_missing_or_ambiguous(listing):
     with pytest.raises(ValueError):
-        tr.curated_input_names(listing, MARKER, "species")
+        tr.curated_input_names(listing, MARKER)
 
 
 def test_validate_build_names_missing_and_empty_files(tmp_path):
@@ -111,9 +118,9 @@ def test_build_metadata_records_inputs_outputs_and_tool(tmp_path):
         "marker": MARKER,
         "rcrux_tag": f"{MARKER}_v1.0.0",
         "rcrux_commit": "c0ffee",
-        "input_tier": "species",
+        "input_tier": "lca",
         "input_md5": "abc.dir",
-        "input_files": {"curated/species.fasta": "m1"},
+        "input_files": {"curated/lca.fasta": "m1"},
     }
     now = datetime.datetime(2026, 11, 13, tzinfo=datetime.timezone.utc)
     meta = tr.build_metadata(MARKER, "v1.0.0", build, inputs, "abc1234", {"-y": True}, now)
@@ -128,8 +135,16 @@ def test_build_metadata_records_inputs_outputs_and_tool(tmp_path):
 
     with pytest.raises(ValueError, match="not 'Other'"):
         tr.build_metadata(
-            "Other", "v1.0.0", write_build(tmp_path / "o", "Other"), inputs, "s", None, now
+            "Other", "v1.0.0", write_build(tmp_path / "o", "Other"), inputs, "s", {"-y": 1}, now
         )
+
+
+@pytest.mark.parametrize("params", [None, {}, [], "-y"])
+def test_build_metadata_requires_build_settings(tmp_path, params):
+    inputs = {"marker": MARKER}
+    now = datetime.datetime(2026, 11, 13, tzinfo=datetime.timezone.utc)
+    with pytest.raises(ValueError, match="Build settings are required"):
+        tr.build_metadata(MARKER, "v1.0.0", write_build(tmp_path / "b"), inputs, "s", params, now)
 
 
 @pytest.fixture
@@ -164,11 +179,12 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
     origin, remote, decoy = rcrux_repo["origin"], rcrux_repo["remote"], rcrux_repo["decoy"]
 
     work = tmp_path / "work"
-    inputs = tr.fetch(MARKER, f"{MARKER}_v1.0.0", "species", work, rcrux_repo=str(origin))
+    inputs = tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(origin))
     assert inputs["rcrux_commit"] == git(origin, "rev-parse", f"{MARKER}_v1.0.0")
     assert inputs["input_md5"].endswith(".dir")
-    assert set(inputs["input_files"]) == {"curated/species.fasta", "curated/species_taxonomy.txt"}
-    assert (work / "species.fasta").read_text() == ">s1\nACGTACGT\n"
+    assert inputs["input_tier"] == "lca"
+    assert set(inputs["input_files"]) == {"curated/lca.fasta", "curated/lca_taxonomy.txt"}
+    assert (work / "lca.fasta").read_text() == ">l1\nACGT\n"
     assert json.loads((work / "inputs.json").read_text()) == inputs
 
     checkout = tmp_path / "rcrux-checkout"
@@ -176,8 +192,16 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
     build = write_build(tmp_path / "build")
     log = tmp_path / "build.log"
     log.write_text("tronko-build -y -u 0.1\n")
+    params = write_params(tmp_path)
 
-    meta = tr.publish(MARKER, build, work / "inputs.json", log, "v1.0.0", checkout)
+    missing = tmp_path / "missing.json"
+    with pytest.raises(ValueError, match="not found"):
+        tr.publish(MARKER, build, work / "inputs.json", log, missing, "v1.0.0", checkout)
+
+    meta = tr.publish(MARKER, build, work / "inputs.json", log, params, "v1.0.0", checkout)
+    assert meta["build_params"] == {"sp_threshold": 0.1, "partition_mode": "-y"}
+    published = checkout / "databases" / MARKER / "tronko"
+    assert json.loads((published / "build_params.json").read_text()) == meta["build_params"]
     assert git(checkout, "rev-parse", "--abbrev-ref", "HEAD") == f"publish/{MARKER}-tronko-v1.0.0"
     assert git(checkout, "status", "--porcelain") == ""
     assert f"databases/{MARKER}/tronko.dvc" in git(checkout, "show", "--name-only", "--format=")
@@ -200,7 +224,7 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
 
 def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
     work = tmp_path / "work"
-    tr.fetch(MARKER, f"{MARKER}_v1.0.0", "species", work, rcrux_repo=str(rcrux_repo["origin"]))
+    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
     checkout = tmp_path / "checkout"
     git(tmp_path, "clone", "-q", str(rcrux_repo["origin"]), str(checkout))
     (checkout / "databases" / MARKER / "tronko").mkdir()
@@ -208,12 +232,16 @@ def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
     log.write_text("log\n")
     with pytest.raises(ValueError, match="--replace"):
         tr.publish(
-            MARKER, write_build(tmp_path / "build"), work / "inputs.json", log, "v1.0.0", checkout
+            MARKER,
+            write_build(tmp_path / "build"),
+            work / "inputs.json",
+            log,
+            write_params(tmp_path),
+            "v1.0.0",
+            checkout,
         )
 
 
 def test_fetch_rejects_unknown_tag(tmp_path, rcrux_repo):
     with pytest.raises(ValueError, match="not found"):
-        tr.fetch(
-            MARKER, "nope_v9.9.9", "species", tmp_path / "w", rcrux_repo=str(rcrux_repo["origin"])
-        )
+        tr.fetch(MARKER, "nope_v9.9.9", tmp_path / "w", rcrux_repo=str(rcrux_repo["origin"]))

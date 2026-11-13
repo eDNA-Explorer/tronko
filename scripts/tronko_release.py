@@ -12,16 +12,18 @@ treatment, with DVC as the only storage on both sides:
 2. (build)  Run tronko-build however the marker needs; this script does not
             build trees.
 3. publish  Check the eight files tronko-assign needs, write metadata.json
-            beside them with the build log, then in an rcrux-py checkout:
+            beside them with the build log and the build settings (always
+            required), then in an rcrux-py checkout:
             dvc add databases/{marker}/tronko, dvc push -r rcrux, and commit
             tronko.dvc on a publish branch.
 4. tag      After that branch merges, tag {marker}_tronko_v{version} on the
             commit that carries tronko.dvc and push the tag.
 
 Usage:
-    python tronko_release.py fetch --marker MARKER --rcrux-tag TAG --input-tier species --out DIR
+    python tronko_release.py fetch --marker MARKER --rcrux-tag TAG --out DIR
     python tronko_release.py publish --marker MARKER --build-dir DIR --inputs DIR/inputs.json \
-        --build-log build.log --tronko-version v1.0.0 --rcrux-checkout PATH
+        --build-log build.log --build-params params.json --tronko-version v1.0.0 \
+        --rcrux-checkout PATH
     python tronko_release.py tag --marker MARKER --tronko-version v1.0.0 --rcrux-checkout PATH
 """
 
@@ -43,12 +45,14 @@ DEFAULT_RCRUX_REPO = "https://github.com/eDNA-Explorer/rcrux-py"
 # The only DVC remote this script reads from or pushes to. rcrux-py also
 # configures a "gcs" remote; versioning never touches it.
 DVC_REMOTE = "rcrux"
-INPUT_TIERS = ("species", "lca")
+# tronko builds from rcrux's LCA tier: curated/lca.fasta + lca_taxonomy.txt.
+INPUT_TIER = "lca"
 BWA_INDEX_EXTENSIONS = (".amb", ".ann", ".bwt", ".pac", ".sa")
 VERSION_PATTERN = re.compile(r"v\d+\.\d+\.\d+")
 METADATA_FILENAME = "metadata.json"
 INPUTS_FILENAME = "inputs.json"
 BUILD_LOG_FILENAME = "build.log"
+BUILD_PARAMS_FILENAME = "build_params.json"
 
 
 def required_files(marker: str) -> list[str]:
@@ -113,13 +117,14 @@ def dvc_out_md5(dvc_file_text: str) -> str:
     return outs[0]["md5"]
 
 
-def curated_input_names(listing: list[str], marker: str, tier: str) -> tuple[str, str]:
-    """Pick the tier's FASTA and taxonomy from a curated/ listing.
+def curated_input_names(listing: list[str], marker: str) -> tuple[str, str]:
+    """Pick the LCA FASTA and taxonomy from a curated/ listing.
 
-    rcrux writes unprefixed names (species.fasta); its legacy layout prefixes
-    them with the marker (MiFish_species.fasta). Exactly one layout must match.
+    rcrux writes unprefixed names (lca.fasta); its legacy layout prefixes
+    them with the marker (MiFish_lca.fasta). Exactly one layout must match.
     """
     names = set(listing)
+    tier = INPUT_TIER
     candidates = [
         (f"{tier}.fasta", f"{tier}_taxonomy.txt"),
         (f"{marker}_{tier}.fasta", f"{marker}_{tier}_taxonomy.txt"),
@@ -146,15 +151,12 @@ def resolve_tag_commit(repo: str, tag: str) -> str:
 def fetch(
     marker: str,
     rcrux_tag: str,
-    input_tier: str,
     out_dir: Path,
     rcrux_repo: str = DEFAULT_RCRUX_REPO,
 ) -> dict:
     """Download the curated inputs at an rcrux tag and write inputs.json."""
     from dvc.api import DVCFileSystem
 
-    if input_tier not in INPUT_TIERS:
-        raise ValueError(f"input tier must be one of {INPUT_TIERS}, got {input_tier!r}")
     commit = resolve_tag_commit(rcrux_repo, rcrux_tag)
     # Pin the commit, not the tag name, so a moved tag cannot change what is read.
     fs = DVCFileSystem(rcrux_repo, rev=commit, remote=DVC_REMOTE)
@@ -163,7 +165,7 @@ def fetch(
         curated_md5 = dvc_out_md5(handle.read())
 
     listing = [Path(p).name for p in fs.ls(f"{marker_dir}/curated", detail=False)]
-    fasta_name, taxonomy_name = curated_input_names(listing, marker, input_tier)
+    fasta_name, taxonomy_name = curated_input_names(listing, marker)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     input_files = {}
@@ -181,7 +183,7 @@ def fetch(
         "rcrux_tag": rcrux_tag,
         "rcrux_commit": commit,
         "dvc_remote": DVC_REMOTE,
-        "input_tier": input_tier,
+        "input_tier": INPUT_TIER,
         "input_md5": curated_md5,
         "input_files": input_files,
         "fasta": fasta_name,
@@ -232,9 +234,12 @@ def build_metadata(
     build_dir: Path,
     inputs: dict,
     sha: str,
-    build_params: dict | None,
+    build_params: dict,
     now: datetime.datetime,
 ) -> dict:
+    # A release without its build settings cannot be reproduced; never publish one.
+    if not isinstance(build_params, dict) or not build_params:
+        raise ValueError("Build settings are required: a non-empty JSON object")
     if inputs.get("marker") != marker:
         raise ValueError(f"inputs.json is for {inputs.get('marker')!r}, not {marker!r}")
     files = {name: file_digest(build_dir / name, "sha256") for name in required_files(marker)}
@@ -255,7 +260,7 @@ def build_metadata(
             "fasta_records": count_fasta_records(build_dir / f"{marker}.fasta"),
             "taxonomy_rows": count_lines(build_dir / f"{marker}_taxonomy.txt"),
         },
-        "build_params": build_params or {},
+        "build_params": build_params,
         "built_at": datetime.datetime.fromtimestamp(
             tree.stat().st_mtime, tz=datetime.timezone.utc
         ).isoformat(),
@@ -268,9 +273,9 @@ def publish(
     build_dir: Path,
     inputs_path: Path,
     build_log: Path,
+    build_params_path: Path,
     version: str,
     rcrux_checkout: Path,
-    build_params_path: Path | None = None,
     replace: bool = False,
     push_branch: bool = False,
     dry_run: bool = False,
@@ -281,7 +286,9 @@ def publish(
     if not build_log.is_file() or build_log.stat().st_size == 0:
         raise ValueError(f"Build log {build_log} is missing or empty")
     inputs = json.loads(inputs_path.read_text())
-    params = json.loads(build_params_path.read_text()) if build_params_path else None
+    if not build_params_path.is_file():
+        raise ValueError(f"Build settings {build_params_path} not found")
+    params = json.loads(build_params_path.read_text())
     sha, _ = tronko_sha()
     metadata = build_metadata(
         marker,
@@ -317,6 +324,7 @@ def publish(
     for name in required_files(marker):
         shutil.copy2(build_dir / name, dest / name)
     shutil.copy2(build_log, dest / BUILD_LOG_FILENAME)
+    (dest / BUILD_PARAMS_FILENAME).write_text(json.dumps(params, indent=2) + "\n")
     (dest / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2) + "\n")
 
     target = f"databases/{marker}/tronko"
@@ -385,7 +393,6 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch = sub.add_parser("fetch", help="Download curated inputs at an rcrux tag")
     p_fetch.add_argument("--marker", required=True)
     p_fetch.add_argument("--rcrux-tag", required=True, help="e.g. CO1_BF3_BR2_v1.0.0")
-    p_fetch.add_argument("--input-tier", required=True, choices=INPUT_TIERS)
     p_fetch.add_argument("--out", required=True, type=Path)
     p_fetch.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
 
@@ -394,7 +401,9 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--build-dir", required=True, type=Path)
     p_pub.add_argument("--inputs", required=True, type=Path, help="inputs.json from fetch")
     p_pub.add_argument("--build-log", required=True, type=Path)
-    p_pub.add_argument("--build-params", type=Path, help="JSON of the build settings")
+    p_pub.add_argument(
+        "--build-params", required=True, type=Path, help="JSON of every build setting used"
+    )
     p_pub.add_argument("--tronko-version", required=True, help="e.g. v1.0.0")
     p_pub.add_argument("--rcrux-checkout", required=True, type=Path)
     p_pub.add_argument("--replace", action="store_true", help="Replace an earlier tronko/")
@@ -410,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "fetch":
-            inputs = fetch(args.marker, args.rcrux_tag, args.input_tier, args.out, args.rcrux_repo)
+            inputs = fetch(args.marker, args.rcrux_tag, args.out, args.rcrux_repo)
             print(f"Wrote {args.out / INPUTS_FILENAME} (input_md5 {inputs['input_md5']})")
         elif args.command == "publish":
             metadata = publish(
@@ -418,9 +427,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.build_dir,
                 args.inputs,
                 args.build_log,
+                args.build_params,
                 args.tronko_version,
                 args.rcrux_checkout,
-                args.build_params,
                 args.replace,
                 args.push_branch,
                 args.dry_run,
