@@ -37,7 +37,7 @@ extern int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 extern int *rootArr, *numspecArr, *numbaseArr, ***seqArr;
 extern int **columnMaskArr;
 extern __thread int root,tip,comma; /*globals used to read in the tree*/
-extern double Logfactorial[MAXNUMBEROFINDINSPECIES];
+extern double Logfactorial[MAXNUMBEROFINDINSPECIES+1];
 extern double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
 #pragma omp threadprivate(LRVEC, RRVEC, RRVAL, PMAT1, PMAT2)
 extern double LRVECnc[4][4], RRVECnc[4][4], RRVALnc[4], PMATnc[2][4][5];

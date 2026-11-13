@@ -19,6 +19,7 @@
 static __thread const char **nm_key;
 static __thread int         *nm_val;
 static __thread int          nm_cap;   /* power of two; 0 = not built */
+static __thread int          leaves_parsed;   /* leaves seen by the current getcladeArr_fast */
 
 static unsigned long nm_hash(const char *s){
 	unsigned long h = 1469598103934665603UL;      /* FNV-1a */
@@ -133,7 +134,13 @@ int getcladeArr_mem(const char **pp, struct masterArr *m, int max_nodename){
 			tip = idx + 1;
 			found = 1;
 		}
-		if (!found) fprintf(stderr, "WARNING: leaf '%s' not found in MSA\n", specname);
+		/* A leaf the alignment does not have would be filed under the previous
+		   leaf's slot (or slot -1 for the first), corrupting the tree. */
+		if (!found){
+			fprintf(stderr, "Error: tree leaf '%s' is not in the alignment\n", specname);
+			exit(EXIT_FAILURE);
+		}
+		leaves_parsed++;
 		int nodeIdx = tip + m->numspec - 2;
 		strcpy(m->tree[nodeIdx].name, specname);
 		m->tree[nodeIdx].up[0] = -1;
@@ -169,9 +176,15 @@ int getcladeArr_fast(const char *filepath, struct masterArr *m, int max_nodename
 	tip = 0;
 	const char *p = buf;
 	nm_build(m);
+	leaves_parsed = 0;
 	int root = getcladeArr_mem(&p, m, max_nodename);
 	nm_free();
 	free(buf);
+	/* A tree missing a sequence would leave it out of the database with no error. */
+	if (leaves_parsed != m->numspec){
+		fprintf(stderr, "Error: tree %s has %d leaves but its alignment has %d sequences\n", filepath, leaves_parsed, m->numspec);
+		exit(EXIT_FAILURE);
+	}
 	return root;
 }
 

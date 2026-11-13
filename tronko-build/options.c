@@ -51,7 +51,7 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-n [INT], compatible only with -y, number of partitions in read directory\n\
 	-b [INT], comptabile only with -y, restart partitions with partition number [default: 0]\n\
 	-s, compatible only with -y, partition using sum-of-pairs score [can't use with -f, use with -s]\n\
-	-u [FLOAT], compatible only with -y, minimum threshold for sum of pairs score [default: 0.5]\n\
+	-u [FLOAT], compatible only with -y, minimum threshold for sum of pairs score [default: 0.05]\n\
 	-v, compatible only with -y, partition using minimum number of leaf nodes [can't use with -s, use with -f]\n\
 	-f [INT], don't partition less than the minimum number of leaf nodes [can't use with -s, use with -v, use only with -y]\n\
 	-g, don't flag missing data\n\
@@ -61,6 +61,8 @@ char usage[] = "\ntronko-build [OPTIONS] -d [OUTPUT DIRECTORY]\n\
 	-i, [STRING] set the prefix for output partitions in -d\n\
 	-a, use FastTree instead of RAxML (shorthand for --tree-tool fasttree)\n\
 	--tree-tool [raxml|fasttree|veryfasttree], tree inference tool [default: raxml]\n\
+	--tree-seed [INT], seed passed to FastTree/VeryFastTree [default: the tool's own]\n\
+	--no-gamma, run FastTree/VeryFastTree without -gamma\n\
 	-E, export final subtrees to exported_subtrees/ directory (for ablation studies)\n\
 	-J [INT], number of clusters to process in parallel during partitioning [default: 1]\n\
 	--one-thread-below [INT], align and build the tree of a partition with fewer sequences on one\n\

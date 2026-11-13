@@ -30,7 +30,7 @@ int numspec, numbase, **seq, numundspec[MAXNUMBEROFINDINSPECIES+1];
 char **nodeIDs;
 char ***nodeIDsArr;
 __thread int root,tip,comma=0; /*globals used to read in the tree*/
-double Logfactorial[MAXNUMBEROFINDINSPECIES];
+double Logfactorial[MAXNUMBEROFINDINSPECIES+1]; /* initlogfactorial fills 0..MAXNUMBEROFINDINSPECIES */
 double LRVEC[STATESPACE][STATESPACE], RRVEC[STATESPACE][STATESPACE], RRVAL[STATESPACE], PMAT1[STATESPACE][STATESPACE], PMAT2[STATESPACE][STATESPACE];
 double LRVECnc[4][4], RRVECnc[4][4], RRVALnc[4], PMATnc[2][4][5];
 double *statevector, UFC, *UFCnc, **templike_nc;
@@ -1107,6 +1107,14 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 			snprintf(name, BUFFER_SIZE, "%spartition%d", opt->prefix, which);
 			snprintf(aln,  BUFFER_SIZE, "%s/%spartition%d_MSA.phymlAln", opt->partitions_directory, opt->prefix, which);
 		}
+		/* RAxML refuses to run over its own output files, which a -b resume
+		   into a finished directory leaves behind for partitions above -b. */
+		static const char *raxml_out[] = {"bestTree","info","log","parsimonyTree","result"};
+		char stale[BUFFER_SIZE];
+		for (int r = 0; r < 5; r++){
+			snprintf(stale, BUFFER_SIZE, "%sRAxML_%s.%s", wdir, raxml_out[r], name);
+			unlink(stale);
+		}
 		char *argv[] = {"raxmlHPC-PTHREADS","--silent","-m","GTRGAMMA","-w",wdir,
 		                "-n",name,"-p","1234","-T","8","-s",aln,NULL};
 		return spawn_tool("raxmlHPC-PTHREADS", argv, envp, NULL, 0);
@@ -1121,10 +1129,12 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 	char *argv[16];
 	int ai = 0;
 	if (opt->tree_tool == TREE_VERYFASTTREE){
-		/* VeryFastTree 4.0.3 with 2+ threads segfaults or writes a truncated
-		   tree on alignments of 4-12 sequences (every run, any thread count;
-		   13+ and one thread are fine), so small alignments get one thread. */
-		if (count_fasta_records(in, 16) < 16) snprintf(tstr, sizeof(tstr), "1");
+		/* VeryFastTree 4.0.3 with 2+ threads segfaults, or exits 0 with a tree
+		   missing sequences, on alignments with few distinct sequences: seen
+		   up to 38 records, at 2 to 64 threads, on arm64 and x86, and never
+		   with one thread. One thread below 10,000 sequences at any -J; it is
+		   also the faster choice there (see partition_threads). */
+		if (count_fasta_records(in, 10000) < 10000) snprintf(tstr, sizeof(tstr), "1");
 		argv[ai++] = "VeryFastTree";
 		argv[ai++] = "-threads"; argv[ai++] = tstr;
 	}else{
@@ -2026,7 +2036,7 @@ static void process_one_cluster(int i, Options *opt, partition_files *pf, int ma
 	pthread_mutex_lock(&mastermap_mutex);
 	hashmap_put(&mastermap, m->index, m);
 	pthread_mutex_unlock(&mastermap_mutex);
-	if ( opt->use_partitions==1 && (opt->use_spscore==1 || opt->use_min_leaves==1) && m->numspec > opt->min_leaves ){
+	if ( opt->use_partitions==1 && m->numspec > opt->min_leaves ){
 		pthread_mutex_lock(&spscore_mutex);
 		SPscoreArr[i]=0;
 		pthread_mutex_unlock(&spscore_mutex);
@@ -2167,6 +2177,8 @@ int main(int argc, char **argv){
 		fprintf(stderr, "You must specify an output directory with -d\n");
 		exit(-1);
 	}
+	/* Only a split used to create it, so a build where no cluster splits had nowhere to write. */
+	mkdir(opt.partitions_directory, 0700);
 	int max_nodename = 0;
 	int max_tax_name = 0;
 	int max_lineTaxonomy = 0;

@@ -381,7 +381,11 @@ build_cluster_tree() {
         local seed_args=()
         [[ "${TREE_SEED:-0}" != "0" ]] && seed_args=("-seed" "$TREE_SEED")
         set +e
-        $TREE_BIN -threads "$cluster_threads" "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+        # VeryFastTree 4.0.3 with 2+ threads segfaults, or exits 0 with a tree missing
+        # sequences, on alignments with few distinct sequences; one thread never has.
+        local vft_threads="$cluster_threads"
+        [[ "$n_seqs" -lt 10000 ]] && vft_threads=1
+        $TREE_BIN -threads "$vft_threads" "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -541,8 +545,10 @@ for logfile in "$CLUSTER_LOG_DIR"/*.log; do
     fi
 done
 
+# A failed cluster's sequences would be missing from the database.
 if [[ "$CLUSTER_FAILURES" -gt 0 ]]; then
-    echo "  WARNING: $CLUSTER_FAILURES cluster(s) failed during Step 2"
+    echo "ERROR: $CLUSTER_FAILURES cluster(s) failed during Step 2" >&2
+    exit 1
 fi
 
 STEP2_END=$(date +%s)
