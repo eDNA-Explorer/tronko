@@ -29,7 +29,9 @@ cd tronko-build && make clean
 cd tronko-assign && make clean
 ```
 
-Both use gcc with `-O3` optimization. tronko-assign links pthread, zlib, and rt libraries.
+Both use gcc with `-O3` optimization (`make NATIVE_ARCH=1` adds `-march=native`). tronko-assign links pthread, zlib, and rt libraries.
+tronko-build needs GCC with OpenMP; on macOS the Makefile picks Homebrew `gcc-NN` over Apple clang.
+`tronko-build -J N` partitions N input clusters at once.
 `make -C tronko-assign bwa-mem3` builds the aligner tronko-assign runs and puts it beside the binary.
 
 ## Architecture

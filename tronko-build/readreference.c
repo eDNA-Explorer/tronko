@@ -178,16 +178,35 @@ int readReferenceTree(gzFile referenceTree){
 						break;
 					}
 					s = strtok(buffer,";\n");
-					taxonomyArr[i][j][0]=strcpy(taxonomyArr[i][j][0],s);
+					strcpy(taxonomyArr[i][j][0], s ? s : "");
 					for(k=1;k<7;k++){
 						s = strtok(NULL,";\n");
-						taxonomyArr[i][j][k]=strcpy(taxonomyArr[i][j][k],s);
+						strcpy(taxonomyArr[i][j][k], s ? s : "");
 					}
 				}
 			}
 			treeArr = malloc(numberOfTrees*sizeof(node *));
 			for (i=0 ; i<numberOfTrees; i++){
-				allocateTreeArrMemory(i,max_nodename);
+				int n;
+				treeArr[i] = malloc((2*numspecArr[i]-1) * sizeof(node));
+				for (n=0; n<2*numspecArr[i]-1; n++){
+					treeArr[i][n].like = malloc(STATESPACE * sizeof(double));
+					treeArr[i][n].posterior = malloc(STATESPACE * sizeof(double));
+					treeArr[i][n].name = malloc((max_nodename+1) * sizeof(char));
+					treeArr[i][n].up[0] = -2;
+					treeArr[i][n].up[1] = -2;
+					treeArr[i][n].down = -2;
+					treeArr[i][n].nd = -2;
+					treeArr[i][n].depth = -2;
+					treeArr[i][n].bl = -2.0;
+					treeArr[i][n].likenc = NULL;
+					treeArr[i][n].posteriornc = NULL;
+					treeArr[i][n].s = -2;
+					treeArr[i][n].numsites = -2;
+					treeArr[i][n].spec = -2;
+					treeArr[i][n].mrca = -2;
+					memset(treeArr[i][n].name, '\0', max_nodename+1);
+				}
 			}
 			allocatetreememory_for_nucleotide_Arr(numberOfTrees);
 			firstIter=0;
