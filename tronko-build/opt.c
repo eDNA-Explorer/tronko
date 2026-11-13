@@ -170,8 +170,11 @@ int lnsrch_Arr(int n, double xold[], double fold, double g[], double p[], double
 		temp=fabs(p[i])/FMAX(fabs(xold[i]),1.0);
 		if (temp > test) test=temp;
 	}
-        if (test==0.0)
+        if (test==0.0){
+		/* no step: the caller reads x */
+		for (i=1;i<=n;i++) x[i]=xold[i];
                 return 1;
+	}
 	alamin=TOLX2/test;
 	alam=1.0;
 	for (;;) {
