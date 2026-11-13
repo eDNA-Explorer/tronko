@@ -93,7 +93,9 @@ void printTreeFile(int numberOfTrees, int max_nodename, int max_tax_name, int ma
 						treeArr[i][j].down, treeArr[i][j].depth,
 						treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1]);
 				}else{
-					lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+					/* written directly: a long leaf name does not fit the buffer's flush margin */
+					fwrite(lbuf, 1, lpos, outputTree); lpos = 0;
+					fprintf(outputTree,
 						"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
 						i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
 						treeArr[i][j].down, treeArr[i][j].depth,
@@ -178,7 +180,9 @@ void printTreeFilePosteriors(FILE *outputTree, int start, int end, Options opt){
 					treeArr[i][j].down, treeArr[i][j].depth,
 					treeArr[i][j].taxIndex[0], treeArr[i][j].taxIndex[1]);
 			}else{
-				lpos += snprintf(lbuf+lpos, LBUF_SIZE-lpos,
+				/* written directly: a long leaf name does not fit the buffer's flush margin */
+				fwrite(lbuf, 1, lpos, outputTree); lpos = 0;
+				fprintf(outputTree,
 					"%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
 					i, j, treeArr[i][j].up[0], treeArr[i][j].up[1],
 					treeArr[i][j].down, treeArr[i][j].depth,

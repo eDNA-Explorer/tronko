@@ -1,8 +1,9 @@
 #!/bin/bash
 # tronko-build regression tests.
 #   1. Single-tree mode must reproduce the committed example reference_tree.txt byte for byte.
-#   2. Partition mode (-y, default flags) must produce a database; it needs raxmlHPC-PTHREADS,
-#      famsa and nw_reroot on PATH and is skipped without them.
+#   2. Partition mode (-y) must give main's 9 trees for the example, the same database and
+#      partition numbers at -J 1 and -J 3, and leave its input untouched. It needs
+#      raxmlHPC-PTHREADS, famsa and nw_reroot on PATH and is skipped without them.
 # Usage: tests/test_tronko_build_golden.sh
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,16 +29,24 @@ else
 fi
 rm -rf "$out"
 
-echo "--- partition (smoke) ---"
+echo "--- partition (9 trees as on main; same output and partition numbers at -J 1 and -J 3) ---"
 if command -v raxmlHPC-PTHREADS >/dev/null && command -v famsa >/dev/null && command -v nw_reroot >/dev/null; then
     out=$(mktemp -d)
+    in="$EXAMPLE_DIR/multiple_trees/multiple_MSA"
+    before=$(cat "$in"/* | cksum)
     start=$(date +%s)
-    "$TRONKO_BUILD" -y -e "$EXAMPLE_DIR/multiple_trees/multiple_MSA" -n 5 -d "$out" -s -u 0.1 > "$out/log" 2>&1
+    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j1" -s -u 0.1 > "$out/j1.log" 2>&1; rc1=$?
+    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j3" -s -u 0.1 -J 3 > "$out/j3.log" 2>&1; rc3=$?
     echo "  $(( $(date +%s) - start ))s"
-    if [ "$(wc -l < "$out/reference_tree.txt" 2>/dev/null || echo 0)" -gt 100 ]; then
+    if [ "$rc1" -eq 0 ] && [ "$rc3" -eq 0 ] \
+        && [ "$(head -1 "$out/j1/reference_tree.txt")" = 9 ] \
+        && cmp -s "$out/j1/reference_tree.txt" "$out/j3/reference_tree.txt" \
+        && cmp -s "$out/j1/final_partitions.txt" "$out/j3/final_partitions.txt" \
+        && [ "$(ls "$out/j1")" = "$(ls "$out/j3")" ] \
+        && [ "$(cat "$in"/* | cksum)" = "$before" ]; then
         echo "  PASS"; PASS=$((PASS + 1))
     else
-        echo "  FAIL"; tail -5 "$out/log"; FAIL=$((FAIL + 1))
+        echo "  FAIL (exit $rc1 at -J 1, $rc3 at -J 3)"; tail -5 "$out/j1.log" "$out/j3.log"; FAIL=$((FAIL + 1))
     fi
     rm -rf "$out"
 else

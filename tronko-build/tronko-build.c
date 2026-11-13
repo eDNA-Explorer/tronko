@@ -13,6 +13,9 @@
 #include <sys/wait.h>
 #include <spawn.h>
 #include <errno.h>
+#include <limits.h>
+#include <ctype.h>
+#include <dirent.h>
 #include "global.h"
 #include "opt.h"
 #include "options.h"
@@ -58,30 +61,13 @@ node **treeArr;
 static pthread_mutex_t mastermap_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t spscore_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* createNewRoots forks its 3 pipeline children while sibling worker threads may hold
-   these mutexes; without atfork handlers the child inherits them permanently locked. */
-static void tronko_atfork_prepare(void){
-	pthread_mutex_lock(&spscore_mutex);
-	pthread_mutex_lock(&mastermap_mutex);
-}
-static void tronko_atfork_parent(void){
-	pthread_mutex_unlock(&mastermap_mutex);
-	pthread_mutex_unlock(&spscore_mutex);
-}
-static void tronko_atfork_child(void){
-	pthread_mutex_unlock(&mastermap_mutex);
-	pthread_mutex_unlock(&spscore_mutex);
-}
-
 /* Order partitions by lineage: input cluster index, then the child position
    of each split, compared numerically ("4.1" < "4.1.0" < "4.2" < "10").
    Slot numbers (m->index) are claimed first-come under -J, so sorting by
    them would make tree positions in reference_tree.txt depend on thread
    timing; the lineage is the same at every -J, so position N is stable for
    downstream consumers that splice rebuilt partitions back into a database. */
-static int compare_master_by_index(const void *a, const void *b) {
-	const char *la = (*(struct masterArr * const *)a)->lineage;
-	const char *lb = (*(struct masterArr * const *)b)->lineage;
+static int compare_lineage(const char *la, const char *lb) {
 	while (*la && *lb) {
 		char *ea, *eb;
 		long ia = strtol(la, &ea, 10), ib = strtol(lb, &eb, 10);
@@ -90,6 +76,75 @@ static int compare_master_by_index(const void *a, const void *b) {
 		lb = (*eb == '.') ? eb + 1 : eb;
 	}
 	return (*la != '\0') - (*lb != '\0');
+}
+static int compare_master_by_index(const void *a, const void *b) {
+	return compare_lineage((*(struct masterArr * const *)a)->lineage, (*(struct masterArr * const *)b)->lineage);
+}
+
+/* Every split made under -J > 1: the lineage of the partition that was split and the first
+   of the three slots its parts took. renumber_partitions() reads it once the workers are done. */
+typedef struct { char *lineage; int slot; } split_event_t;
+static split_event_t *split_log;
+static int n_split_log, cap_split_log;
+static int compare_split_event(const void *a, const void *b) {
+	return compare_lineage(((const split_event_t *)a)->lineage, ((const split_event_t *)b)->lineage);
+}
+
+/* name with the partition number that follows tok replaced by its new number;
+   0 if name has no partition number to replace */
+static int renumbered_name(const char *name, const char *tok, const int *newnum, char *out) {
+	const char *t = strstr(name, tok);
+	if (!t || !isdigit((unsigned char)t[strlen(tok)])) return 0;
+	char *rest;
+	long old = strtol(t + strlen(tok), &rest, 10);
+	if (old > MAX_NUMBEROFROOTS || newnum[old] == 0) return 0;
+	snprintf(out, BUFFER_SIZE, "%.*s%d%s", (int)(t + strlen(tok) - name), name, newnum[old], rest);
+	return 1;
+}
+
+/* Workers claim partition numbers first-come, so under -J > 1 the numbers depend on thread
+   timing. Give every partition, and each of its files, the number -J 1 gives it: -J 1
+   splits depth first, so its splits take three numbers each in lineage order. */
+static void renumber_partitions(const Options *opt) {
+	int *newnum = calloc(MAX_NUMBEROFROOTS + 4, sizeof(int));
+	char tok[BUFFER_SIZE], renamed[BUFFER_SIZE], from[2*BUFFER_SIZE + 16], to[2*BUFFER_SIZE + 16];
+	int k, p, i, pass, key;
+	struct masterArr *m;
+	qsort(split_log, n_split_log, sizeof(split_event_t), compare_split_event);
+	for (k = 0; k < n_split_log; k++) {
+		for (p = 1; p <= 3; p++) newnum[split_log[k].slot + p] = opt->number_of_partitions + 3 * k + p;
+		free(split_log[k].lineage);
+	}
+	free(split_log);
+	snprintf(tok, BUFFER_SIZE, "%spartition", opt->prefix);
+	struct dirent **files;
+	int nfiles = scandir(opt->partitions_directory, &files, NULL, NULL);
+	/* two passes, through a temporary name, so no file lands on one that has yet to move */
+	for (pass = 0; pass < 2; pass++) {
+		for (i = 0; i < nfiles; i++) {
+			if (!renumbered_name(files[i]->d_name, tok, newnum, renamed)) continue;
+			if (pass == 0) {
+				snprintf(from, sizeof(from), "%s/%s", opt->partitions_directory, files[i]->d_name);
+				snprintf(to, sizeof(to), "%s/renum.%s", opt->partitions_directory, renamed);
+			} else {
+				snprintf(from, sizeof(from), "%s/renum.%s", opt->partitions_directory, renamed);
+				snprintf(to, sizeof(to), "%s/%s", opt->partitions_directory, renamed);
+			}
+			if (rename(from, to) != 0) {
+				fprintf(stderr, "Cannot rename %s: %s\n", from, strerror(errno));
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+	for (i = 0; i < nfiles; i++) free(files[i]);
+	free(files);
+	hashmap_foreach(key, m, &mastermap) {
+		(void)key;
+		char *base = strrchr(m->filename, '/');
+		base = base ? base + 1 : m->filename;
+		if (renumbered_name(base, tok, newnum, renamed)) strcpy(base, renamed);
+	}
+	free(newnum);
 }
 
 /* Build a flat array of all masterArr* in mastermap, sorted by
@@ -811,12 +866,12 @@ static void fasta_to_phylip(const char *fasta_path){
 	if (!fp){ fprintf(stderr, "fasta_to_phylip: cannot open %s\n", fasta_path); return; }
 	/* Output filename: replace the file's extension with .phymlAln.
 	   fasta2phyml.pl cut at the first '.' of the whole path, so an output
-	   directory with a dot in its name sent the file somewhere RAxML never looked. */
+	   directory or -i prefix with a dot in it sent the file somewhere RAxML never looked. */
 	char outpath[BUFFER_SIZE];
 	strncpy(outpath, fasta_path, BUFFER_SIZE - 1);
 	outpath[BUFFER_SIZE - 1] = '\0';
 	char *slash = strrchr(outpath, '/');
-	char *dot = strchr(slash ? slash : outpath, '.');
+	char *dot = strrchr(slash ? slash : outpath, '.');
 	if (dot) *dot = '\0';
 	strncat(outpath, ".phymlAln", BUFFER_SIZE - strlen(outpath) - 1);
 	/* Read all sequences */
@@ -934,6 +989,104 @@ static void copy_file_or_degap(const char *src, const char *msa_src, const char 
 	if (probe){ fclose(probe); copy_file(src, dst); return; }
 	if (!degap_fasta(msa_src, dst))
 		fprintf(stderr, "copy_file_or_degap: cannot produce %s\n", dst);
+}
+/* Write tree_list.txt and final_partitions.txt for the final partitions, in lineage order. */
+static void write_partition_lists(struct masterArr **sorted, int n_sorted, Options *opt){
+	char list_path[BUFFER_SIZE];
+	snprintf(list_path,BUFFER_SIZE,"%s/tree_list.txt",opt->partitions_directory);
+	FILE* list_newick_files = fopen(list_path,"w");
+	if ( list_newick_files == NULL ){ printf("Error opening tree_list.txt file!\n"); exit(1); }
+	snprintf(list_path,BUFFER_SIZE,"%s/final_partitions.txt",opt->partitions_directory);
+	FILE* fp_file = fopen(list_path,"w");
+	if ( fp_file == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
+	/* A top-level cluster whose FIRST split is rejected by the <4 guard in
+	 * createNewRoots() never reaches printPartitionsToFileArr(), so no
+	 * partition files are written for it and its data stays in opt->readdir.
+	 * A non-root node in the same situation is fine: its parent's split
+	 * already wrote its files. Left alone, such a cluster is absent from
+	 * final_partitions.txt (its filename carries no "partition" token), so
+	 * build-tronko-db.sh's step-5 FASTA concat silently drops its sequences
+	 * from the reference FASTA and the BWA index. Materialise it here under
+	 * a fresh partition number so it is indistinguishable from any other
+	 * leaf downstream. */
+	int max_partition_idx = 0;
+	for (int s = 0; s < n_sorted; s++) {
+		char *fn = strrchr(sorted[s]->filename, '/');
+		fn = fn ? fn + 1 : sorted[s]->filename;
+		char *start = strstr(fn, "partition");
+		if (start) {
+			int v = atoi(start + strlen("partition"));
+			if (v > max_partition_idx) max_partition_idx = v;
+		}
+	}
+	for (int s = 0; s < n_sorted; s++) {
+		struct masterArr *final = sorted[s];
+		{
+			char dirbuf[BUFFER_SIZE];
+			char *last_slash = strrchr(final->filename, '/');
+			if (last_slash != NULL) {
+				size_t dlen = (size_t)(last_slash - final->filename);
+				if (dlen < BUFFER_SIZE) {
+					memcpy(dirbuf, final->filename, dlen);
+					dirbuf[dlen] = '\0';
+					/* Files still in the input dir == never materialised. */
+					if (strcmp(dirbuf, opt->readdir) == 0) {
+						char id[BUFFER_SIZE];
+						char *base = last_slash + 1;
+						char *st = strstr(base, "RAxML_bestTree.");
+						char *en = strstr(base, ".reroot");
+						if (st != NULL && en != NULL) {
+							st += strlen("RAxML_bestTree.");
+							size_t ilen = (size_t)(en - st);
+							if (ilen > 0 && ilen < BUFFER_SIZE) {
+								memcpy(id, st, ilen);
+								id[ilen] = '\0';
+								int newIdx = ++max_partition_idx;
+								char src[BUFFER_SIZE], dst[BUFFER_SIZE];
+								printf("materialising unsplit cluster %s as partition%d\n", id, newIdx);
+								{
+									char msa_src[BUFFER_SIZE];
+									snprintf(src,BUFFER_SIZE,"%s/%s.fasta",opt->readdir,id);
+									snprintf(msa_src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt->readdir,id);
+									snprintf(dst,BUFFER_SIZE,"%s/partition%d.fasta",opt->partitions_directory,newIdx);
+									copy_file_or_degap(src,msa_src,dst);
+								}
+								snprintf(src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt->readdir,id);
+								snprintf(dst,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt->partitions_directory,newIdx);
+								copy_file(src,dst);
+								snprintf(src,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt->readdir,id);
+								snprintf(dst,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt->partitions_directory,newIdx);
+								copy_file(src,dst);
+								cluster_tree_path(src,opt,id);
+								snprintf(dst,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt->partitions_directory,newIdx);
+								copy_file(src,dst);
+								/* Point tree_list.txt at the materialised copy. The
+								 * line's position is unchanged, so tree indices --
+								 * which are line numbers -- stay correct. */
+								snprintf(final->filename,BUFFER_SIZE,"%s",dst);
+							}
+						}
+					}
+				}
+			}
+		}
+		fprintf(list_newick_files,"%s\n",final->filename);
+		/* Extract partition number from filename for final_partitions.txt */
+		{
+			char *fn = strrchr(final->filename, '/');
+			fn = fn ? fn + 1 : final->filename;
+			char *start = strstr(fn, "partition");
+			if (start) {
+				start += strlen("partition");
+				char *end = strchr(start, '.');
+				if (end) {
+					fprintf(fp_file, "%.*s\n", (int)(end - start), start);
+				}
+			}
+		}
+	}
+	fclose(list_newick_files);
+	fclose(fp_file);
 }
 /* Get number of available CPU cores */
 static int get_num_cores(void){
@@ -1098,8 +1251,13 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 		   space, which is the cost this whole change exists to remove. */
 		/* -T stays 8, as main has always passed: RAxML's branch lengths shift
 		   with the thread count, so scaling it would change the database. */
-		char wdir[BUFFER_SIZE], name[BUFFER_SIZE], aln[BUFFER_SIZE];
-		snprintf(wdir, BUFFER_SIZE, "%s/", opt->partitions_directory);
+		char wdir[PATH_MAX + 2], name[BUFFER_SIZE], aln[BUFFER_SIZE];
+		/* RAxML rejects a relative -w */
+		if (!realpath(opt->partitions_directory, wdir)){
+			fprintf(stderr, "Cannot resolve %s: %s\n", opt->partitions_directory, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		strcat(wdir, "/");
 		if (opt->prefix[0] == '\0'){
 			snprintf(name, BUFFER_SIZE, "partition%d", which);
 			snprintf(aln,  BUFFER_SIZE, "%s/partition%d_MSA.phymlAln", opt->partitions_directory, which);
@@ -1110,9 +1268,9 @@ static pid_t spawn_tree(int which, const Options *opt, int tree_t, char *const e
 		/* RAxML refuses to run over its own output files, which a -b resume
 		   into a finished directory leaves behind for partitions above -b. */
 		static const char *raxml_out[] = {"bestTree","info","log","parsimonyTree","result"};
-		char stale[BUFFER_SIZE];
+		char stale[PATH_MAX + BUFFER_SIZE];
 		for (int r = 0; r < 5; r++){
-			snprintf(stale, BUFFER_SIZE, "%sRAxML_%s.%s", wdir, raxml_out[r], name);
+			snprintf(stale, sizeof(stale), "%sRAxML_%s.%s", wdir, raxml_out[r], name);
 			unlink(stale);
 		}
 		char *argv[] = {"raxmlHPC-PTHREADS","--silent","-m","GTRGAMMA","-w",wdir,
@@ -1321,6 +1479,14 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 	SPscoreArr[partitionCount]=1;
 	SPscoreArr[partitionCount+1]=1;
 	SPscoreArr[partitionCount+2]=1;
+	if (opt->parallel_jobs > 1){
+		if (n_split_log == cap_split_log){
+			cap_split_log = cap_split_log ? 2 * cap_split_log : 1024;
+			split_log = realloc(split_log, sizeof(split_event_t) * cap_split_log);
+		}
+		split_log[n_split_log].lineage = strdup(m->lineage);
+		split_log[n_split_log++].slot = partitionCount;
+	}
 	pthread_mutex_unlock(&spscore_mutex);
 	partitionCount++;
 	if (partitionCount > opt->restart){
@@ -1402,10 +1568,7 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		struct masterArr *t=malloc(sizeof(masterArr));
 		t->tree = NULL;
 		t->treeCapacity = 0;
-		t->filename = (malloc)(300*sizeof(char));
-		for(i=0; i<300; i++){
-			t->filename[i] = '\0';
-		}
+		t->filename = calloc(BUFFER_SIZE, 1);
 		sprintf(t->index,"%d",which-1);
 		if ((partition = gzopen(buf,"r")) == NULL ){
 			fprintf(stderr, "Cannot open %s: %s\n", buf, strerror(errno));
@@ -1965,10 +2128,7 @@ static void process_one_cluster(int i, Options *opt, partition_files *pf, int ma
 	m->msa=(int**)malloc(m->numspec*sizeof(int*));
 	m->taxonomy=(char***)malloc(m->numspec*sizeof(char**));
 	m->names=(char**)malloc(m->numspec*sizeof(char*));
-	m->filename = (malloc)(300*sizeof(char));
-	for(j=0; j<300; j++){
-		m->filename[j] = '\0';
-	}
+	m->filename = calloc(BUFFER_SIZE, 1);
 	for(j=0;j<m->numspec;j++){
 		m->names[j]=(char*)malloc(sizeof(char)*(max_nodename+1));
 	}
@@ -2156,34 +2316,37 @@ int main(int argc, char **argv){
 	opt.no_gamma  = 0;
 	opt.one_thread_below = -1;   /* auto: 10,000 with -J > 1, else never */
 	int i, j, k, numberOfTrees;
-	for(i=0; i<200; i++){
-		opt.partitions_directory[i] = '\0';
-		opt.readdir[i] = '\0';
-	}
-	for(i=0; i<2000; i++){
-		opt.prefix[i] = '\0';
-	}
+	opt.partitions_directory[0] = '\0';
+	opt.readdir[0] = '\0';
+	opt.prefix[0] = '\0';
 	parse_options(argc, argv, &opt);
 	/* One-thread partitions pay off when -J workers keep the cores busy; with -J 1 only
 	   three tools run at a time and need their threads. */
 	if (opt.one_thread_below < 0) opt.one_thread_below = opt.parallel_jobs > 1 ? 10000 : 0;
-	/* -b reloads partition files by number, and with -J > 1 the numbers depend on which
-	   worker finishes first, so a resume would load other subsets as its own */
+	/* -b reloads partition files by number, and with -J > 1 a partition gets its final
+	   number only when the build ends, so a resume would load other subsets as its own */
 	if (opt.restart > 0 && opt.parallel_jobs > 1){
-		fprintf(stderr, "-b (resume at a partition number) needs -J 1: with -J > 1 partition numbers depend on scheduling\n");
+		fprintf(stderr, "-b (resume at a partition number) needs -J 1: with -J > 1 partitions get their final numbers only when the build ends\n");
 		exit(-1);
 	}
 	if ( opt.partitions_directory[0] == '\0' ){
 		fprintf(stderr, "You must specify an output directory with -d\n");
 		exit(-1);
 	}
+	/* Every path built from these goes into a BUFFER_SIZE buffer. */
+	if (strlen(opt.partitions_directory) + strlen(opt.prefix) + 64 > BUFFER_SIZE || strlen(opt.readdir) + 64 > BUFFER_SIZE){
+		fprintf(stderr, "The -d and -e paths (with the -i prefix) are too long: the limit is about %d characters\n", BUFFER_SIZE - 64);
+		exit(-1);
+	}
 	/* Only a split used to create it, so a build where no cluster splits had nowhere to write. */
-	mkdir(opt.partitions_directory, 0700);
+	if (mkdir(opt.partitions_directory, 0700) != 0 && errno != EEXIST){
+		fprintf(stderr, "Cannot create output directory %s: %s\n", opt.partitions_directory, strerror(errno));
+		exit(-1);
+	}
 	int max_nodename = 0;
 	int max_tax_name = 0;
 	int max_lineTaxonomy = 0;
 	hashmap_init(&mastermap,hashmap_hash_string,strcmp);
-	pthread_atfork(tronko_atfork_prepare, tronko_atfork_parent, tronko_atfork_child);
 	if (opt.number_of_trees==1 && opt.use_partitions==0){
 		printf("Using a single tree... \n");
 		numberOfTrees=1;
@@ -2390,6 +2553,7 @@ int main(int argc, char **argv){
 			if (started < nworkers) fprintf(stderr, "started %d of %d -J workers\n", started, nworkers);
 			for (w=0; w<started; w++) pthread_join(workers[w], NULL);
 			split_pool.active = 0;
+			renumber_partitions(&opt);
 			free(split_pool.tasks);
 			split_pool.tasks = NULL;
 			split_pool.cap = 0;
@@ -2466,96 +2630,13 @@ int main(int argc, char **argv){
 				}
 				closedir(dr);
 			}
-			int index=0;
-			char newick_buf[BUFFER_SIZE];
-			snprintf(newick_buf,BUFFER_SIZE,"%s/tree_list.txt",opt.partitions_directory);
-			FILE* list_newick_files = fopen(newick_buf,"w");
-			if ( list_newick_files == NULL ){ printf("Error opening tree_list.txt file!\n"); exit(1); }
-			char fp_buf2[BUFFER_SIZE];
-			snprintf(fp_buf2,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
-			FILE* fp_file2 = fopen(fp_buf2,"w");
-			if ( fp_file2 == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
 			{
-			int n_two_step = 0;
-			struct masterArr **two_step_sorted = sorted_master_array(&n_two_step);
-			for (int ts = 0; ts < n_two_step; ts++) {
-				final = two_step_sorted[ts];
-				fprintf(list_newick_files,"%s\n",final->filename);
-				char directory[BUFFER_SIZE]; // Adjust size as needed
-    				char *last_slash;
-				char *filename;
-				char *start_substring;
-				char *end_substring;
-				char substring[256];
-				filename = strrchr(final->filename, '/');
-				if (filename != NULL) {
-					filename++; // Move past the last '/'
-				} else {
-					filename = final->filename; // No '/' found, use the whole path as filename
-				}
-				// Find the start of the substring
-				start_substring = strstr(filename, "RAxML_bestTree.");
-				if (start_substring != NULL) {
-					start_substring += strlen("RAxML_bestTree."); // Move past "RAxML_bestTree."
-					// Find the end of the substring
-					end_substring = strstr(start_substring, ".reroot");
-					if (end_substring != NULL) {
-						size_t length = end_substring - start_substring;
-						strncpy(substring, start_substring, length);
-						substring[length] = '\0'; // Null-terminate the string
-					} else {
-						// ".reroot" not found, handle accordingly
-						strcpy(substring, "");
-					}
-				} else {
-					// "RAxML_bestTree." not found, handle accordingly
-					strcpy(substring, "");
-				}
-				//printf("Filename: %s\n", filename);
-				//printf("Substring: %s\n", substring);
-    				// Find the last occurrence of '/'
-    				last_slash = strrchr(final->filename, '/');
-    				if (last_slash != NULL) {
-        				// Calculate the length of the directory part
-        				size_t directory_length = last_slash - final->filename;
-        				// Copy the directory part to a new string
-        				strncpy(directory, final->filename, directory_length);
-        				directory[directory_length] = '\0'; // Null-terminate the string
-					if ( strcmp(directory,opt.readdir)==0 ){
-						char src_path[BUFFER_SIZE];
-						char dst_path[BUFFER_SIZE];
-						printf("copying %s/RAxML_bestTree.%s.reroot to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						cluster_tree_path(src_path,&opt,substring);
-						snprintf(dst_path,BUFFER_SIZE,"%s/RAxML_bestTree.%s.reroot",opt.partitions_directory,substring);
-						if (strcmp(src_path, dst_path) != 0) copy_file(src_path, dst_path);
-						printf("copying %s/%s_MSA.fasta to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						snprintf(src_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,substring);
-						snprintf(dst_path,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.partitions_directory,substring);
-						copy_file(src_path, dst_path);
-						printf("copying %s/%s_taxonomy.txt to %s...\n",opt.readdir,substring,opt.partitions_directory);
-						snprintf(src_path,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.readdir,substring);
-						snprintf(dst_path,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.partitions_directory,substring);
-						copy_file(src_path, dst_path);
-					}
-    				}
-				/* Write partition number to final_partitions.txt */
-				{
-					char *pnum = strstr(substring, "partition");
-					if (pnum) {
-						pnum += strlen("partition");
-						fprintf(fp_file2, "%s\n", pnum);
-					}
-				}
+				int n_two_step = 0;
+				struct masterArr **two_step_sorted = sorted_master_array(&n_two_step);
+				write_partition_lists(two_step_sorted, n_two_step, &opt);
 			}
-			free(two_step_sorted);
-			}
-			fclose(list_newick_files);
-			fclose(fp_file2);
-			exit(1);
+			exit(0);
 		}
-		printf("Using %d trees... \n",opt.number_of_partitions);
-		//treeArr = malloc(sizeof(node *)*opt.number_of_partitions);
-		SPscoreArr = malloc(sizeof(int)*MAX_NUMBEROFROOTS);
 	numberOfTrees=0;
 	int key;
 	struct masterArr* final;
@@ -2569,117 +2650,19 @@ int main(int argc, char **argv){
 	numbaseArr = (int*)malloc(numberOfTrees*sizeof(int));
 	numspecArr = (int*)malloc(numberOfTrees*sizeof(int));
 	rootArr = (int*)malloc(numberOfTrees*sizeof(int));
-	int index=0;
-	char newick_buf[BUFFER_SIZE];
-	snprintf(newick_buf,BUFFER_SIZE,"%s/tree_list.txt",opt.partitions_directory);
-	FILE* list_newick_files = fopen(newick_buf,"w");
-	if ( list_newick_files == NULL ){ printf("Error opening list.txt file!\n"); exit(1); }
-	char fp_buf[BUFFER_SIZE];
-	snprintf(fp_buf,BUFFER_SIZE,"%s/final_partitions.txt",opt.partitions_directory);
-	FILE* fp_file = fopen(fp_buf,"w");
-	if ( fp_file == NULL ){ printf("Error opening final_partitions.txt file!\n"); exit(1); }
-	{
-		int n_sorted = 0;
-		struct masterArr **sorted = sorted_master_array(&n_sorted);
-		/* A top-level cluster whose FIRST split is rejected by the <4 guard in
-		 * createNewRoots() never reaches printPartitionsToFileArr(), so no
-		 * partition files are written for it and its data stays in opt.readdir.
-		 * A non-root node in the same situation is fine: its parent's split
-		 * already wrote its files. Left alone, such a cluster is absent from
-		 * final_partitions.txt (its filename carries no "partition" token), so
-		 * build-tronko-db.sh's step-5 FASTA concat silently drops its sequences
-		 * from the reference FASTA and the BWA index. Materialise it here under
-		 * a fresh partition number so it is indistinguishable from any other
-		 * leaf downstream. The two-step branch above already copies these files;
-		 * this additionally renames them so they land in final_partitions.txt. */
-		int max_partition_idx = 0;
-		for (int s = 0; s < n_sorted; s++) {
-			char *fn = strrchr(sorted[s]->filename, '/');
-			fn = fn ? fn + 1 : sorted[s]->filename;
-			char *start = strstr(fn, "partition");
-			if (start) {
-				int v = atoi(start + strlen("partition"));
-				if (v > max_partition_idx) max_partition_idx = v;
-			}
-		}
-		for (int s = 0; s < n_sorted; s++) {
-			final = sorted[s];
-			treeArr[index] = final->tree;
-			taxonomyArr[index] =  final->taxonomy;
-			seqArr[index] = final->msa;
-			numbaseArr[index] = final->numbase;
-			numspecArr[index] = final->numspec;
-			rootArr[index] = final->root;
-			//printtreeArr(index);
-			index++;
-			{
-				char dirbuf[BUFFER_SIZE];
-				char *last_slash = strrchr(final->filename, '/');
-				if (last_slash != NULL) {
-					size_t dlen = (size_t)(last_slash - final->filename);
-					if (dlen < BUFFER_SIZE) {
-						memcpy(dirbuf, final->filename, dlen);
-						dirbuf[dlen] = '\0';
-						/* Files still in the input dir == never materialised. */
-						if (strcmp(dirbuf, opt.readdir) == 0) {
-							char id[BUFFER_SIZE];
-							char *base = last_slash + 1;
-							char *st = strstr(base, "RAxML_bestTree.");
-							char *en = strstr(base, ".reroot");
-							if (st != NULL && en != NULL) {
-								st += strlen("RAxML_bestTree.");
-								size_t ilen = (size_t)(en - st);
-								if (ilen > 0 && ilen < BUFFER_SIZE) {
-									memcpy(id, st, ilen);
-									id[ilen] = '\0';
-									int newIdx = ++max_partition_idx;
-									char src[BUFFER_SIZE], dst[BUFFER_SIZE];
-									printf("materialising unsplit cluster %s as partition%d\n", id, newIdx);
-									{
-										char msa_src[BUFFER_SIZE];
-										snprintf(src,BUFFER_SIZE,"%s/%s.fasta",opt.readdir,id);
-										snprintf(msa_src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,id);
-										snprintf(dst,BUFFER_SIZE,"%s/partition%d.fasta",opt.partitions_directory,newIdx);
-										copy_file_or_degap(src,msa_src,dst);
-									}
-									snprintf(src,BUFFER_SIZE,"%s/%s_MSA.fasta",opt.readdir,id);
-									snprintf(dst,BUFFER_SIZE,"%s/partition%d_MSA.fasta",opt.partitions_directory,newIdx);
-									copy_file(src,dst);
-									snprintf(src,BUFFER_SIZE,"%s/%s_taxonomy.txt",opt.readdir,id);
-									snprintf(dst,BUFFER_SIZE,"%s/partition%d_taxonomy.txt",opt.partitions_directory,newIdx);
-									copy_file(src,dst);
-									cluster_tree_path(src,&opt,id);
-									snprintf(dst,BUFFER_SIZE,"%s/RAxML_bestTree.partition%d.reroot",opt.partitions_directory,newIdx);
-									copy_file(src,dst);
-									/* Point tree_list.txt at the materialised copy. The
-									 * line's position is unchanged, so tree indices --
-									 * which are line numbers -- stay correct. */
-									snprintf(final->filename,300,"%s",dst);
-								}
-							}
-						}
-					}
-				}
-			}
-			fprintf(list_newick_files,"%s\n",final->filename);
-			/* Extract partition number from filename for final_partitions.txt */
-			{
-				char *fn = strrchr(final->filename, '/');
-				fn = fn ? fn + 1 : final->filename;
-				char *start = strstr(fn, "partition");
-				if (start) {
-					start += strlen("partition");
-					char *end = strchr(start, '.');
-					if (end) {
-						fprintf(fp_file, "%.*s\n", (int)(end - start), start);
-					}
-				}
-			}
-		}
-		free(sorted);
+	int n_sorted = 0;
+	struct masterArr **sorted = sorted_master_array(&n_sorted);
+	write_partition_lists(sorted, n_sorted, &opt);
+	for (int s = 0; s < n_sorted; s++) {
+		final = sorted[s];
+		treeArr[s] = final->tree;
+		taxonomyArr[s] = final->taxonomy;
+		seqArr[s] = final->msa;
+		numbaseArr[s] = final->numbase;
+		numspecArr[s] = final->numspec;
+		rootArr[s] = final->root;
 	}
-	fclose(list_newick_files);
-	fclose(fp_file);
+	free(sorted);
 
 	/* Export final subtrees for ablation studies */
 	if (opt.export_subtrees) {

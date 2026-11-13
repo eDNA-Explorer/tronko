@@ -413,7 +413,9 @@ build_cluster_tree() {
         # RAxML (CruxV2 uses raxmlHPC-PTHREADS with GTR+Gamma)
         local raxml_dir="$outdir/${cluster_id}_RAxML"
         mkdir -p "$raxml_dir"
-        fasta2phyml.pl "$outdir/${cluster_id}_MSA.fasta"
+        # run inside the directory: fasta2phyml.pl cuts its argument at the first '.',
+        # which in a path through the default .cache directory is not the extension
+        (cd "$outdir" && fasta2phyml.pl "${cluster_id}_MSA.fasta")
         "$RAXML_BIN" --silent -m GTRGAMMA \
             -w "$(cd "$raxml_dir" && pwd)" \
             -n 1 -p 1234 -T "$cluster_threads" \
@@ -478,10 +480,22 @@ run_cluster() {
 
     # Copy taxonomy (deduplicated + ':' replaced with '_' to match FASTA dedup)
     if [[ -f "$AC_DIR/${cluster_id}_taxonomy.txt" ]]; then
-        awk -F'\t' '{gsub(/:/, "_", $1)} !seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
+        awk -F'\t' -v OFS='\t' '{gsub(/:/, "_", $1)} !seen[$1]++' "$AC_DIR/${cluster_id}_taxonomy.txt" > "$NEWICK_DIR/${cluster_id}_taxonomy.txt"
     fi
     return 0
 }
+
+# AncestralClust can leave clusters too small for a tree (fewer than 3 sequences).
+# Move their sequences into the largest cluster so they stay in the database.
+LARGEST_CLUSTER=$(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done | sort -k1,1nr -k2 | sed -n 1p | cut -d' ' -f2-)
+for cluster_fasta in "$AC_DIR"/*.fasta; do
+    if [[ "$cluster_fasta" != "$LARGEST_CLUSTER" && "$(grep -c '^>' "$cluster_fasta")" -lt 3 ]]; then
+        echo "  Cluster $(basename "$cluster_fasta" .fasta): fewer than 3 seqs, moved into cluster $(basename "$LARGEST_CLUSTER" .fasta)"
+        cat "$cluster_fasta" >> "$LARGEST_CLUSTER"
+        cat "${cluster_fasta%.fasta}_taxonomy.txt" >> "${LARGEST_CLUSTER%.fasta}_taxonomy.txt"
+        rm "$cluster_fasta" "${cluster_fasta%.fasta}_taxonomy.txt"
+    fi
+done
 
 RUNNING_JOBS=0
 for cluster_fasta in "$AC_DIR"/*.fasta; do
@@ -578,7 +592,9 @@ for tree_file in "$NEWICK_DIR"/RAxML_bestTree.*.reroot; do
 
     # Also keep original FASTA for tronko-build partition mode
     if [[ -f "$AC_DIR/${orig_id}.fasta" ]]; then
-        cp "$AC_DIR/${orig_id}.fasta" "$MERGED_DIR/${counter}.fasta"
+        # same de-duplication and ':' replacement as the alignment, so it matches the tree
+        awk '/^>/{gsub(/:/, "_"); split($0,a," "); h=a[1]; if(seen[h]++){p=0; next} p=1; print; next} p{print}' \
+            "$AC_DIR/${orig_id}.fasta" > "$MERGED_DIR/${counter}.fasta"
     fi
 
     counter=$((counter + 1))
@@ -758,7 +774,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "rcrux_tier": $(jstr "$RCRUX_TIER"),
   "rcrux_tier_md5": $(jstr "$RCRUX_TIER_MD5"),
   "rcrux_tier_provenance_sha256": $(jstr "$RCRUX_TIER_PROV_SHA"),
-  "clustering": "ancestralclust",
+  "clustering": "$([ "$NUM_SEQS" -le "$AC_CUTOFF" ] && echo none || echo ancestralclust)",
   "ac_bin_size": $AC_BIN_SIZE,
   "ac_descendants": $AC_DESCENDANTS,
   "ac_clusters": $NUM_FINAL_CLUSTERS,

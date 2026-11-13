@@ -93,7 +93,9 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$MARKER" ] || die "usage: $0 <RCRUX_MARKER_DIR> [options]  (see --help)"
 
-export PATH="$TRONKO_REPO_DIR/bin:$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR/tronko-convert:$TRONKO_REPO_DIR/tronko-assign:$PATH"
+export PATH="$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR/tronko-convert:$TRONKO_REPO_DIR/tronko-assign:$PATH"
+# bin/ holds x86-64 Linux builds: ahead of PATH there, behind it elsewhere so native tools win
+if [ "$(uname -sm)" = "Linux x86_64" ]; then PATH="$TRONKO_REPO_DIR/bin:$PATH"; else PATH="$PATH:$TRONKO_REPO_DIR/bin"; fi
 
 # ===========================================================================
 # A. Resolve, validate, lock

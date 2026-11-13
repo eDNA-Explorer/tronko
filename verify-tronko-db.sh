@@ -50,7 +50,9 @@ while [ $# -gt 0 ]; do
 done
 [ ${#DBS[@]} -gt 0 ] || die "usage: $0 <db_dir> [<db_dir> ...]"
 
-export PATH="$TRONKO_REPO_DIR/bin:$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR/tronko-convert:$TRONKO_REPO_DIR/tronko-assign:$PATH"
+export PATH="$TRONKO_REPO_DIR/tronko-build:$TRONKO_REPO_DIR/tronko-convert:$TRONKO_REPO_DIR/tronko-assign:$PATH"
+# bin/ holds x86-64 Linux builds: ahead of PATH there, behind it elsewhere so native tools win
+if [ "$(uname -sm)" = "Linux x86_64" ]; then PATH="$TRONKO_REPO_DIR/bin:$PATH"; else PATH="$PATH:$TRONKO_REPO_DIR/bin"; fi
 
 OVERALL=0
 

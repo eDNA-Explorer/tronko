@@ -129,7 +129,7 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Invalid tree file.\n");
 				break;
 			case 'i':
-				success = sscanf(optarg, "%s", opt->prefix);
+				success = sscanf(optarg, "%1999s", opt->prefix);
 				if ( !success)
 					fprintf(stderr, "Invalid prefix.\n");
 				break;
@@ -139,18 +139,13 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Invalid MSA file\n");
 				break;
 			case 'd':
-				success = sscanf(optarg, "%s", opt->partitions_directory);
+				success = sscanf(optarg, "%1999s", opt->partitions_directory);
 				if (!success){
 					fprintf(stderr, "Invalid partitions output directory\n");
 					exit(-1);
 				}
-				int j;
-				for(j=0; j<200; j++){
-					if ( opt->partitions_directory[j] == '\0' ){
-						break;
-					}
-				}
-				if ( opt->partitions_directory[j-1] == '/' ){
+				int j = strlen(opt->partitions_directory);
+				if ( j > 1 && opt->partitions_directory[j-1] == '/' ){
 					opt->partitions_directory[j-1] = '\0';
 				}
 				break;
@@ -227,18 +222,13 @@ void parse_options(int argc, char **argv, Options *opt){
 					fprintf(stderr, "Invalid int\n");
 				break;
 			case 'e':
-				success = sscanf(optarg, "%s", opt->readdir);
+				success = sscanf(optarg, "%1999s", opt->readdir);
 				if (!success){
 					fprintf(stderr, "Invalid directory");
 					exit(-1);
 				}
-				int i;
-				for(i=0; i<200; i++){
-					if ( opt->readdir[i] == '\0' ){
-						break;
-					}
-				}
-				if ( opt->readdir[i-1] == '/' ){
+				int i = strlen(opt->readdir);
+				if ( i > 1 && opt->readdir[i-1] == '/' ){
 					opt->readdir[i-1] = '\0';
 				}
 				break;

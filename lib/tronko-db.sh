@@ -218,9 +218,8 @@ PYEOF
 # first tab as the lineage, so a 3-column file shifts all 7 ranks and still
 # exits 0. Guard the derived file, not just the source.
 #
-# The ':' check guards build-tronko-db.sh:447, where gawk rebuilds $0 with
-# OFS=" " if the gsub on $1 ever fires -- silently turning a tab-separated
-# record into a space-separated one and losing the lineage.
+# The ':' check guards the rename of ':' to '_' in build-tronko-db.sh step 2,
+# after which the accession no longer matches the source FASTA header.
 # ---------------------------------------------------------------------------
 check_taxonomy_columns() {
     local f="$1" want="$2"
