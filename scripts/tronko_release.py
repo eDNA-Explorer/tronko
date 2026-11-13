@@ -16,14 +16,17 @@ treatment, with DVC as the only storage on both sides:
             required), then in an rcrux-py checkout:
             dvc add databases/{marker}/tronko, dvc push -r rcrux, and commit
             tronko.dvc on a publish branch.
-4. tag      After that branch merges, tag {marker}_tronko_v{version} on the
-            commit that carries tronko.dvc and push the tag.
+            The version is the next after this marker's tronko tags unless
+            given, and is stamped into tronko.dvc as meta.release_version.
+4. tag      Automatic: when the branch merges, rcrux-py's Tag releases
+            workflow tags {marker}_tronko_v{version}. `tag` does the same by
+            hand, for a merge the workflow did not tag.
 
 Usage:
     python tronko_release.py fetch --marker MARKER --rcrux-tag TAG --out DIR
     python tronko_release.py publish --marker MARKER --build-dir DIR --inputs DIR/inputs.json \
-        --build-log build.log --build-params params.json --tronko-version v1.0.0 \
-        --rcrux-checkout PATH
+        --build-log build.log --build-params params.json --rcrux-checkout PATH \
+        [--tronko-version v2.0.0 | --bump major|minor|patch]
     python tronko_release.py tag --marker MARKER --tronko-version v1.0.0 --rcrux-checkout PATH
 """
 
@@ -102,6 +105,79 @@ def check_version(version: str) -> str:
 
 def tronko_tag(marker: str, version: str) -> str:
     return f"{marker}_tronko_{check_version(version)}"
+
+
+# Versions are chosen the way rcrux-py's `rcrux release` chooses them, and the
+# chosen one is stamped into tronko.dvc as meta.release_version so rcrux-py's
+# Tag releases workflow can tag the merge from git alone.
+BUMPS = ("major", "minor", "patch")
+FIRST_VERSION = "v1.0.0"
+META_KEY = "release_version"
+
+
+def tronko_versions(tags: list[str], marker: str) -> list[str]:
+    """This marker's tronko release versions among ``tags``, exact names only."""
+    pattern = re.compile(rf"{re.escape(marker)}_tronko_(v\d+\.\d+\.\d+)")
+    return [m.group(1) for t in tags if (m := pattern.fullmatch(t))]
+
+
+def next_version(existing: list[str], bump: str = "minor") -> str:
+    """The version after the highest existing one; v1.0.0 for a first release."""
+    if bump not in BUMPS:
+        raise ValueError(f"bump must be one of {BUMPS}, got {bump!r}")
+    if not existing:
+        return FIRST_VERSION
+    major, minor, patch = max(tuple(int(n) for n in v[1:].split(".")) for v in existing)
+    if bump == "major":
+        return f"v{major + 1}.0.0"
+    if bump == "minor":
+        return f"v{major}.{minor + 1}.0"
+    return f"v{major}.{minor}.{patch + 1}"
+
+
+def known_tags(repo: Path) -> list[str]:
+    """Local tags plus origin's, so a release cut elsewhere is not reused."""
+    tags = set(run(["git", "tag", "--list"], cwd=repo).splitlines())
+    try:
+        remote = run(["git", "ls-remote", "--tags", "origin"], cwd=repo)
+    except RuntimeError:
+        remote = ""
+    for line in remote.splitlines():
+        tags.add(line.split("\t")[-1].removeprefix("refs/tags/").removesuffix("^{}"))
+    return sorted(t for t in tags if t)
+
+
+def read_pointer_version(text: str) -> str | None:
+    meta = (yaml.safe_load(text) or {}).get("meta")
+    version = meta.get(META_KEY) if isinstance(meta, dict) else None
+    return str(version) if version is not None else None
+
+
+def stamp_pointer(pointer: Path, version: str, **extra: str) -> None:
+    """Record the release version (and any extra keys) in a .dvc pointer's meta."""
+    data = yaml.safe_load(pointer.read_text()) or {}
+    current = data.get("meta")
+    meta = dict(current) if isinstance(current, dict) else {}
+    meta.update({META_KEY: check_version(version), **extra})
+    data["meta"] = meta
+    pointer.write_text(yaml.safe_dump(data, sort_keys=False))
+
+
+def choose_version(rcrux_checkout: Path, marker: str, requested: str | None, bump: str) -> str:
+    """The requested version if free, else the next after this marker's tronko tags.
+
+    A version already stamped in the checkout's tronko.dvc but not yet tagged
+    (published, not merged) counts too, so versions only increase.
+    """
+    tagged = tronko_versions(known_tags(rcrux_checkout), marker)
+    if requested is not None:
+        check_version(requested)
+        if requested in tagged:
+            raise ValueError(f"Tag {tronko_tag(marker, requested)} already exists")
+        return requested
+    pointer = rcrux_checkout / "databases" / marker / "tronko.dvc"
+    pending = read_pointer_version(pointer.read_text()) if pointer.is_file() else None
+    return next_version(tagged + ([pending] if pending else []), bump)
 
 
 # ---------------------------------------------------------------------------
@@ -274,14 +350,19 @@ def publish(
     inputs_path: Path,
     build_log: Path,
     build_params_path: Path,
-    version: str,
+    version: str | None,
     rcrux_checkout: Path,
     replace: bool = False,
     push_branch: bool = False,
     dry_run: bool = False,
+    bump: str = "minor",
 ) -> dict:
-    """Track a finished build in rcrux-py's DVC and commit it on a branch."""
-    check_version(version)
+    """Track a finished build in rcrux-py's DVC and commit it on a branch.
+
+    With no ``version``, the next one after this marker's tronko tags is used.
+    """
+    if version is not None:
+        check_version(version)
     validate_build(build_dir, marker)
     if not build_log.is_file() or build_log.stat().st_size == 0:
         raise ValueError(f"Build log {build_log} is missing or empty")
@@ -290,6 +371,16 @@ def publish(
         raise ValueError(f"Build settings {build_params_path} not found")
     params = json.loads(build_params_path.read_text())
     sha, _ = tronko_sha()
+
+    if run(["git", "status", "--porcelain"], cwd=rcrux_checkout):
+        raise RuntimeError(f"{rcrux_checkout} has uncommitted changes")
+    marker_dir = rcrux_checkout / "databases" / marker
+    if not marker_dir.is_dir():
+        raise ValueError(f"{marker_dir} does not exist; publish the rcrux build first")
+    dest = marker_dir / "tronko"
+    if dest.exists() and not replace:
+        raise ValueError(f"{dest} already exists; pass --replace for a new version")
+    version = choose_version(rcrux_checkout, marker, version, bump)
     metadata = build_metadata(
         marker,
         version,
@@ -300,17 +391,6 @@ def publish(
         datetime.datetime.now(datetime.timezone.utc),
     )
 
-    if run(["git", "status", "--porcelain"], cwd=rcrux_checkout):
-        raise RuntimeError(f"{rcrux_checkout} has uncommitted changes")
-    marker_dir = rcrux_checkout / "databases" / marker
-    if not marker_dir.is_dir():
-        raise ValueError(f"{marker_dir} does not exist; publish the rcrux build first")
-    dest = marker_dir / "tronko"
-    if dest.exists() and not replace:
-        raise ValueError(f"{dest} already exists; pass --replace for a new version")
-    tag = metadata["tronko_tag"]
-    if run(["git", "tag", "--list", tag], cwd=rcrux_checkout):
-        raise ValueError(f"Tag {tag} already exists in {rcrux_checkout}")
     branch = f"publish/{marker}-tronko-{version}"
     if dry_run:
         print(json.dumps(metadata, indent=2))
@@ -329,6 +409,7 @@ def publish(
 
     target = f"databases/{marker}/tronko"
     run(["dvc", "add", target], cwd=rcrux_checkout)
+    stamp_pointer(rcrux_checkout / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
     run(["dvc", "push", "-r", DVC_REMOTE, f"{target}.dvc"], cwd=rcrux_checkout)
     run(
         ["git", "add", f"{target}.dvc", f"databases/{marker}/.gitignore"],
@@ -404,7 +485,11 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument(
         "--build-params", required=True, type=Path, help="JSON of every build setting used"
     )
-    p_pub.add_argument("--tronko-version", required=True, help="e.g. v1.0.0")
+    p_pub.add_argument(
+        "--tronko-version",
+        help="e.g. v2.0.0. Default: the next after this marker's tronko tags (see --bump)",
+    )
+    p_pub.add_argument("--bump", choices=BUMPS, default="minor")
     p_pub.add_argument("--rcrux-checkout", required=True, type=Path)
     p_pub.add_argument("--replace", action="store_true", help="Replace an earlier tronko/")
     p_pub.add_argument("--push-branch", action="store_true")
@@ -433,11 +518,12 @@ def main(argv: list[str] | None = None) -> int:
                 args.replace,
                 args.push_branch,
                 args.dry_run,
+                args.bump,
             )
             if not args.dry_run:
                 print(
-                    f"Committed {args.marker} tronko {metadata['tronko_version']}; "
-                    f"open a PR, then run: tronko_release.py tag ..."
+                    f"Committed {args.marker} tronko {metadata['tronko_version']}; open a PR. "
+                    f"Merging it tags {metadata['tronko_tag']} (rcrux-py Tag releases workflow)."
                 )
         else:
             print(f"Tagged {tag(args.marker, args.tronko_version, args.rcrux_checkout, args.ref)}")

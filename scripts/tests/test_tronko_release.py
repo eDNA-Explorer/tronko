@@ -245,3 +245,64 @@ def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
 def test_fetch_rejects_unknown_tag(tmp_path, rcrux_repo):
     with pytest.raises(ValueError, match="not found"):
         tr.fetch(MARKER, "nope_v9.9.9", tmp_path / "w", rcrux_repo=str(rcrux_repo["origin"]))
+
+
+@pytest.mark.parametrize(
+    ("existing", "bump", "expected"),
+    [
+        ([], "minor", "v1.0.0"),
+        (["v1.0.0"], "minor", "v1.1.0"),
+        (["v1.0.0", "v1.10.0", "v1.2.0"], "minor", "v1.11.0"),
+        (["v1.2.3"], "patch", "v1.2.4"),
+        (["v1.2.3"], "major", "v2.0.0"),
+    ],
+)
+def test_next_version(existing, bump, expected):
+    assert tr.next_version(existing, bump) == expected
+
+
+def test_tronko_versions_match_their_marker_exactly():
+    tags = [
+        f"{MARKER}_tronko_v1.0.0",
+        f"{MARKER}_v9.0.0",  # rcrux release, not tronko
+        f"{MARKER}_v2_tronko_v5.0.0",  # another marker
+        f"{MARKER}_tronko_v1.1",  # not a version
+    ]
+    assert tr.tronko_versions(tags, MARKER) == ["v1.0.0"]
+
+
+def _publish_ready(tmp_path, rcrux_repo):
+    work = tmp_path / "work"
+    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
+    checkout = tmp_path / "checkout"
+    git(tmp_path, "clone", "-q", str(rcrux_repo["origin"]), str(checkout))
+    log = tmp_path / "build.log"
+    log.write_text("log\n")
+    return work / "inputs.json", checkout, log, write_build(tmp_path / "build")
+
+
+def test_publish_picks_the_version_and_stamps_the_pointer(tmp_path, rcrux_repo):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    meta = tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert meta["tronko_version"] == "v1.0.0"
+    pointer = (checkout / "databases" / MARKER / "tronko.dvc").read_text()
+    assert tr.read_pointer_version(pointer) == "v1.0.0"
+    assert f"rcrux_tag: {MARKER}_v1.0.0" in pointer
+    assert pointer in git(checkout, "show", f"HEAD:databases/{MARKER}/tronko.dvc") + "\n"
+
+
+def test_publish_bumps_past_existing_tronko_tags(tmp_path, rcrux_repo):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    git(checkout, "tag", f"{MARKER}_tronko_v1.0.0")
+    git(checkout, "tag", f"{MARKER}_tronko_v1.3.0")
+    params = write_params(tmp_path)
+    meta = tr.publish(MARKER, build, inputs, log, params, None, checkout, bump="patch")
+    assert meta["tronko_version"] == "v1.3.1"
+    assert meta["tronko_tag"] == f"{MARKER}_tronko_v1.3.1"
+
+
+def test_publish_refuses_a_version_already_tagged(tmp_path, rcrux_repo):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    git(checkout, "tag", f"{MARKER}_tronko_v1.0.0")
+    with pytest.raises(ValueError, match="already exists"):
+        tr.publish(MARKER, build, inputs, log, write_params(tmp_path), "v1.0.0", checkout)
