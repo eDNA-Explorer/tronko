@@ -4,8 +4,19 @@ version = "0.1.0"
 description = "Utility scripts for tronko project"
 requires-python = ">=3.10"
 dependencies = [
+    "dvc[s3]>=3.50",
     "google-cloud-storage>=2.0.0",
+    "pyyaml>=6",
 ]
 
 [project.scripts]
 convert-gcs-references = "convert_gcs_references:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
