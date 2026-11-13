@@ -803,11 +803,14 @@ static void unwrap_fasta_inplace(const char *filepath){
 static void fasta_to_phylip(const char *fasta_path){
 	FILE *fp = fopen(fasta_path, "r");
 	if (!fp){ fprintf(stderr, "fasta_to_phylip: cannot open %s\n", fasta_path); return; }
-	/* Build output filename: split on first '.' and append .phymlAln */
+	/* Output filename: replace the file's extension with .phymlAln.
+	   fasta2phyml.pl cut at the first '.' of the whole path, so an output
+	   directory with a dot in its name sent the file somewhere RAxML never looked. */
 	char outpath[BUFFER_SIZE];
 	strncpy(outpath, fasta_path, BUFFER_SIZE - 1);
 	outpath[BUFFER_SIZE - 1] = '\0';
-	char *dot = strchr(outpath, '.');
+	char *slash = strrchr(outpath, '/');
+	char *dot = strchr(slash ? slash : outpath, '.');
 	if (dot) *dot = '\0';
 	strncat(outpath, ".phymlAln", BUFFER_SIZE - strlen(outpath) - 1);
 	/* Read all sequences */
@@ -1098,12 +1101,25 @@ static pid_t spawn_reroot(int which, const Options *opt, char *const envp[]){
 	return spawn_tool("nw_reroot", argv, envp, out, O_WRONLY | O_CREAT | O_TRUNC);
 }
 
-/* Wait for a batch of spawned pids. 0 and -1 entries are skipped (already
-   done synchronously, or failed to spawn). */
-static void wait_batch(pid_t *pids, int n){
+/* Wait for one stage's tools (partitions first..first+n-1). A tool that could
+   not start, or exited non-zero or on a signal, leaves an empty or partial file
+   behind, so stop rather than build a database missing those sequences. */
+static void wait_batch(pid_t *pids, int n, const char *tool, int first){
 	int i, status;
 	for (i = 0; i < n; i++){
-		if (pids[i] > 0) waitpid(pids[i], &status, 0);
+		if (pids[i] < 0){
+			fprintf(stderr, "Error: could not start %s for partition%d\n", tool, first + i);
+			exit(EXIT_FAILURE);
+		}
+		waitpid(pids[i], &status, 0);
+		if (WIFSIGNALED(status)){
+			fprintf(stderr, "Error: %s killed by signal %d on partition%d\n", tool, WTERMSIG(status), first + i);
+			exit(EXIT_FAILURE);
+		}
+		if (WEXITSTATUS(status) != 0){
+			fprintf(stderr, "Error: %s exited %d on partition%d\n", tool, WEXITSTATUS(status), first + i);
+			exit(EXIT_FAILURE);
+		}
 	}
 }
 
@@ -1258,16 +1274,16 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		char **tool_env = build_tool_env(tool_t);
 		/* Stage 1: align all 3 */
 		for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_famsa(rootCount + p, opt, tool_t, tool_env);
-		wait_batch(pipeline_pids, 3);
+		wait_batch(pipeline_pids, 3, "famsa", rootCount);
 		/* Stage 2: in-process unwrap (+ phylip for RAxML) */
 		for(p = 0; p < 3; p++) partition_midstage(rootCount + p, opt);
 		/* Stage 3: build all 3 trees */
 		for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_tree(rootCount + p, opt, tool_t, tool_env);
-		wait_batch(pipeline_pids, 3);
+		wait_batch(pipeline_pids, 3, opt->tree_tool == TREE_RAXML ? "raxmlHPC-PTHREADS" : opt->tree_tool == TREE_VERYFASTTREE ? "VeryFastTree" : "FastTree", rootCount);
 		/* Stage 4: reroot (RAxML only) */
 		if (opt->tree_tool == TREE_RAXML){
 			for(p = 0; p < 3; p++) pipeline_pids[p] = spawn_reroot(rootCount + p, opt, tool_env);
-			wait_batch(pipeline_pids, 3);
+			wait_batch(pipeline_pids, 3, "nw_reroot", rootCount);
 		}
 		free_tool_env(tool_env);
 	}
@@ -1294,13 +1310,8 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		t->numspec=setNumspecArr(partition);
 		gzclose(partition);
 		if (t->numspec < 3){
-			fprintf(stderr, "  Skipping partition %d: only %d sequences (need >= 3)\n", which, t->numspec);
-			free(t->filename);
-			free(t);
-			pthread_mutex_lock(&spscore_mutex);
-			SPscoreArr[which-1]=1;
-			pthread_mutex_unlock(&spscore_mutex);
-			continue;
+			fprintf(stderr, "Error: partition%d has %d sequences, need at least 3\n", which, t->numspec);
+			exit(EXIT_FAILURE);
 		}
 		t->tree=(struct node*)malloc((2*t->numspec-1)*sizeof(struct node));
 		t->names=(char**)malloc(sizeof(char*)*t->numspec);
@@ -1325,27 +1336,15 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 		{
 			FILE *_treechk = fopen(buf, "r");
 			if (_treechk == NULL){
-				fprintf(stderr, "  Skipping partition %d: tree file not found %s\n", which, buf);
-				for(i=0; i<t->numspec; i++){ free(t->names[i]); }
-				free(t->names); free(t->msa); free(t->taxonomy);
-				free(t->tree); free(t->filename); free(t);
-				pthread_mutex_lock(&spscore_mutex);
-				SPscoreArr[which-1]=1;
-				pthread_mutex_unlock(&spscore_mutex);
-				continue;
+				fprintf(stderr, "Error: tree file not found for partition%d: %s\n", which, buf);
+				exit(EXIT_FAILURE);
 			}
 			fseek(_treechk, 0, SEEK_END);
 			long _treesz = ftell(_treechk);
 			fclose(_treechk);
 			if (_treesz < 5){
-				fprintf(stderr, "  Skipping partition %d: tree file too small (%ld bytes) %s\n", which, _treesz, buf);
-				for(i=0; i<t->numspec; i++){ free(t->names[i]); }
-				free(t->names); free(t->msa); free(t->taxonomy);
-				free(t->tree); free(t->filename); free(t);
-				pthread_mutex_lock(&spscore_mutex);
-				SPscoreArr[which-1]=1;
-				pthread_mutex_unlock(&spscore_mutex);
-				continue;
+				fprintf(stderr, "Error: tree file for partition%d is %ld bytes: %s\n", which, _treesz, buf);
+				exit(EXIT_FAILURE);
 			}
 		}
 		if ( opt->tree_tool == TREE_RAXML ){
@@ -1363,29 +1362,24 @@ void createNewRoots(int rootCount, Options *opt, int max_nodename, int max_lineT
 			}
 			char* newick = readNewickFile(fasttreefile);
 			fclose(fasttreefile);
-			/* Skip empty or malformed tree files */
+			/* Empty or malformed tree file */
 			if (newick == NULL || strlen(newick) < 3){
-				fprintf(stderr, "  Skipping partition %d: empty or malformed tree file %s\n", which, buf);
-				free(newick);
-				for(i=0; i<t->numspec; i++){
-					free(t->names[i]);
-				}
-				free(t->names);
-				free(t->msa);
-				free(t->taxonomy);
-				free(t->tree);
-				free(t->filename);
-				free(t);
-				pthread_mutex_lock(&spscore_mutex);
-				SPscoreArr[which-1]=1;
-				pthread_mutex_unlock(&spscore_mutex);
-				continue;
+				fprintf(stderr, "Error: empty or malformed tree file for partition%d: %s\n", which, buf);
+				exit(EXIT_FAILURE);
 			}
+			int msa_numspec = t->numspec;
 			t->numspec = 0;
 			t->numNodes = 0;
 			unsigned int poly_seed = polytomy_seed(newick);
 			parseNewick(t, newick, max_nodename);
 			free(newick);
+			/* VeryFastTree 4.0.3 with several threads can exit 0 having written a
+			   tree with only some of the sequences; everything after this indexes
+			   the alignment by leaf count. */
+			if (t->numspec != msa_numspec){
+				fprintf(stderr, "Error: tree for partition%d has %d leaves but its alignment has %d sequences: %s\n", which, t->numspec, msa_numspec, buf);
+				exit(EXIT_FAILURE);
+			}
 			makeBinary(t,max_nodename,&poly_seed);
 			exportTreeToNewick(t,buf);
 			/* Free parseNewick tree and re-allocate for getcladeArr_fast */
@@ -1894,6 +1888,10 @@ static void process_one_cluster(int i, Options *opt, partition_files *pf, int ma
 		unsigned int poly_seed = polytomy_seed(newick);
 		parseNewick(m, newick, max_nodename);
 		free(newick);
+		if (m->numspec != saved_numspec){
+			fprintf(stderr, "Error: tree %s has %d leaves but its alignment has %d sequences\n", pf->tree_files[i], m->numspec, saved_numspec);
+			exit(EXIT_FAILURE);
+		}
 		makeBinary(m, max_nodename, &poly_seed);
 		/* Write the binarised tree to the output dir, never over the input. */
 		mkdir(opt->partitions_directory, 0700);
