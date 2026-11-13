@@ -49,7 +49,7 @@ void print_help_statement(){
 
 void parse_options(int argc, char **argv, Options *opt){
 	int option_index, success;
-	char c;
+	int c; /* getopt_long returns int; a char never equals -1 where char is unsigned (ARM) */
 	if (argc==1){
 		print_help_statement();
 		exit(0);

@@ -598,8 +598,11 @@ TRONKO_FLAGS="--tree-tool $TREE_TOOL"
 if [[ "$EXPORT_SUBTREES" -eq 1 ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS -E"
 fi
+# Always name the SP formula: tronko-build's own default is --legacy-sp.
 if [[ "$LEGACY_SP" -eq 1 ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS --legacy-sp"
+else
+    TRONKO_FLAGS="$TRONKO_FLAGS --corrected-sp"
 fi
 if [[ "${TREE_SEED:-0}" != "0" ]]; then
     TRONKO_FLAGS="$TRONKO_FLAGS --tree-seed $TREE_SEED"
