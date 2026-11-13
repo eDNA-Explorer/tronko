@@ -8,7 +8,8 @@ treatment, with DVC as the only storage on both sides:
 
 1. fetch    Read the curated FASTA + taxonomy from the rcrux DVC remote at the
             rcrux tag (DVCFileSystem, remote "rcrux"), and record which bytes
-            were read in inputs.json.
+            were read in inputs.json. With no --rcrux-tag, the marker's latest
+            rcrux release ({marker}_vX.Y.Z) is used.
 2. (build)  Run tronko-build however the marker needs; this script does not
             build trees.
 3. publish  Check the eight files tronko-assign needs, write metadata.json
@@ -23,7 +24,7 @@ treatment, with DVC as the only storage on both sides:
             hand, for a merge the workflow did not tag.
 
 Usage:
-    python tronko_release.py fetch --marker MARKER --rcrux-tag TAG --out DIR
+    python tronko_release.py fetch --marker MARKER [--rcrux-tag TAG] --out DIR
     python tronko_release.py publish --marker MARKER --build-dir DIR --inputs DIR/inputs.json \
         --build-log build.log --build-params params.json --rcrux-checkout PATH \
         [--tronko-version v2.0.0 | --bump major|minor|patch]
@@ -224,15 +225,37 @@ def resolve_tag_commit(repo: str, tag: str) -> str:
     return commit
 
 
+def latest_rcrux_tag(repo: str, marker: str) -> str:
+    """The marker's highest {marker}_vX.Y.Z release tag in the rcrux repo."""
+    out = run(["git", "ls-remote", "--tags", repo])
+    tags = {
+        line.split("\t")[-1].removeprefix("refs/tags/").removesuffix("^{}")
+        for line in out.splitlines()
+        if line
+    }
+    pattern = re.compile(rf"{re.escape(marker)}_v(\d+)\.(\d+)\.(\d+)")
+    releases = [(tuple(int(g) for g in m.groups()), t) for t in tags if (m := pattern.fullmatch(t))]
+    if not releases:
+        raise ValueError(f"No {marker}_v* release tag in {repo}; publish the rcrux build first")
+    return max(releases)[1]
+
+
 def fetch(
     marker: str,
-    rcrux_tag: str,
+    rcrux_tag: str | None,
     out_dir: Path,
     rcrux_repo: str = DEFAULT_RCRUX_REPO,
 ) -> dict:
-    """Download the curated inputs at an rcrux tag and write inputs.json."""
+    """Download the curated inputs at an rcrux tag and write inputs.json.
+
+    With no ``rcrux_tag``, the marker's latest rcrux release is used.
+    """
     from dvc.api import DVCFileSystem
 
+    tag_source = "explicit"
+    if rcrux_tag is None:
+        rcrux_tag = latest_rcrux_tag(rcrux_repo, marker)
+        tag_source = "latest"
     commit = resolve_tag_commit(rcrux_repo, rcrux_tag)
     # Pin the commit, not the tag name, so a moved tag cannot change what is read.
     fs = DVCFileSystem(rcrux_repo, rev=commit, remote=DVC_REMOTE)
@@ -257,6 +280,7 @@ def fetch(
         "marker": marker,
         "rcrux_repo": rcrux_repo,
         "rcrux_tag": rcrux_tag,
+        "rcrux_tag_source": tag_source,
         "rcrux_commit": commit,
         "dvc_remote": DVC_REMOTE,
         "input_tier": INPUT_TIER,
@@ -473,7 +497,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p_fetch = sub.add_parser("fetch", help="Download curated inputs at an rcrux tag")
     p_fetch.add_argument("--marker", required=True)
-    p_fetch.add_argument("--rcrux-tag", required=True, help="e.g. CO1_BF3_BR2_v1.0.0")
+    p_fetch.add_argument(
+        "--rcrux-tag", help="e.g. CO1_BF3_BR2_v1.0.0. Default: the marker's latest release"
+    )
     p_fetch.add_argument("--out", required=True, type=Path)
     p_fetch.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
 
@@ -505,7 +531,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "fetch":
             inputs = fetch(args.marker, args.rcrux_tag, args.out, args.rcrux_repo)
-            print(f"Wrote {args.out / INPUTS_FILENAME} (input_md5 {inputs['input_md5']})")
+            print(
+                f"Wrote {args.out / INPUTS_FILENAME} from {inputs['rcrux_tag']} "
+                f"({inputs['rcrux_tag_source']}; input_md5 {inputs['input_md5']})"
+            )
         elif args.command == "publish":
             metadata = publish(
                 args.marker,

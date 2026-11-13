@@ -306,3 +306,24 @@ def test_publish_refuses_a_version_already_tagged(tmp_path, rcrux_repo):
     git(checkout, "tag", f"{MARKER}_tronko_v1.0.0")
     with pytest.raises(ValueError, match="already exists"):
         tr.publish(MARKER, build, inputs, log, write_params(tmp_path), "v1.0.0", checkout)
+
+
+def test_fetch_defaults_to_the_latest_rcrux_release(tmp_path, rcrux_repo):
+    origin = rcrux_repo["origin"]
+    for tag in (
+        f"{MARKER}_v1.2.0",
+        f"{MARKER}_v1.10.0",  # highest: compared as numbers, not text
+        f"{MARKER}_tronko_v9.0.0",  # a tronko release, never an input
+        f"{MARKER}_v2_v5.0.0",  # another marker's release
+    ):
+        git(origin, "tag", tag)
+    inputs = tr.fetch(MARKER, None, tmp_path / "w", rcrux_repo=str(origin))
+    assert (inputs["rcrux_tag"], inputs["rcrux_tag_source"]) == (f"{MARKER}_v1.10.0", "latest")
+
+    chosen = tr.fetch(MARKER, f"{MARKER}_v1.2.0", tmp_path / "x", rcrux_repo=str(origin))
+    assert (chosen["rcrux_tag"], chosen["rcrux_tag_source"]) == (f"{MARKER}_v1.2.0", "explicit")
+
+
+def test_fetch_latest_needs_a_release(tmp_path, rcrux_repo):
+    with pytest.raises(ValueError, match="No Other_v"):
+        tr.fetch("Other", None, tmp_path / "w", rcrux_repo=str(rcrux_repo["origin"]))
