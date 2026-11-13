@@ -26,6 +26,7 @@ Usage:
     python tronko_release.py fetch --marker MARKER --rcrux-tag TAG --out DIR
     python tronko_release.py publish --marker MARKER --build-dir DIR --inputs DIR/inputs.json \
         --build-log build.log --build-params params.json --rcrux-checkout PATH \
+        --tronko-sha <commit that built the tree, or set TRONKO_REF> \
         [--tronko-version v2.0.0 | --bump major|minor|patch]
     python tronko_release.py tag --marker MARKER --tronko-version v1.0.0 --rcrux-checkout PATH
 """
@@ -163,11 +164,13 @@ def stamp_pointer(pointer: Path, version: str, **extra: str) -> None:
     pointer.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
-def choose_version(rcrux_checkout: Path, marker: str, requested: str | None, bump: str) -> str:
+def choose_version(
+    rcrux_checkout: Path, marker: str, requested: str | None, bump: str, base: str = "HEAD"
+) -> str:
     """The requested version if free, else the next after this marker's tronko tags.
 
-    A version already stamped in the checkout's tronko.dvc but not yet tagged
-    (published, not merged) counts too, so versions only increase.
+    A version stamped in ``base``'s tronko.dvc but not yet tagged (merged, tag
+    pending) counts too, so versions only increase.
     """
     tagged = tronko_versions(known_tags(rcrux_checkout), marker)
     if requested is not None:
@@ -175,8 +178,14 @@ def choose_version(rcrux_checkout: Path, marker: str, requested: str | None, bum
         if requested in tagged:
             raise ValueError(f"Tag {tronko_tag(marker, requested)} already exists")
         return requested
-    pointer = rcrux_checkout / "databases" / marker / "tronko.dvc"
-    pending = read_pointer_version(pointer.read_text()) if pointer.is_file() else None
+    on_base = subprocess.run(
+        ["git", "show", f"{base}:databases/{marker}/tronko.dvc"],
+        cwd=rcrux_checkout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    pending = read_pointer_version(on_base.stdout) if on_base.returncode == 0 else None
     return next_version(tagged + ([pending] if pending else []), bump)
 
 
@@ -286,22 +295,24 @@ def validate_build(build_dir: Path, marker: str) -> None:
         raise ValueError(f"Build in {build_dir} is incomplete: " + "; ".join(problems))
 
 
-def tronko_sha() -> tuple[str, bool]:
-    """The tronko commit that built this, and whether it was pinned explicitly.
+SHA_PATTERN = re.compile(r"[0-9a-f]{7,40}")
 
-    TRONKO_REF is the Dockerfile ARG the build image is pinned with; outside
-    that image, fall back to this checkout's HEAD and refuse local changes.
+
+def resolve_tronko_sha(explicit: str | None) -> str:
+    """The tronko commit that built the tree, which must be stated.
+
+    It is never taken from the checkout running publish: the tree may have
+    been built from an image or another checkout. TRONKO_REF is the Dockerfile
+    ARG the build image is pinned with.
     """
-    pinned = os.environ.get("TRONKO_REF")
-    if pinned:
-        return pinned, True
-    repo = Path(__file__).resolve().parent.parent
-    if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo):
-        raise RuntimeError(
-            "tronko checkout has uncommitted changes; set TRONKO_REF to the commit "
-            "that built the database, or commit first"
+    sha = explicit or os.environ.get("TRONKO_REF")
+    if not sha:
+        raise ValueError(
+            "Say which tronko commit built the tree: --tronko-sha <commit> or TRONKO_REF"
         )
-    return run(["git", "rev-parse", "HEAD"], cwd=repo), False
+    if not SHA_PATTERN.fullmatch(sha):
+        raise ValueError(f"tronko sha must be a git commit (7-40 hex characters), got {sha!r}")
+    return sha
 
 
 def build_metadata(
@@ -344,6 +355,41 @@ def build_metadata(
     }
 
 
+def _branch_exists(repo: Path, branch: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _roll_back(repo: Path, start: str, branch: str, marker: str) -> None:
+    """Undo a publish that failed after creating its branch: back to ``start``.
+
+    The checkout was clean before publish began, so discarding is safe; a
+    tronko/ the start commit tracks is restored from the DVC cache.
+    """
+    run(["git", "checkout", "-f", start], cwd=repo)
+    if _branch_exists(repo, branch):
+        run(["git", "branch", "-D", branch], cwd=repo)
+    pointer = repo / "databases" / marker / "tronko.dvc"
+    if pointer.is_file() and not run(["git", "ls-files", str(pointer.relative_to(repo))], cwd=repo):
+        pointer.unlink()
+    if pointer.is_file():
+        subprocess.run(
+            ["dvc", "checkout", str(pointer.relative_to(repo))],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        )
+    elif (repo / "databases" / marker / "tronko").exists():
+        shutil.rmtree(repo / "databases" / marker / "tronko")
+
+
 def publish(
     marker: str,
     build_dir: Path,
@@ -356,10 +402,15 @@ def publish(
     push_branch: bool = False,
     dry_run: bool = False,
     bump: str = "minor",
+    tronko_sha: str | None = None,
+    base_branch: str = "main",
 ) -> dict:
     """Track a finished build in rcrux-py's DVC and commit it on a branch.
 
-    With no ``version``, the next one after this marker's tronko tags is used.
+    The branch starts from the latest ``origin/<base_branch>``, whatever the
+    checkout had checked out. With no ``version``, the next one after this
+    marker's tronko tags is used. If any step after the branch is created
+    fails, the checkout is put back as it was, so publish can simply be rerun.
     """
     if version is not None:
         check_version(version)
@@ -370,17 +421,27 @@ def publish(
     if not build_params_path.is_file():
         raise ValueError(f"Build settings {build_params_path} not found")
     params = json.loads(build_params_path.read_text())
-    sha, _ = tronko_sha()
+    sha = resolve_tronko_sha(tronko_sha)
 
-    if run(["git", "status", "--porcelain"], cwd=rcrux_checkout):
-        raise RuntimeError(f"{rcrux_checkout} has uncommitted changes")
-    marker_dir = rcrux_checkout / "databases" / marker
-    if not marker_dir.is_dir():
-        raise ValueError(f"{marker_dir} does not exist; publish the rcrux build first")
-    dest = marker_dir / "tronko"
-    if dest.exists() and not replace:
-        raise ValueError(f"{dest} already exists; pass --replace for a new version")
-    version = choose_version(rcrux_checkout, marker, version, bump)
+    repo = rcrux_checkout
+    # Untracked files are fine: publish commits only the files it names, and a
+    # tronko/ left over from an earlier publish is untracked once main is back.
+    if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo):
+        raise RuntimeError(f"{repo} has uncommitted changes to tracked files")
+    run(["git", "fetch", "origin", base_branch], cwd=repo)
+    base = f"origin/{base_branch}"
+    marker_path = f"databases/{marker}"
+    if not run(["git", "ls-tree", "--name-only", base, f"{marker_path}/curated.dvc"], cwd=repo):
+        raise ValueError(f"{base} has no {marker_path}/curated.dvc; publish the rcrux build first")
+    already_released = run(
+        ["git", "ls-tree", "--name-only", base, f"{marker_path}/tronko.dvc"], cwd=repo
+    )
+    if already_released and not replace:
+        raise ValueError(
+            f"{base} already has a tronko release of {marker}; pass --replace to publish "
+            "the next version"
+        )
+    version = choose_version(repo, marker, version, bump, base)
     metadata = build_metadata(
         marker,
         version,
@@ -392,40 +453,46 @@ def publish(
     )
 
     branch = f"publish/{marker}-tronko-{version}"
+    if _branch_exists(repo, branch):
+        raise ValueError(f"Branch {branch} already exists in {repo}; delete it or publish again")
+    dest = repo / marker_path / "tronko"
     if dry_run:
         print(json.dumps(metadata, indent=2))
-        print(f"would track {dest} with DVC, push to {DVC_REMOTE}, commit on {branch}")
+        print(f"would track {dest} with DVC, push to {DVC_REMOTE}, commit on {branch} from {base}")
         return metadata
 
-    run(["git", "checkout", "-b", branch], cwd=rcrux_checkout)
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir()
-    for name in required_files(marker):
-        shutil.copy2(build_dir / name, dest / name)
-    shutil.copy2(build_log, dest / BUILD_LOG_FILENAME)
-    (dest / BUILD_PARAMS_FILENAME).write_text(json.dumps(params, indent=2) + "\n")
-    (dest / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2) + "\n")
+    current = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo)
+    start = current if current != "HEAD" else run(["git", "rev-parse", "HEAD"], cwd=repo)
+    run(["git", "checkout", "-b", branch, base], cwd=repo)
+    try:
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.mkdir(parents=True)
+        for name in required_files(marker):
+            shutil.copy2(build_dir / name, dest / name)
+        shutil.copy2(build_log, dest / BUILD_LOG_FILENAME)
+        (dest / BUILD_PARAMS_FILENAME).write_text(json.dumps(params, indent=2) + "\n")
+        (dest / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2) + "\n")
 
-    target = f"databases/{marker}/tronko"
-    run(["dvc", "add", target], cwd=rcrux_checkout)
-    stamp_pointer(rcrux_checkout / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
-    run(["dvc", "push", "-r", DVC_REMOTE, f"{target}.dvc"], cwd=rcrux_checkout)
-    run(
-        ["git", "add", f"{target}.dvc", f"databases/{marker}/.gitignore"],
-        cwd=rcrux_checkout,
-    )
-    run(
-        [
-            "git",
-            "commit",
-            "-m",
-            f"Publish {marker} tronko {version} built from {inputs['rcrux_tag']}",
-        ],
-        cwd=rcrux_checkout,
-    )
+        target = f"{marker_path}/tronko"
+        run(["dvc", "add", target], cwd=repo)
+        stamp_pointer(repo / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
+        run(["dvc", "push", "-r", DVC_REMOTE, f"{target}.dvc"], cwd=repo)
+        run(["git", "add", f"{target}.dvc", f"{marker_path}/.gitignore"], cwd=repo)
+        run(
+            [
+                "git",
+                "commit",
+                "-m",
+                f"Publish {marker} tronko {version} built from {inputs['rcrux_tag']}",
+            ],
+            cwd=repo,
+        )
+    except Exception:
+        _roll_back(repo, start, branch, marker)
+        raise
     if push_branch:
-        run(["git", "push", "-u", "origin", branch], cwd=rcrux_checkout)
+        run(["git", "push", "-u", "origin", branch], cwd=repo)
     return metadata
 
 
@@ -490,6 +557,11 @@ def main(argv: list[str] | None = None) -> int:
         help="e.g. v2.0.0. Default: the next after this marker's tronko tags (see --bump)",
     )
     p_pub.add_argument("--bump", choices=BUMPS, default="minor")
+    p_pub.add_argument(
+        "--tronko-sha",
+        help="Commit of the tronko that built the tree (default: $TRONKO_REF; one is required)",
+    )
+    p_pub.add_argument("--base-branch", default="main", help="rcrux-py branch to start from")
     p_pub.add_argument("--rcrux-checkout", required=True, type=Path)
     p_pub.add_argument("--replace", action="store_true", help="Replace an earlier tronko/")
     p_pub.add_argument("--push-branch", action="store_true")
@@ -519,6 +591,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.push_branch,
                 args.dry_run,
                 args.bump,
+                args.tronko_sha,
+                args.base_branch,
             )
             if not args.dry_run:
                 print(

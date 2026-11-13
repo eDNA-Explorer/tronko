@@ -222,24 +222,84 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
         tr.tag(MARKER, "v1.0.0", checkout, ref="main", push=False)
 
 
+def _merge_into_origin(origin: Path, checkout: Path, branch: str) -> None:
+    git(checkout, "push", "-q", "origin", branch)
+    git(origin, "merge", "-q", "--no-ff", "-m", f"merge {branch}", branch)
+
+
 def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
+    origin = rcrux_repo["origin"]
     work = tmp_path / "work"
-    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
+    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(origin))
     checkout = tmp_path / "checkout"
-    git(tmp_path, "clone", "-q", str(rcrux_repo["origin"]), str(checkout))
-    (checkout / "databases" / MARKER / "tronko").mkdir()
+    git(tmp_path, "clone", "-q", str(origin), str(checkout))
     log = tmp_path / "build.log"
     log.write_text("log\n")
+    args = (MARKER, write_build(tmp_path / "build"), work / "inputs.json", log)
+    tr.publish(*args, write_params(tmp_path), None, checkout)
+    _merge_into_origin(origin, checkout, f"publish/{MARKER}-tronko-v1.0.0")
+    git(checkout, "checkout", "-q", "main")
     with pytest.raises(ValueError, match="--replace"):
+        tr.publish(*args, write_params(tmp_path), None, checkout)
+    # With --replace, the next version; main's stamped v1.0.0 counts though untagged.
+    meta = tr.publish(*args, write_params(tmp_path), None, checkout, replace=True)
+    assert meta["tronko_version"] == "v1.1.0"
+
+
+def test_publish_branches_from_the_latest_origin_main(tmp_path, rcrux_repo):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    origin = rcrux_repo["origin"]
+    (origin / "NEWS.md").write_text("merged after the clone\n")
+    git(origin, "add", "NEWS.md")
+    git(origin, "commit", "-q", "-m", "later work on main")
+    git(checkout, "checkout", "-q", "-b", "someone-elses-branch")
+    tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert (checkout / "NEWS.md").exists()
+    assert git(checkout, "rev-parse", "HEAD~1") == git(origin, "rev-parse", "main")
+
+
+def test_a_failed_publish_rolls_back_and_retries_at_the_same_version(
+    tmp_path, rcrux_repo, monkeypatch
+):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    real_run = tr.run
+
+    def failing_push(command, cwd=None):
+        if command[:2] == ["dvc", "push"]:
+            raise RuntimeError("dvc push failed: no credentials")
+        return real_run(command, cwd)
+
+    monkeypatch.setattr(tr, "run", failing_push)
+    with pytest.raises(RuntimeError, match="no credentials"):
+        tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    monkeypatch.setattr(tr, "run", real_run)
+    assert git(checkout, "rev-parse", "--abbrev-ref", "HEAD") == "main"
+    leftovers = git(checkout, "status", "--porcelain", "--ignored").splitlines()
+    assert [line for line in leftovers if not line.startswith("!! .dvc/")] == []
+    assert git(checkout, "branch", "--list", f"publish/{MARKER}-tronko-*") == ""
+    meta = tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert meta["tronko_version"] == "v1.0.0"
+
+
+@pytest.mark.parametrize(("env", "arg"), [(None, None), (None, "not-a-sha"), ("main", None)])
+def test_publish_requires_the_tronko_commit(tmp_path, rcrux_repo, monkeypatch, env, arg):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    monkeypatch.delenv("TRONKO_REF", raising=False)
+    if env:
+        monkeypatch.setenv("TRONKO_REF", env)
+    with pytest.raises(ValueError, match="tronko"):
         tr.publish(
-            MARKER,
-            write_build(tmp_path / "build"),
-            work / "inputs.json",
-            log,
-            write_params(tmp_path),
-            "v1.0.0",
-            checkout,
+            MARKER, build, inputs, log, write_params(tmp_path), None, checkout, tronko_sha=arg
         )
+
+
+def test_publish_records_an_explicit_tronko_commit(tmp_path, rcrux_repo, monkeypatch):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    monkeypatch.delenv("TRONKO_REF", raising=False)
+    meta = tr.publish(
+        MARKER, build, inputs, log, write_params(tmp_path), None, checkout, tronko_sha="cbe20c3"
+    )
+    assert meta["tronko_sha"] == "cbe20c3"
 
 
 def test_fetch_rejects_unknown_tag(tmp_path, rcrux_repo):
