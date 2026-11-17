@@ -1,0 +1,26 @@
+name: Script Tests
+
+on:
+  push:
+    branches: [ "*" ]
+    paths: [ "scripts/**", ".github/workflows/scripts.yml" ]
+  pull_request:
+    branches: [ main ]
+    paths: [ "scripts/**", ".github/workflows/scripts.yml" ]
+
+jobs:
+  scripts-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      run: curl -LsSf https://astral.sh/uv/0.9.5/install.sh | sh
+
+    - name: Run script tests
+      working-directory: scripts
+      run: |
+        uv sync --frozen
+        # The release tests drive the dvc CLI from the synced environment.
+        PATH="$PWD/.venv/bin:$PATH" uv run --frozen pytest -q
