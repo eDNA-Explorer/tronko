@@ -29,6 +29,13 @@
 #                   parallel (default: 1, the sequential path)
 #   --tb-threads N  tronko-build -c per Step 4 worker (default:
 #                   threads / 3 / tb-jobs, at least 1)
+#   --min-leaf N    partition by leaf count (tronko-build -v -f N) instead of
+#                   by SP score
+#   --ancestralclust-args, --famsa-args, --tree-args, --tronko-build-args,
+#   --bwa-args "ARGS"
+#                   extra arguments appended to that tool's command, split on
+#                   spaces. --tree-args goes to the per-cluster tree tool of
+#                   Step 2. All are recorded in build_metadata.json.
 #   --rcrux-tag  rCRUX marker git tag this build's input came from, recorded
 #                verbatim in build_metadata.json for provenance (optional)
 
@@ -49,6 +56,8 @@ AC_DESCENDANTS=75
 RCRUX_TAG=""
 TB_JOBS=1
 TB_THREADS=""
+MIN_LEAF=""
+AC_ARGS="" FAMSA_ARGS="" TREE_ARGS="" TB_ARGS="" BWA_ARGS=""
 # With -J > 1, one thread for a cluster of fewer sequences (FAMSA, VeryFastTree/FastTree; not
 # RAxML, which takes no fewer than 2): on a busy machine a multithreaded run of a small
 # alignment mostly waits for its own descheduled threads (a 162-sequence 18S partition: 0.6 s
@@ -71,6 +80,12 @@ while [[ $# -gt 0 ]]; do
         --tb-jobs) TB_JOBS="$2"; shift 2 ;;
         --tb-jobs=*) TB_JOBS="${1#*=}"; shift ;;
         --tb-threads) TB_THREADS="$2"; shift 2 ;;
+        --min-leaf) MIN_LEAF="$2"; shift 2 ;;
+        --ancestralclust-args) AC_ARGS="$2"; shift 2 ;;
+        --famsa-args) FAMSA_ARGS="$2"; shift 2 ;;
+        --tree-args) TREE_ARGS="$2"; shift 2 ;;
+        --tronko-build-args) TB_ARGS="$2"; shift 2 ;;
+        --bwa-args) BWA_ARGS="$2"; shift 2 ;;
         --tb-threads=*) TB_THREADS="${1#*=}"; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
@@ -96,6 +111,18 @@ while getopts "f:t:o:p:T:s:FELC:B:P:J:" opt; do
     esac
 done
 
+# The extra arguments are written into build_metadata.json as JSON strings.
+case "$AC_ARGS$FAMSA_ARGS$TREE_ARGS$TB_ARGS$BWA_ARGS" in
+    *[\"\\]*) echo "ERROR: extra tool arguments cannot contain quotes or backslashes" >&2; exit 1 ;;
+esac
+read -r -a AC_ARGV <<< "$AC_ARGS"
+read -r -a FAMSA_ARGV <<< "$FAMSA_ARGS"
+read -r -a TREE_ARGV <<< "$TREE_ARGS"
+read -r -a TB_ARGV <<< "$TB_ARGS"
+read -r -a BWA_ARGV <<< "$BWA_ARGS"
+PARTITION_FLAGS=(-s -u "$SP_THRESHOLD")
+[[ -z "$MIN_LEAF" ]] || PARTITION_FLAGS=(-v -f "$MIN_LEAF")
+
 # Validate required args
 if [[ -z "${INPUT_FASTA:-}" || -z "${INPUT_TAXONOMY:-}" || -z "${OUTPUT_DIR:-}" ]]; then
     echo "ERROR: -f, -t, and -o are required" >&2
@@ -113,7 +140,7 @@ if [[ ! -f "$INPUT_TAXONOMY" ]]; then
 fi
 
 # Verify tools
-for tool in ancestralclust famsa nw_reroot tronko-build bwa fasta2phyml.pl; do
+for tool in ancestralclust famsa nw_reroot tronko-build bwa fasta2phyml.pl python3; do
     if ! command -v "$tool" &>/dev/null; then
         echo "ERROR: $tool not found on PATH" >&2
         exit 1
@@ -278,7 +305,7 @@ else
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ancestralclust attempt $AC_ATTEMPT of $AC_MAX_RETRIES..."
         # Disable pipefail for ancestralclust (it interacts badly with signal handling)
         set +o pipefail
-        if ancestralclust -f \
+        if ancestralclust -f "${AC_ARGV[@]}" \
             -i "$CLUSTER_INPUT_FASTA" \
             -b "$NUM_BINS" \
             -r "$NUM_SEEDS" \
@@ -367,7 +394,7 @@ build_cluster_tree() {
     fi
 
     # FAMSA alignment
-    famsa -t "$cluster_threads" "$dedup_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
+    famsa -t "$cluster_threads" "${FAMSA_ARGV[@]}" "$dedup_fasta" "$outdir/${cluster_id}_MSA.fasta" 2>/dev/null
     rm -f "$dedup_fasta"
 
     # Unwrap to single-line (tronko-build requirement)
@@ -385,7 +412,7 @@ build_cluster_tree() {
         # sequences, on alignments with few distinct sequences; one thread never has.
         local vft_threads="$cluster_threads"
         [[ "$n_seqs" -lt 10000 ]] && vft_threads=1
-        $TREE_BIN -threads "$vft_threads" "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN -threads "$vft_threads" "${seed_args[@]}" -nt -gtr -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -400,7 +427,7 @@ build_cluster_tree() {
         [[ "${TREE_SEED:-0}" != "0" ]] && seed_args=("-seed" "$TREE_SEED")
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
-        $TREE_BIN "${seed_args[@]}" -nt -gtr -nosupport "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN "${seed_args[@]}" -nt -gtr -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -416,7 +443,7 @@ build_cluster_tree() {
         # run inside the directory: fasta2phyml.pl cuts its argument at the first '.',
         # which in a path through the default .cache directory is not the extension
         (cd "$outdir" && fasta2phyml.pl "${cluster_id}_MSA.fasta")
-        "$RAXML_BIN" --silent -m GTRGAMMA \
+        "$RAXML_BIN" --silent -m GTRGAMMA "${TREE_ARGV[@]}" \
             -w "$(cd "$raxml_dir" && pwd)" \
             -n 1 -p 1234 -T "$cluster_threads" \
             -s "$(cd "$outdir" && pwd)/${cluster_id}_MSA.phymlAln" 2>/dev/null || true
@@ -635,13 +662,13 @@ if [[ "$NUM_FINAL_CLUSTERS" -ge 1 ]]; then
     # partitioning clusters at once, each pipeline gets threads/3/J.
     TRONKO_THREADS=${TB_THREADS:-$(( THREADS / 3 / TB_JOBS ))}
     if [[ "$TRONKO_THREADS" -lt 1 ]]; then TRONKO_THREADS=1; fi
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR -s -u $SP_THRESHOLD $TRONKO_FLAGS -J $TB_JOBS -c $TRONKO_THREADS"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running: tronko-build -y -e $MERGED_DIR -n $NUM_FINAL_CLUSTERS -d $OUTPUT_DIR ${PARTITION_FLAGS[*]} $TRONKO_FLAGS ${TB_ARGV[*]} -J $TB_JOBS -c $TRONKO_THREADS"
     time tronko-build -y \
         -e "$MERGED_DIR" \
         -n "$NUM_FINAL_CLUSTERS" \
         -d "$OUTPUT_DIR" \
-        -s -u "$SP_THRESHOLD" \
-        $TRONKO_FLAGS \
+        "${PARTITION_FLAGS[@]}" \
+        $TRONKO_FLAGS "${TB_ARGV[@]}" \
         -J "$TB_JOBS" \
         -c "$TRONKO_THREADS"
 fi
@@ -681,7 +708,7 @@ fi
 
 # BWA index
 echo "Building BWA index..."
-bwa index "$OUTPUT_DIR/${PRIMER}.fasta"
+bwa index "${BWA_ARGV[@]}" "$OUTPUT_DIR/${PRIMER}.fasta"
 
 # Convert reference tree to .trkb binary format (required by tronko-assign)
 if command -v tronko-convert &> /dev/null; then
@@ -778,7 +805,14 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "ac_bin_size": $AC_BIN_SIZE,
   "ac_descendants": $AC_DESCENDANTS,
   "ac_clusters": $NUM_FINAL_CLUSTERS,
+  "partition": "$([ -n "$MIN_LEAF" ] && echo min_leaf || echo sum_of_pairs)",
   "sp_threshold": $SP_THRESHOLD,
+  "min_leaf": ${MIN_LEAF:-null},
+  "ancestralclust_args": "$AC_ARGS",
+  "famsa_args": "$FAMSA_ARGS",
+  "tree_args": "$TREE_ARGS",
+  "tronko_build_args": "$TB_ARGS",
+  "bwa_args": "$BWA_ARGS",
   "sp_normalization": "$([ "$LEGACY_SP" -eq 1 ] && echo legacy || echo corrected)",
   "tree_tool": "${TREE_TOOL:-FastTree}",
   "n_trees": $N_TREES,
@@ -791,7 +825,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "threads": $THREADS,
   "parallel_jobs": $PARALLEL_JOBS,
   "tronko_build_jobs": $TB_JOBS,
-  "tronko_build_flags": "$TRONKO_FLAGS -J $TB_JOBS -c $TRONKO_THREADS",
+  "tronko_build_flags": "${PARTITION_FLAGS[*]} $TRONKO_FLAGS ${TB_ARGV[*]} -J $TB_JOBS -c $TRONKO_THREADS",
   "build_started_at": "$BUILD_STARTED_AT",
   "build_completed_at": "$(date -Is)"
 }
