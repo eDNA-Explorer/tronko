@@ -255,8 +255,8 @@ check_accession_sets() {
     grep '^>' "$fasta" | sed 's/^>//' | awk '{print $1}' | sort -u > "$tmp/f"
     cut -f1 "$tax" | sort -u > "$tmp/t"
     local only_f only_t
-    only_f=$(comm -23 "$tmp/f" "$tmp/t" | wc -l)
-    only_t=$(comm -13 "$tmp/f" "$tmp/t" | wc -l)
+    only_f=$(comm -23 "$tmp/f" "$tmp/t" | wc -l | tr -d ' ')
+    only_t=$(comm -13 "$tmp/f" "$tmp/t" | wc -l | tr -d ' ')
     if [ "$only_f" != "0" ] || [ "$only_t" != "0" ]; then
         echo "accession sets differ: $only_f only in FASTA, $only_t only in taxonomy" >&2
         return 1

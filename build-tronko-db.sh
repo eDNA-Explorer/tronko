@@ -3,9 +3,9 @@
 #
 # Pipeline steps (based on CALeDNA/crux tronko/build/ scripts):
 #   1. AncestralClust pre-clustering (~20K seqs per cluster)
-#   2. Per-cluster: FAMSA alignment + RAxML tree + nw_reroot
+#   2. Per-cluster: FAMSA alignment + tree (--tree-tool) + nw_reroot
 #   3. Merge/renumber clusters into tronko-build input directory
-#   4. tronko-build -y -s (with recursive SP-score partitioning)
+#   4. tronko-build -y (recursive partitioning by SP score, or by leaf count)
 #   5. BWA and BWA-MEM3 index the reference FASTA
 #
 # Usage:
@@ -17,13 +17,17 @@
 #   -t  Taxonomy file (accession<TAB>lineage)
 #   -o  Output directory (will contain reference_tree.txt, FASTA, BWA index)
 #   -p  Primer/marker name (default: marker)
-#   -T  Threads for RAxML/FAMSA (default: 8)
+#   -T  Threads for FAMSA, the tree tool and tronko-build (default: 8)
 #   -s  SP-score threshold for tronko-build partitioning (default: 0.1)
 #   -F  Use FastTree instead of RAxML (backward compat; default is now VeryFastTree)
 #   --tree-tool <tool>  Set tree tool: raxml, fasttree, veryfasttree (default: veryfasttree)
 #   -E  Export subtrees for ablation studies (passes -E to tronko-build)
 #   -C  AncestralClust cutoff — max seqs before clustering (default: 25000)
 #   -B  AncestralClust bin size — target seqs per cluster (default: 20000)
+#   -P  AncestralClust -p, minimum descendants (default: 75)
+#   -L  Legacy SP score, as main computes it (default: corrected)
+#   --tree-seed N   seed for VeryFastTree/FastTree (default: the tool's own)
+#   --cache-dir DIR intermediate files (default: <output_dir>/.cache)
 #   -J  Parallel jobs for Step 2 cluster processing (default: 1)
 #   --tb-jobs N     tronko-build -J in Step 4: input clusters partitioned in
 #                   parallel (default: 1, the sequential path)
@@ -123,6 +127,12 @@ read -r -a BWA_ARGV <<< "$BWA_ARGS"
 PARTITION_FLAGS=(-s -u "$SP_THRESHOLD")
 [[ -z "$MIN_LEAF" ]] || PARTITION_FLAGS=(-v -f "$MIN_LEAF")
 
+# These are written into build_metadata.json as JSON numbers, and divide the thread count.
+[[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "ERROR: -s needs a number like 0.1, got '$SP_THRESHOLD'" >&2; exit 1; }
+for n in "$THREADS" "$PARALLEL_JOBS" "$TB_JOBS" "${MIN_LEAF:-1}"; do
+    [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: threads, job counts and --min-leaf must be whole numbers of at least 1, got '$n'" >&2; exit 1; }
+done
+
 # Validate required args
 if [[ -z "${INPUT_FASTA:-}" || -z "${INPUT_TAXONOMY:-}" || -z "${OUTPUT_DIR:-}" ]]; then
     echo "ERROR: -f, -t, and -o are required" >&2
@@ -140,7 +150,7 @@ if [[ ! -f "$INPUT_TAXONOMY" ]]; then
 fi
 
 # Verify tools
-for tool in ancestralclust famsa nw_reroot tronko-build bwa bwa-mem3 fasta2phyml.pl python3; do
+for tool in ancestralclust famsa nw_reroot tronko-build tronko-convert bwa bwa-mem3 fasta2phyml.pl python3; do
     if ! command -v "$tool" &>/dev/null; then
         echo "ERROR: $tool not found on PATH" >&2
         exit 1
@@ -447,14 +457,11 @@ build_cluster_tree() {
             -w "$(cd "$raxml_dir" && pwd)" \
             -n 1 -p 1234 -T "$cluster_threads" \
             -s "$(cd "$outdir" && pwd)/${cluster_id}_MSA.phymlAln" 2>/dev/null || true
-        if [[ -f "$raxml_dir/RAxML_bestTree.1" ]]; then
-            cp "$raxml_dir/RAxML_bestTree.1" "$outdir/RAxML_bestTree.${cluster_id}.unrooted"
-        else
-            echo "  WARNING: RAxML failed for cluster $cluster_id, falling back to FastTree"
-            OMP_NUM_THREADS="$cluster_threads" \
-            FastTree -nt -gtr "$outdir/${cluster_id}_MSA.fasta" \
-                > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>/dev/null
+        if [[ ! -f "$raxml_dir/RAxML_bestTree.1" ]]; then
+            echo "  ERROR: RAxML failed for cluster $cluster_id"
+            return 1
         fi
+        cp "$raxml_dir/RAxML_bestTree.1" "$outdir/RAxML_bestTree.${cluster_id}.unrooted"
     fi
 
     # Strip support values from FastTree trees: )0.996:0.068 -> ):0.068
@@ -472,8 +479,9 @@ with open(sys.argv[1], 'w') as f: f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):',
     local reroot_rc=$?
     set -e
     if [[ "$reroot_rc" -ne 0 ]] || [[ ! -s "$outdir/RAxML_bestTree.${cluster_id}.reroot" ]]; then
-        echo "  WARNING: nw_reroot failed for cluster $cluster_id, using unrooted tree"
-        cp "$outdir/RAxML_bestTree.${cluster_id}.unrooted" "$outdir/RAxML_bestTree.${cluster_id}.reroot"
+        echo "  ERROR: nw_reroot failed for cluster $cluster_id"
+        rm -f "$outdir/RAxML_bestTree.${cluster_id}.reroot"
+        return 1
     fi
 
     echo "  Cluster $cluster_id: done"
@@ -609,8 +617,8 @@ for tree_file in "$NEWICK_DIR"/RAxML_bestTree.*.reroot; do
 
     # Check that all 3 files exist
     if [[ ! -f "$NEWICK_DIR/${orig_id}_MSA.fasta" ]] || [[ ! -f "$NEWICK_DIR/${orig_id}_taxonomy.txt" ]]; then
-        echo "  Skipping cluster $orig_id (missing MSA or taxonomy)"
-        continue
+        echo "ERROR: cluster $orig_id has a tree but no MSA or taxonomy" >&2
+        exit 1
     fi
 
     cp "$tree_file" "$MERGED_DIR/RAxML_bestTree.${counter}.reroot"
@@ -691,20 +699,16 @@ STEP5_START=$(date +%s)
 
 # Concatenate final partition raw FASTAs (gap-free) and taxonomy
 # final_partitions.txt is written by tronko-build listing leaf-level partition numbers
-if [ -f "$OUTPUT_DIR/final_partitions.txt" ]; then
-    echo "Using final_partitions.txt to build ${PRIMER}.fasta from raw partition FASTAs..."
-    > "$OUTPUT_DIR/${PRIMER}.fasta"
-    > "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
-    while read -r partnum; do
-        cat "$OUTPUT_DIR/partition${partnum}.fasta" >> "$OUTPUT_DIR/${PRIMER}.fasta"
-        cat "$OUTPUT_DIR/partition${partnum}_taxonomy.txt" >> "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
-    done < "$OUTPUT_DIR/final_partitions.txt"
-else
-    echo "WARNING: final_partitions.txt not found, falling back to merged dir FASTAs"
-    cat "$MERGED_DIR"/*_MSA.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || \
-        cat "$MERGED_DIR"/*.fasta > "$OUTPUT_DIR/${PRIMER}.fasta" 2>/dev/null || true
-    cat "$MERGED_DIR"/*_taxonomy.txt > "$OUTPUT_DIR/${PRIMER}_taxonomy.txt" 2>/dev/null || true
+if [ ! -s "$OUTPUT_DIR/final_partitions.txt" ]; then
+    echo "ERROR: tronko-build wrote no final_partitions.txt" >&2
+    exit 1
 fi
+> "$OUTPUT_DIR/${PRIMER}.fasta"
+> "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
+while read -r partnum; do
+    cat "$OUTPUT_DIR/partition${partnum}.fasta" >> "$OUTPUT_DIR/${PRIMER}.fasta"
+    cat "$OUTPUT_DIR/partition${partnum}_taxonomy.txt" >> "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
+done < "$OUTPUT_DIR/final_partitions.txt"
 
 # BWA index
 echo "Building BWA index..."
@@ -721,14 +725,9 @@ bwa index "${BWA_ARGV[@]}" "$OUTPUT_DIR/${PRIMER}.fasta"
 bwa-mem3 index "$OUTPUT_DIR/${PRIMER}.fasta"
 
 # Convert reference tree to .trkb binary format (required by tronko-assign)
-if command -v tronko-convert &> /dev/null; then
-    echo "Converting reference tree to .trkb format..."
-    tronko-convert -i "$OUTPUT_DIR/reference_tree.txt" -o "$OUTPUT_DIR/reference_tree.trkb"
-    gzip -f "$OUTPUT_DIR/reference_tree.txt"
-else
-    echo "WARNING: tronko-convert not found, keeping .txt.gz only (tronko-assign may require .trkb)"
-    gzip -f "$OUTPUT_DIR/reference_tree.txt"
-fi
+echo "Converting reference tree to .trkb format..."
+tronko-convert -i "$OUTPUT_DIR/reference_tree.txt" -o "$OUTPUT_DIR/reference_tree.trkb"
+gzip -f "$OUTPUT_DIR/reference_tree.txt"
 
 STEP5_END=$(date +%s)
 echo "Step 5 complete in $((STEP5_END - STEP5_START))s"
@@ -799,7 +798,7 @@ jstr() { [ -n "${1:-}" ] && printf '"%s"' "$1" || printf 'null'; }
 cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
 {
   "marker": "$PRIMER",
-  "pipeline": "build-tronko-db.sh (AncestralClust + ${TREE_TOOL:-FastTree} + SP partitioning)",
+  "pipeline": "build-tronko-db.sh (AncestralClust + $TREE_TOOL + $([ -n "$MIN_LEAF" ] && echo min-leaf || echo SP) partitioning)",
   "input_sequences": $(grep -c '^>' "$INPUT_FASTA"),
   "input_fasta": "$INPUT_FASTA",
   "input_taxonomy": "$INPUT_TAXONOMY",

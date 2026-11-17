@@ -10,7 +10,8 @@
 #            tronko-build -y; final partitions → <marker>.fasta + taxonomy;
 #            tronko-convert → reference_tree.trkb; bwa and bwa-mem3 index. Writes
 #            params.json (every setting, and build-tronko-db.sh's own
-#            build_metadata.json) and build.log (all output).
+#            build_metadata.json; published as build_params.json) and
+#            build.log (all output).
 #            tronko-build, tronko-convert and ancestralclust are compiled from
 #            this checkout, which must be clean, so the recorded commit built
 #            the tree.
@@ -39,11 +40,13 @@
 set -euo pipefail
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
-die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n==> %s\n' "$*"; }
 run() { printf '+ %s\n' "$*"; "$@"; }
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/tronko-db.sh
+. "$REPO/lib/tronko-db.sh"  # input checks; its die is replaced below
+die() { echo "error: $*" >&2; exit 1; }
 
 # Every setting a config file or --set may change; anything else is a typo.
 SETTINGS="THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
@@ -129,7 +132,10 @@ for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DES
         CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS; do
     case "${!key}" in '' | *[!0-9]*) die "$key must be a whole number, got '${!key}'" ;; esac
 done
-case "$SP_THRESHOLD" in '' | *[!0-9.]* | *.*.*) die "SP_THRESHOLD must be a number, got '$SP_THRESHOLD'" ;; esac
+for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
+    [ "${!key}" -ge 1 ] || die "$key must be at least 1"
+done
+[[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "SP_THRESHOLD must be a number like 0.1, got '$SP_THRESHOLD'"
 case "$PARTITION" in sum_of_pairs | min_leaf) ;; *) die "PARTITION must be sum_of_pairs or min_leaf" ;; esac
 case "$TREE_TOOL" in veryfasttree | fasttree | raxml) ;;
     *) die "TREE_TOOL must be veryfasttree, fasttree or raxml" ;; esac
@@ -202,17 +208,28 @@ if has_step build; then
         BUILD_SCRIPT="$REPO/build-tronko-db.sh"
     fi
 
+    # The names fetch saved the tier's files under, and the tag it came from.
+    input_field() { sed -n "s/.*\"$1\": \"\([^\"]*\)\".*/\1/p" "$INPUT/inputs.json"; }
+    FASTA="$INPUT/$(input_field fasta)" SOURCE_TAXONOMY="$INPUT/$(input_field taxonomy)"
+    [ -f "$FASTA" ] && [ -f "$SOURCE_TAXONOMY" ] || die "$INPUT does not hold the files inputs.json names"
+
     # rCRUX writes accession, taxid, lineage; tronko-build reads accession, lineage.
     # The taxid goes back into the published taxonomy after the build.
     TAXONOMY="$WORK/taxonomy.2col.txt"
-    TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$INPUT/lca_taxonomy.txt" | sort -u)"
+    TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$SOURCE_TAXONOMY" | sort -u)"
     case "$TAXONOMY_COLUMNS" in
-        2) cp "$INPUT/lca_taxonomy.txt" "$TAXONOMY" ;;
-        3) cut -f1,3 "$INPUT/lca_taxonomy.txt" > "$TAXONOMY" ;;
-        *) die "$INPUT/lca_taxonomy.txt must have 2 or 3 tab-separated columns on every line" ;;
+        2) cp "$SOURCE_TAXONOMY" "$TAXONOMY" ;;
+        3) cut -f1,3 "$SOURCE_TAXONOMY" > "$TAXONOMY" ;;
+        *) die "$SOURCE_TAXONOMY must have 2 or 3 tab-separated columns on every line" ;;
     esac
+    # Checked now, so a bad input stops in seconds and not after the build.
+    check_taxonomy_ranks "$TAXONOMY" 2 || die "every lineage needs $TAX_RANKS ranks"
+    check_accession_charset "$TAXONOMY" || die "accessions cannot contain ':' or spaces"
+    [ -z "$(cut -f1 "$TAXONOMY" | sort | uniq -d | head -1)" ] || die "the taxonomy repeats an accession"
+    check_accession_sets "$FASTA" "$TAXONOMY" || die "the FASTA and the taxonomy cover different accessions"
 
-    BUILD_ARGS=(-f "$INPUT/lca.fasta" -t "$TAXONOMY" -o "$OUT" -p "$MARKER" -T "$THREADS"
+    BUILD_ARGS=(-f "$FASTA" -t "$TAXONOMY" -o "$OUT" -p "$MARKER" -T "$THREADS"
+        --rcrux-tag "$(input_field rcrux_tag)"
         -C "$CLUSTER_CUTOFF" -B "$ANCESTRALCLUST_BIN_SIZE" -P "$ANCESTRALCLUST_MIN_DESCENDANTS"
         -J "$CLUSTER_JOBS" --tree-tool "$TREE_TOOL" --tb-jobs "$TRONKO_BUILD_JOBS"
         --ancestralclust-args "$ANCESTRALCLUST_ARGS" --famsa-args "$FAMSA_ARGS"
@@ -230,12 +247,14 @@ if has_step build; then
     : > "$LOG"
     run bash "$BUILD_SCRIPT" "${BUILD_ARGS[@]}" 2>&1 | tee -a "$LOG"
     [ -s "$OUT/reference_tree.trkb" ] || die "build failed; see $LOG"
-    n_in="$(grep -c '^>' "$INPUT/lca.fasta")" n_out="$(grep -c '^>' "$OUT/$MARKER.fasta")"
+    # Sets and counts: a count alone hides one sequence dropped and another repeated.
+    n_in="$(grep -c '^>' "$FASTA")" n_out="$(grep -c '^>' "$OUT/$MARKER.fasta")"
     [ "$n_in" = "$n_out" ] || die "only $n_out of $n_in sequences reached $OUT/$MARKER.fasta"
+    check_accession_sets "$OUT/$MARKER.fasta" "$TAXONOMY" || die "$OUT/$MARKER.fasta does not hold the input's accessions"
     if [ "$TAXONOMY_COLUMNS" = 3 ]; then
         awk -F '\t' -v OFS='\t' 'NR == FNR { taxid[$1] = $2; next }
             !($1 in taxid) { print "no taxid for " $1 > "/dev/stderr"; exit 1 }
-            { print $1, taxid[$1], $2 }' "$INPUT/lca_taxonomy.txt" "$OUT/${MARKER}_taxonomy.txt" \
+            { print $1, taxid[$1], $2 }' "$SOURCE_TAXONOMY" "$OUT/${MARKER}_taxonomy.txt" \
             > "$WORK/taxonomy.3col.txt" || die "could not put the taxids back into ${MARKER}_taxonomy.txt"
         mv "$WORK/taxonomy.3col.txt" "$OUT/${MARKER}_taxonomy.txt"
     fi

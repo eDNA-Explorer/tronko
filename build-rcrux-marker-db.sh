@@ -315,12 +315,6 @@ db_status "$OUT" "EXIT $rc"
 [ "$rc" -eq 0 ] || die "build-tronko-db.sh failed (rc=$rc); see $OUT/build.log"
 BUILD_SECS=$(( $(date +%s) - BUILD_T0 ))
 
-# A failed cluster silently drops its whole block of sequences from the
-# reference; build-tronko-db.sh only warns about it.
-if grep -qiE 'cluster [0-9]+ (failed|FAILED)' "$OUT/build.log"; then
-    die "build.log reports cluster failures -- the reference would be incomplete"
-fi
-
 # ===========================================================================
 # F. Record inputs and alias -- the last mutations
 # ===========================================================================

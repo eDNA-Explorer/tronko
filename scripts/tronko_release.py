@@ -304,8 +304,7 @@ def resolve_tronko_sha(explicit: str | None) -> str:
     """The tronko commit that built the tree, which must be stated.
 
     It is never taken from the checkout running publish: the tree may have
-    been built from an image or another checkout. TRONKO_REF is the Dockerfile
-    ARG the build image is pinned with.
+    been built from an image or another checkout.
     """
     sha = explicit or os.environ.get("TRONKO_REF")
     if not sha:

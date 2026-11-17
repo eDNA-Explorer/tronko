@@ -61,6 +61,8 @@ def env(tmp_path, monkeypatch):
     (tronko / "scripts").mkdir(parents=True)
     for name in ("release_tronko.sh", "tronko_release.py", "tronko_build.conf"):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
+    (tronko / "lib").mkdir()
+    shutil.copy2(REPO / "lib" / "tronko-db.sh", tronko / "lib" / "tronko-db.sh")
     git(tmp_path, "init", "-q", str(tronko))
     git(tronko, "add", "-A")
     git(tronko, "commit", "-q", "-m", "tronko")
@@ -180,6 +182,16 @@ def test_a_build_that_loses_sequences_is_not_published(env, monkeypatch):
     assert f"only {N_SEQS - 1} of {N_SEQS} sequences" in result.stderr
 
 
+def test_a_bad_taxonomy_stops_before_the_build(env):
+    work = env["tmp"] / "work"
+    assert run(env, "--steps", "fetch").returncode == 0
+    taxonomy = work / "input" / "lca_taxonomy.txt"
+    taxonomy.write_text(taxonomy.read_text().replace(";S0\n", "\n", 1))
+    result = run(env, "--steps", "build")
+    assert result.returncode != 0 and "every lineage needs 7 ranks" in result.stderr
+    assert not (env["tmp"] / "build.args").exists(), "the build never started"
+
+
 def test_uncommitted_tronko_changes_stop_it(env):
     (env["tronko"] / "scripts" / "tronko_release.py").write_text("# edited\n")
     result = run(env)
@@ -247,6 +259,8 @@ def test_later_overrides_win(env, order, expected):
      ("PARTITION=leaves", "PARTITION must be"),
      ("FASTTREE_ARGS=-nt", "unknown setting FASTTREE_ARGS"),
      ("CLUSTER_CUTOFF=lots", "CLUSTER_CUTOFF must be a whole number"),
+     ("SP_THRESHOLD=.1", "SP_THRESHOLD must be a number like 0.1"),
+     ("CLUSTER_JOBS=0", "CLUSTER_JOBS must be at least 1"),
      ("just words", "expected KEY=VALUE")],
 )  # fmt: skip
 def test_bad_settings_are_refused(env, line, message):
@@ -317,7 +331,12 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     (work / "input" / "lca_taxonomy.txt").write_text(
         "".join(f"{i}\t1\t{lineage[i]}\n" for i in ids)
     )
-    (work / "input" / "inputs.json").write_text(json.dumps({"rcrux_tag": "EXAMPLE_v1.0.0"}))
+    (work / "input" / "inputs.json").write_text(
+        json.dumps(
+            {"rcrux_tag": "EXAMPLE_v1.0.0", "fasta": "lca.fasta", "taxonomy": "lca_taxonomy.txt"},
+            indent=2,
+        )
+    )
     tronko = tmp_path / "tronko"
     git(tmp_path, "clone", "-q", str(REPO), str(tronko))
     monkeypatch.setenv("PYTHON", sys.executable)
@@ -341,3 +360,4 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     build = json.loads((work / "params.json").read_text())["build"]
     assert build["tree_tool"] == "raxml" and build["reference_sequences"] == len(ids)
     assert build["tronko_build_args"] == "--one-thread-below 0"
+    assert build["rcrux_tag"] == "EXAMPLE_v1.0.0"

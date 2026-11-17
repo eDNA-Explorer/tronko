@@ -471,15 +471,9 @@ void inittransitionmatrixnc(double pi[4], double par[10])
        }*/
   if (eigen(1, A[0], 4, RRVALnc, RIVAL, RRVECnc[0], RIVEC[0], workspace) != 0)
   {
-    fprintf(stderr, "WARNING: Transitions matrix did not converge (using identity fallback)\n");
-    /* Use identity eigenvectors as fallback for degenerate trees */
-    int ii, jj;
-    for (ii=0; ii<4; ii++){
-      RRVALnc[ii] = -1.0;
-      for (jj=0; jj<4; jj++){
-        RRVECnc[ii][jj] = (ii == jj) ? 1.0 : 0.0;
-      }
-    }
+    /* No valid substitution model: posteriors computed from here would be wrong. */
+    fprintf(stderr, "Error: transitions matrix did not converge or contained non-real values\n");
+    exit(EXIT_FAILURE);
   }
 
   for (i=0; i<4; i++)
@@ -1047,6 +1041,9 @@ void estimatebranchlengths_Arr(double par[10], int precision, int whichRoot){
 void estimatenucparameters_Arr(double parameters[10], int whichRoot){
   double L;
   COUNT=COUNT2=0;
+  /* The optimizer's gradient mode is per thread and outlives a tree; start each tree
+     from the same state whichever tree this thread fitted before. */
+  CENTRALMODE = 0;
   clearGlobals();
   printf("Initial likelihoodL value = %lf\n",-getlike_gamma_Arr(parameters,whichRoot));
   //estimatebracnhlengths(parameters, 0);

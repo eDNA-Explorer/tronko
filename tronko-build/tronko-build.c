@@ -236,6 +236,16 @@ void findMaxTaxName(FILE* file, int* specs){
 		s = strtok_r(buffer,"\t",&save);
 		lineTaxonomy = strtok_r(NULL,"\n",&save);
 		if (lineTaxonomy == NULL) continue;
+		/* Fewer ranks, or an empty one, would shift the ranks that follow, and the
+		   LCA of two leaves would then be read off the wrong rank. */
+		int ranks = 1, empty = (lineTaxonomy[0] == ';' || lineTaxonomy[0] == '\0');
+		for (char *p = lineTaxonomy; *p; p++){
+			if (*p == ';'){ ranks++; if (p[1] == ';' || p[1] == '\0' || p[1] == '\r') empty = 1; }
+		}
+		if (ranks != 7 || empty){
+			fprintf(stderr, "Error: the taxonomy of %s needs 7 non-empty ranks separated by ';', got: %s\n", s, lineTaxonomy);
+			exit(EXIT_FAILURE);
+		}
 		int taxsize = strlen(lineTaxonomy);
 		if ( max_line < taxsize ){
 			max_line = taxsize;
