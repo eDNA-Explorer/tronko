@@ -310,6 +310,17 @@ tronko-build -y -e initial_clusters_directory -d outdir -n 100 -v -f 500
 
 The `reference_tree.txt` file will be output to the `outdir` directory.
 
+# Releasing a reference database
+
+`scripts/release_tronko.sh` builds a tronko database from a tagged rcrux-py release and publishes it, in one command:
+
+```
+scripts/release_tronko.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
+    --rcrux-checkout ~/rcrux-py --threads 32 --push
+```
+
+It fetches the release's `curated/lca.fasta` and `lca_taxonomy.txt` from DVC, clusters with `ancestralclust` above 25,000 sequences, aligns (`famsa`), builds and roots a tree per cluster (`VeryFastTree`/`FastTree`, `nw_reroot`), runs `tronko-build -y`, converts to `reference_tree.trkb` and builds the BWA index. `tronko-build` and `tronko-convert` are compiled from this checkout, whose commit is recorded. Every setting goes to `params.json` and all output to `build.log`; `scripts/tronko_release.py publish` then stores the database in the rcrux DVC remote and commits `tronko.dvc` on a publish branch of the rcrux-py checkout. Merging that branch tags `<marker>_tronko_<version>`. Run with `--help` for the clustering and partitioning options.
+
 # `tronko-assign` using pre-built 16S and COI databases
 
 First download the databases from Zenodo (<a href="https://doi.org/10.5281/zenodo.7407318"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg" alt="DOI"></a>). To assign FASTQ (`-q`) paired-end reads (`-p`) using the 16S database (and reverse-complement the reverse read `-z`) with Needleman-Wunsch (`-w`), 16 cores (`-C 16`), and an LCA cut-off of 5 (`-c 5`):
