@@ -1,9 +1,11 @@
 #!/bin/bash
 # tronko-build regression tests.
 #   1. Single-tree mode must reproduce the committed example reference_tree.txt byte for byte.
-#   2. Partition mode (-y) must give main's 9 trees for the example, the same database and
-#      partition numbers at -J 1 and -J 3, and leave its input untouched. It needs
-#      raxmlHPC-PTHREADS, famsa and nw_reroot on PATH and is skipped without them.
+#   2. Partition mode (-y) must give 9 trees for the example, the same database and
+#      partition numbers at -J 1 and -J 3, and leave its input untouched. It needs famsa and
+#      FastTree on PATH, or failing that raxmlHPC-PTHREADS and nw_reroot, and is skipped
+#      without them. FastTree is preferred: nine RAxML runs of 8 threads each took 1 h 45 min
+#      on a 4-core CI runner.
 # Usage: tests/test_tronko_build_golden.sh
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,14 +31,21 @@ else
 fi
 rm -rf "$out"
 
-echo "--- partition (9 trees as on main; same output and partition numbers at -J 1 and -J 3) ---"
-if command -v raxmlHPC-PTHREADS >/dev/null && command -v famsa >/dev/null && command -v nw_reroot >/dev/null; then
+echo "--- partition (9 trees; same output and partition numbers at -J 1 and -J 3) ---"
+tool=""
+if command -v famsa >/dev/null && command -v FastTree >/dev/null; then
+    tool="-a"
+elif command -v famsa >/dev/null && command -v raxmlHPC-PTHREADS >/dev/null && command -v nw_reroot >/dev/null; then
+    tool="--tree-tool raxml"
+fi
+if [ -n "$tool" ]; then
+    echo "  tree tool: $tool"
     out=$(mktemp -d)
     in="$EXAMPLE_DIR/multiple_trees/multiple_MSA"
     before=$(cat "$in"/* | cksum)
     start=$(date +%s)
-    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j1" -s -u 0.1 > "$out/j1.log" 2>&1; rc1=$?
-    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j3" -s -u 0.1 -J 3 > "$out/j3.log" 2>&1; rc3=$?
+    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j1" -s -u 0.1 $tool > "$out/j1.log" 2>&1; rc1=$?
+    "$TRONKO_BUILD" -y -e "$in" -n 5 -d "$out/j3" -s -u 0.1 $tool -J 3 > "$out/j3.log" 2>&1; rc3=$?
     echo "  $(( $(date +%s) - start ))s"
     if [ "$rc1" -eq 0 ] && [ "$rc3" -eq 0 ] \
         && [ "$(head -1 "$out/j1/reference_tree.txt")" = 9 ] \
@@ -50,7 +59,7 @@ if command -v raxmlHPC-PTHREADS >/dev/null && command -v famsa >/dev/null && com
     fi
     rm -rf "$out"
 else
-    echo "  SKIP: raxmlHPC-PTHREADS, famsa or nw_reroot not on PATH"
+    echo "  SKIP: needs famsa and FastTree, or famsa, raxmlHPC-PTHREADS and nw_reroot, on PATH"
 fi
 
 echo "=== $PASS passed, $FAIL failed ==="

@@ -22,7 +22,10 @@ jobs:
           zlib1g-dev \
           libzstd-dev \
           lcov \
-          valgrind
+          valgrind \
+          fasttree
+        # tronko-build runs the tool as "FastTree"; the package installs "fasttree"
+        sudo ln -sf "$(command -v fasttree)" /usr/local/bin/FastTree
     
     - name: Setup Unity testing framework
       run: |
