@@ -422,7 +422,8 @@ build_cluster_tree() {
         # sequences, on alignments with few distinct sequences; one thread never has.
         local vft_threads="$cluster_threads"
         [[ "$n_seqs" -lt 10000 ]] && vft_threads=1
-        $TREE_BIN -threads "$vft_threads" "${seed_args[@]}" -nt -gtr -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
+        # -gamma, as tronko-build uses for the partition trees it builds itself.
+        $TREE_BIN -threads "$vft_threads" "${seed_args[@]}" -nt -gtr -gamma -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
@@ -437,7 +438,7 @@ build_cluster_tree() {
         [[ "${TREE_SEED:-0}" != "0" ]] && seed_args=("-seed" "$TREE_SEED")
         set +e
         OMP_NUM_THREADS="$cluster_threads" \
-        $TREE_BIN "${seed_args[@]}" -nt -gtr -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
+        $TREE_BIN "${seed_args[@]}" -nt -gtr -gamma -nosupport "${TREE_ARGV[@]}" "$outdir/${cluster_id}_MSA.fasta" \
             > "$outdir/RAxML_bestTree.${cluster_id}.unrooted" 2>"$outdir/${cluster_id}_tree.log"
         local tree_rc=$?
         set -e
