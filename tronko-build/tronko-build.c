@@ -384,19 +384,22 @@ void getTaxonomyArr(int node, struct masterArr *m, int *out){
 				m->tree[node].taxIndex[0]=-1;
 				m->tree[node].taxIndex[1]=-1;
 			}else{
-				int i=0;
-				int phylogenyLevel=0;
+				int i;
+				int phylogenyLevel=-1;
 				int maxABLevel = (taxIndexA[1] > taxIndexB[1]) ? taxIndexA[1] : taxIndexB[1];
-				for(i=maxABLevel;i<7;i++){
-					if ( m->taxonomy[taxIndexA[0]] != NULL && m->taxonomy[taxIndexB[0]] != NULL &&
-					     strcmp(m->taxonomy[taxIndexA[0]][i],m->taxonomy[taxIndexB[0]][i])==0){
-						phylogenyLevel = i;
-						out[0] = taxIndexA[0];
-						out[1] = phylogenyLevel;
-						m->tree[node].taxIndex[0] = taxIndexA[0];
-						m->tree[node].taxIndex[1] = phylogenyLevel;
-						break;
-					}
+				/* The lowest rank the two share, counting a rank as shared only if every
+				   rank above it is too (6 is the domain, 0 the species). Taking the first
+				   rank whose names match put two leaves of different families at species
+				   level when both were "NA" there. */
+				for(i=6;i>=maxABLevel;i--){
+					if ( strcmp(m->taxonomy[taxIndexA[0]][i],m->taxonomy[taxIndexB[0]][i])!=0 ) break;
+					phylogenyLevel = i;
+				}
+				if ( phylogenyLevel != -1 ){
+					out[0] = taxIndexA[0];
+					out[1] = phylogenyLevel;
+					m->tree[node].taxIndex[0] = taxIndexA[0];
+					m->tree[node].taxIndex[1] = phylogenyLevel;
 				}
 			}
 		}
