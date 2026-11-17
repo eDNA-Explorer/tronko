@@ -30,7 +30,7 @@ mkdir -p "$o"
 echo "stand-in build of $p"
 if [ -n "${DROP_LAST:-}" ]; then sed '$d' "$f" | sed '$d' > "$o/$p.fasta"; else cp "$f" "$o/$p.fasta"; fi
 cp "$t" "$o/${p}_taxonomy.txt"
-for e in amb ann bwt pac sa; do echo index > "$o/$p.fasta.$e"; done
+for e in amb ann bwt pac sa bwt.2bit.64; do echo index > "$o/$p.fasta.$e"; done
 echo TRKB > "$o/reference_tree.trkb"
 echo '{"pipeline": "stand-in", "tree_tool": "veryfasttree"}' > "$o/build_metadata.json"
 """
@@ -138,9 +138,12 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert args[args.index("-s") + 1] == "0.1" and "-L" in args and "--min-leaf" not in args
     assert args[args.index("--tree-tool") + 1] == "veryfasttree"
 
-    # rCRUX's taxid column is dropped before the build.
+    # The build gets accession and lineage; the published taxonomy keeps rCRUX's taxid.
     taxonomy = (work / "taxonomy.2col.txt").read_text().splitlines()
     assert len(taxonomy) == N_SEQS and all(line.count("\t") == 1 for line in taxonomy)
+    released = (checkout / "databases" / MARKER / "tronko" / f"{MARKER}_taxonomy.txt").read_text()
+    assert released.splitlines()[0] == "seq_000\t7000\tEukaryota;Arthropoda;Insecta;Diptera;F;G;S0"
+    assert len(released.splitlines()) == N_SEQS
     assert (work / "out" / f"{MARKER}.fasta").read_text().count(">") == N_SEQS
     assert "stand-in build" in (work / "build.log").read_text()
 
@@ -291,7 +294,7 @@ def test_publish_alone_needs_a_finished_build(env):
     assert result.returncode != 0 and "no finished build" in result.stderr
 
 
-REAL_TOOLS = ("famsa", "nw_reroot", "bwa", "raxmlHPC-PTHREADS", "fasta2phyml.pl", "make", "gcc")
+REAL_TOOLS = ("famsa", "nw_reroot", "bwa", "bwa-mem3", "raxmlHPC-PTHREADS", "fasta2phyml.pl", "make", "gcc")
 
 
 @pytest.mark.skipif(
@@ -331,7 +334,10 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     assert (out / "EXAMPLE.fasta").read_text().count(">") == len(ids)
     assert (out / "reference_tree.trkb").stat().st_size > 0
     assert (out / "EXAMPLE.fasta.bwt").stat().st_size > 0
-    assert len((out / "EXAMPLE_taxonomy.txt").read_text().splitlines()) == len(ids)
+    assert (out / "EXAMPLE.fasta.bwt.2bit.64").stat().st_size > 0
+    taxonomy = (out / "EXAMPLE_taxonomy.txt").read_text().splitlines()
+    assert len(taxonomy) == len(ids)
+    assert all(line.split("\t")[1:] == ["1", lineage[line.split("\t")[0]]] for line in taxonomy)
     build = json.loads((work / "params.json").read_text())["build"]
     assert build["tree_tool"] == "raxml" and build["reference_sequences"] == len(ids)
     assert build["tronko_build_args"] == "--one-thread-below 0"

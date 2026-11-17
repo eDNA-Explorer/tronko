@@ -6,7 +6,7 @@
 #   2. Per-cluster: FAMSA alignment + RAxML tree + nw_reroot
 #   3. Merge/renumber clusters into tronko-build input directory
 #   4. tronko-build -y -s (with recursive SP-score partitioning)
-#   5. BWA index the reference FASTA
+#   5. BWA and BWA-MEM3 index the reference FASTA
 #
 # Usage:
 #   build-tronko-db.sh -f <input.fasta> -t <taxonomy.txt> -o <output_dir> \
@@ -140,7 +140,7 @@ if [[ ! -f "$INPUT_TAXONOMY" ]]; then
 fi
 
 # Verify tools
-for tool in ancestralclust famsa nw_reroot tronko-build bwa fasta2phyml.pl python3; do
+for tool in ancestralclust famsa nw_reroot tronko-build bwa bwa-mem3 fasta2phyml.pl python3; do
     if ! command -v "$tool" &>/dev/null; then
         echo "ERROR: $tool not found on PATH" >&2
         exit 1
@@ -709,6 +709,9 @@ fi
 # BWA index
 echo "Building BWA index..."
 bwa index "${BWA_ARGV[@]}" "$OUTPUT_DIR/${PRIMER}.fasta"
+# tronko-assign aligns with BWA-MEM3 (make -C tronko-assign bwa-mem3) and would
+# otherwise build this index beside the FASTA on its first run.
+bwa-mem3 index "$OUTPUT_DIR/${PRIMER}.fasta"
 
 # Convert reference tree to .trkb binary format (required by tronko-assign)
 if command -v tronko-convert &> /dev/null; then
@@ -813,6 +816,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "tree_args": "$TREE_ARGS",
   "tronko_build_args": "$TB_ARGS",
   "bwa_args": "$BWA_ARGS",
+  "bwa_mem3_version": "$(bwa-mem3 version 2>&1 | head -1)",
   "sp_normalization": "$([ "$LEGACY_SP" -eq 1 ] && echo legacy || echo corrected)",
   "tree_tool": "${TREE_TOOL:-FastTree}",
   "n_trees": $N_TREES,

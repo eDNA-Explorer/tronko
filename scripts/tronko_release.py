@@ -11,7 +11,7 @@ treatment, with DVC as the only storage on both sides:
             were read in inputs.json.
 2. (build)  Run tronko-build however the marker needs; this script does not
             build trees.
-3. publish  Check the eight files tronko-assign needs, write metadata.json
+3. publish  Check the nine files tronko-assign needs, write metadata.json
             beside them with the build log and the build settings (always
             required), then in an rcrux-py checkout:
             dvc add databases/{marker}/tronko, dvc push -r rcrux, and commit
@@ -51,7 +51,9 @@ DEFAULT_RCRUX_REPO = "https://github.com/eDNA-Explorer/rcrux-py"
 DVC_REMOTE = "rcrux"
 # tronko builds from rcrux's LCA tier: curated/lca.fasta + lca_taxonomy.txt.
 INPUT_TIER = "lca"
-BWA_INDEX_EXTENSIONS = (".amb", ".ann", ".bwt", ".pac", ".sa")
+# bwa's index, then the one file BWA-MEM3 adds (it shares .amb .ann .pac);
+# tronko-assign aligns with BWA-MEM3.
+BWA_INDEX_EXTENSIONS = (".amb", ".ann", ".bwt", ".pac", ".sa", ".bwt.2bit.64")
 VERSION_PATTERN = re.compile(r"v\d+\.\d+\.\d+")
 METADATA_FILENAME = "metadata.json"
 INPUTS_FILENAME = "inputs.json"
@@ -60,7 +62,7 @@ BUILD_PARAMS_FILENAME = "build_params.json"
 
 
 def required_files(marker: str) -> list[str]:
-    """The eight files tronko-assign reads, the same set RefDB ingestion checks."""
+    """The nine files of a database: RefDB ingestion's eight, plus the BWA-MEM3 index."""
     fasta = f"{marker}.fasta"
     return [
         fasta,

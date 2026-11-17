@@ -43,7 +43,7 @@ def write_params(tmp_path: Path) -> Path:
     return path
 
 
-def test_required_files_are_the_eight_assign_reads():
+def test_required_files_include_both_aligner_indexes():
     assert tr.required_files("M") == [
         "M.fasta",
         "M.fasta.amb",
@@ -51,6 +51,7 @@ def test_required_files_are_the_eight_assign_reads():
         "M.fasta.bwt",
         "M.fasta.pac",
         "M.fasta.sa",
+        "M.fasta.bwt.2bit.64",
         "reference_tree.trkb",
         "M_taxonomy.txt",
     ]

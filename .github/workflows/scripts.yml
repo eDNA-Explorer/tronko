@@ -19,7 +19,18 @@ jobs:
       run: curl -LsSf https://astral.sh/uv/0.9.5/install.sh | sh
 
     - name: Install what the real-build test compiles and runs with
-      run: sudo apt-get update && sudo apt-get install -y bwa zlib1g-dev libzstd-dev
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bwa zlib1g-dev libzstd-dev \
+          clang-19 libomp-19-dev libdeflate-dev autoconf automake libtool cmake
+
+    - name: Cache BWA-MEM3 (by release and build script)
+      uses: actions/cache@v4
+      with:
+        path: tronko-assign/build/bwa-mem3
+        key: bwa-mem3-v0.14.0-5c1d5e3-clang19-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tronko-assign/scripts/build_bwa_mem3.sh') }}
+    - name: Build BWA-MEM3 (the aligner tronko-assign runs; pinned v0.14.0, clang 19)
+      run: make -C tronko-assign bwa-mem3
 
     - name: Run script tests
       working-directory: scripts
@@ -27,4 +38,4 @@ jobs:
         uv sync --frozen
         # The release tests drive the dvc CLI from the synced environment; the
         # real-build test uses the bundled x86-64 tools in bin/.
-        PATH="$PWD/.venv/bin:$PATH:$PWD/../bin" uv run --frozen pytest -q -rs
+        PATH="$PWD/.venv/bin:$PWD/../tronko-assign:$PATH:$PWD/../bin" uv run --frozen pytest -q -rs

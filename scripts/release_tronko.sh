@@ -8,7 +8,7 @@
 #   build    build-tronko-db.sh: ancestralclust above CLUSTER_CUTOFF sequences,
 #            else one cluster; per cluster FAMSA → tree → nw_reroot;
 #            tronko-build -y; final partitions → <marker>.fasta + taxonomy;
-#            tronko-convert → reference_tree.trkb; bwa index. Writes
+#            tronko-convert → reference_tree.trkb; bwa and bwa-mem3 index. Writes
 #            params.json (every setting, and build-tronko-db.sh's own
 #            build_metadata.json) and build.log (all output).
 #            tronko-build, tronko-convert and ancestralclust are compiled from
@@ -194,12 +194,19 @@ if has_step build; then
             PATH="$REPO/$tool:$PATH"
         done
         PATH="$PATH:$REPO/bin"  # fasta2phyml.pl
+        # BWA-MEM3 is a pinned outside release, not this checkout's code.
+        if ! command -v bwa-mem3 >/dev/null; then
+            run make -s -C "$REPO/tronko-assign" bwa-mem3
+            PATH="$REPO/tronko-assign:$PATH"
+        fi
         BUILD_SCRIPT="$REPO/build-tronko-db.sh"
     fi
 
     # rCRUX writes accession, taxid, lineage; tronko-build reads accession, lineage.
+    # The taxid goes back into the published taxonomy after the build.
     TAXONOMY="$WORK/taxonomy.2col.txt"
-    case "$(awk -F '\t' '{ print NF }' "$INPUT/lca_taxonomy.txt" | sort -u)" in
+    TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$INPUT/lca_taxonomy.txt" | sort -u)"
+    case "$TAXONOMY_COLUMNS" in
         2) cp "$INPUT/lca_taxonomy.txt" "$TAXONOMY" ;;
         3) cut -f1,3 "$INPUT/lca_taxonomy.txt" > "$TAXONOMY" ;;
         *) die "$INPUT/lca_taxonomy.txt must have 2 or 3 tab-separated columns on every line" ;;
@@ -225,6 +232,13 @@ if has_step build; then
     [ -s "$OUT/reference_tree.trkb" ] || die "build failed; see $LOG"
     n_in="$(grep -c '^>' "$INPUT/lca.fasta")" n_out="$(grep -c '^>' "$OUT/$MARKER.fasta")"
     [ "$n_in" = "$n_out" ] || die "only $n_out of $n_in sequences reached $OUT/$MARKER.fasta"
+    if [ "$TAXONOMY_COLUMNS" = 3 ]; then
+        awk -F '\t' -v OFS='\t' 'NR == FNR { taxid[$1] = $2; next }
+            !($1 in taxid) { print "no taxid for " $1 > "/dev/stderr"; exit 1 }
+            { print $1, taxid[$1], $2 }' "$INPUT/lca_taxonomy.txt" "$OUT/${MARKER}_taxonomy.txt" \
+            > "$WORK/taxonomy.3col.txt" || die "could not put the taxids back into ${MARKER}_taxonomy.txt"
+        mv "$WORK/taxonomy.3col.txt" "$OUT/${MARKER}_taxonomy.txt"
+    fi
 
     # Every effective setting, and what the build recorded about itself, so
     # params.json says exactly how this tree was made.
