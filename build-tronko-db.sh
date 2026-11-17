@@ -708,6 +708,13 @@ fi
 
 # BWA index
 echo "Building BWA index..."
+# A tree that is not a numbered partition has no partition FASTA, so its
+# sequences are missing from the FASTA above. tronko-build numbers every tree;
+# this catches a build made with an older one.
+if grep -qvE 'RAxML_bestTree\.partition[0-9]+\.reroot' "$OUTPUT_DIR/tree_list.txt"; then
+    echo "ERROR: tree_list.txt has trees that are not numbered partitions (see check-orphaned-partitions.sh)" >&2
+    exit 1
+fi
 bwa index "${BWA_ARGV[@]}" "$OUTPUT_DIR/${PRIMER}.fasta"
 # tronko-assign aligns with BWA-MEM3 (make -C tronko-assign bwa-mem3) and would
 # otherwise build this index beside the FASTA on its first run.

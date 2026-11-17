@@ -322,51 +322,31 @@ if grep -qiE 'cluster [0-9]+ (failed|FAILED)' "$OUT/build.log"; then
 fi
 
 # ===========================================================================
-# F. Repair BEFORE anything is named
-#
-# repair-orphaned-partitions.sh rewrites the DB FASTA and re-runs bwa index, so
-# any alias created before this point would reference replaced content.
+# F. Record inputs and alias -- the last mutations
 # ===========================================================================
-echo "=== F. orphan check ==="
-if ! "$TRONKO_REPO_DIR/check-orphaned-partitions.sh" "$OUT"; then
-    echo "  orphans found -- repairing"
-    "$TRONKO_REPO_DIR/repair-orphaned-partitions.sh" "$OUT" || die "repair failed"
-    db_status "$OUT" REPAIRED
-    "$TRONKO_REPO_DIR/check-orphaned-partitions.sh" "$OUT" || die "orphans remain after repair"
-fi
-
-# ===========================================================================
-# G. Record inputs and alias -- the last mutations
-# ===========================================================================
-echo "=== G. record inputs and alias ==="
+echo "=== F. record inputs and alias ==="
 cp "$RC_FASTA" "$OUT/input.fasta"
 cp "$TAX2"     "$OUT/input_taxonomy.txt"
 # An imported master has no rCRUX tier to point at: its lca tier's record (the
 # source release's hashes and how labels were collapsed) travels with it.
 [ "$TIER" = imported ] && cp "$RC_TIER_DIR/lca_tier.json" "$OUT/imported_lca_tier.json"
 db_status "$OUT" INPUTS_RECORDED
-# tronko-assign -6 builds a missing BWA-MEM3 index beside the FASTA on first
-# use, which would write into a DVC-tracked master: ship it built instead.
-command -v bwa-mem3 >/dev/null || die "bwa-mem3 not on PATH (make -C tronko-assign bwa-mem3)"
-echo "  BWA-MEM3 index of ${PRIMER}.fasta ($(bwa-mem3 version 2>&1 | head -1))"
-bwa-mem3 version > "$OUT/bwa_mem3_version.txt" 2>&1
-bwa-mem3 index "$OUT/${PRIMER}.fasta" > "$OUT/bwa_mem3_index.log" 2>&1 \
-    || die "bwa-mem3 index failed; see $OUT/bwa_mem3_index.log"
-db_status "$OUT" BWA_MEM3_INDEXED
+# build-tronko-db.sh has built the BWA-MEM3 index beside the FASTA, so
+# tronko-assign -6 never writes into a DVC-tracked master.
 alias_marker_files "$OUT" "$PRIMER" || die "aliasing failed"
 db_status "$OUT" ALIASED
 db_status "$OUT" DONE
 
 # ===========================================================================
-# H/I. Verify and report
+# G/H. Verify and report
 # ===========================================================================
 VERIFY_RC=0
 if [ "$DO_VERIFY" = "1" ]; then
-    echo "=== H. verify ==="
+    echo "=== G. verify ==="
     "$TRONKO_REPO_DIR/verify-tronko-db.sh" "$OUT" || VERIFY_RC=1
 fi
 
-echo "=== I. summary ==="
+echo "=== H. summary ==="
 echo "  marker        : $MARKER  (tier $TIER, tag $RC_TAG)"
 echo "  output        : $OUT"
 echo "  build time    : ${BUILD_SECS}s"
