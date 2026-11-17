@@ -214,7 +214,7 @@ if has_step build; then
     [ -f "$FASTA" ] && [ -f "$SOURCE_TAXONOMY" ] || die "$INPUT does not hold the files inputs.json names"
 
     # rCRUX writes accession, taxid, lineage; tronko-build reads accession, lineage.
-    # The taxid goes back into the published taxonomy after the build.
+    # The taxids are published in their own file after the build.
     TAXONOMY="$WORK/taxonomy.2col.txt"
     TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$SOURCE_TAXONOMY" | sort -u)"
     case "$TAXONOMY_COLUMNS" in
@@ -251,12 +251,13 @@ if has_step build; then
     n_in="$(grep -c '^>' "$FASTA")" n_out="$(grep -c '^>' "$OUT/$MARKER.fasta")"
     [ "$n_in" = "$n_out" ] || die "only $n_out of $n_in sequences reached $OUT/$MARKER.fasta"
     check_accession_sets "$OUT/$MARKER.fasta" "$TAXONOMY" || die "$OUT/$MARKER.fasta does not hold the input's accessions"
+    # <marker>_taxonomy.txt stays accession, lineage, which is what its readers
+    # split on; rCRUX's taxids go beside it, in the same row order.
     if [ "$TAXONOMY_COLUMNS" = 3 ]; then
         awk -F '\t' -v OFS='\t' 'NR == FNR { taxid[$1] = $2; next }
             !($1 in taxid) { print "no taxid for " $1 > "/dev/stderr"; exit 1 }
-            { print $1, taxid[$1], $2 }' "$SOURCE_TAXONOMY" "$OUT/${MARKER}_taxonomy.txt" \
-            > "$WORK/taxonomy.3col.txt" || die "could not put the taxids back into ${MARKER}_taxonomy.txt"
-        mv "$WORK/taxonomy.3col.txt" "$OUT/${MARKER}_taxonomy.txt"
+            { print $1, taxid[$1] }' "$SOURCE_TAXONOMY" "$OUT/${MARKER}_taxonomy.txt" \
+            > "$OUT/${MARKER}_taxids.txt" || die "could not write ${MARKER}_taxids.txt"
     fi
 
     # Every effective setting, and what the build recorded about itself, so

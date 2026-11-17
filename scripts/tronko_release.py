@@ -72,6 +72,13 @@ def required_files(marker: str) -> list[str]:
     ]
 
 
+def published_files(build_dir: Path, marker: str) -> list[str]:
+    """The required files, plus <marker>_taxids.txt when the build wrote one
+    (rCRUX's taxid per accession; a 2-column input has none)."""
+    taxids = f"{marker}_taxids.txt"
+    return required_files(marker) + ([taxids] if (build_dir / taxids).is_file() else [])
+
+
 def file_digest(path: Path, algorithm: str) -> str:
     digest = hashlib.new(algorithm)
     with open(path, "rb") as handle:
@@ -330,7 +337,9 @@ def build_metadata(
         raise ValueError("Build settings are required: a non-empty JSON object")
     if inputs.get("marker") != marker:
         raise ValueError(f"inputs.json is for {inputs.get('marker')!r}, not {marker!r}")
-    files = {name: file_digest(build_dir / name, "sha256") for name in required_files(marker)}
+    files = {
+        name: file_digest(build_dir / name, "sha256") for name in published_files(build_dir, marker)
+    }
     tree = build_dir / "reference_tree.trkb"
     return {
         "schema_version": SCHEMA_VERSION,
@@ -469,7 +478,7 @@ def publish(
         if dest.exists():
             shutil.rmtree(dest)
         dest.mkdir(parents=True)
-        for name in required_files(marker):
+        for name in published_files(build_dir, marker):
             shutil.copy2(build_dir / name, dest / name)
         shutil.copy2(build_log, dest / BUILD_LOG_FILENAME)
         (dest / BUILD_PARAMS_FILENAME).write_text(json.dumps(params, indent=2) + "\n")

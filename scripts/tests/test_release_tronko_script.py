@@ -140,12 +140,17 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert args[args.index("-s") + 1] == "0.1" and "-L" in args and "--min-leaf" not in args
     assert args[args.index("--tree-tool") + 1] == "veryfasttree"
 
-    # The build gets accession and lineage; the published taxonomy keeps rCRUX's taxid.
+    # The taxonomy is accession and lineage, built and published; rCRUX's taxids
+    # are published beside it.
     taxonomy = (work / "taxonomy.2col.txt").read_text().splitlines()
     assert len(taxonomy) == N_SEQS and all(line.count("\t") == 1 for line in taxonomy)
-    released = (checkout / "databases" / MARKER / "tronko" / f"{MARKER}_taxonomy.txt").read_text()
-    assert released.splitlines()[0] == "seq_000\t7000\tEukaryota;Arthropoda;Insecta;Diptera;F;G;S0"
-    assert len(released.splitlines()) == N_SEQS
+    released = checkout / "databases" / MARKER / "tronko"
+    assert (released / f"{MARKER}_taxonomy.txt").read_text().splitlines()[0] == (
+        "seq_000\tEukaryota;Arthropoda;Insecta;Diptera;F;G;S0"
+    )
+    taxids = (released / f"{MARKER}_taxids.txt").read_text().splitlines()
+    assert taxids[0] == "seq_000\t7000" and len(taxids) == N_SEQS
+    assert f"{MARKER}_taxids.txt" in meta["files"]
     assert (work / "out" / f"{MARKER}.fasta").read_text().count(">") == N_SEQS
     assert "stand-in build" in (work / "build.log").read_text()
 
@@ -356,7 +361,11 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     assert (out / "EXAMPLE.fasta.bwt.2bit.64").stat().st_size > 0
     taxonomy = (out / "EXAMPLE_taxonomy.txt").read_text().splitlines()
     assert len(taxonomy) == len(ids)
-    assert all(line.split("\t")[1:] == ["1", lineage[line.split("\t")[0]]] for line in taxonomy)
+    assert all(line.split("\t")[1:] == [lineage[line.split("\t")[0]]] for line in taxonomy)
+    # one taxid row per taxonomy row, in the same order
+    assert (out / "EXAMPLE_taxids.txt").read_text().splitlines() == [
+        line.split("\t")[0] + "\t1" for line in taxonomy
+    ]
     build = json.loads((work / "params.json").read_text())["build"]
     assert build["tree_tool"] == "raxml" and build["reference_sequences"] == len(ids)
     assert build["tronko_build_args"] == "--one-thread-below 0"
