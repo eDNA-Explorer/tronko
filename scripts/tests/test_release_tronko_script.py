@@ -24,7 +24,8 @@ N_SEQS = 6
 STUBS = {
     # Wraps sequences at 3 bases, as FAMSA wraps long lines.
     "famsa": r"""#!/bin/sh
-in="$3"; out="$4"
+echo "$*" > "$CALLS_DIR/famsa.args"
+for a; do in="$out"; out="$a"; done
 awk '/^>/ { print; next } { s = $0; while (length(s) > 3) { print substr(s, 1, 3); s = substr(s, 4) } print s }' "$in" > "$out"
 """,
     "VeryFastTree": r"""#!/bin/sh
@@ -86,7 +87,7 @@ def env(tmp_path, monkeypatch):
     # A tronko checkout holding the scripts, committed, so its HEAD is the sha.
     tronko = tmp_path / "tronko"
     (tronko / "scripts").mkdir(parents=True)
-    for name in ("release_tronko.sh", "tronko_release.py"):
+    for name in ("release_tronko.sh", "tronko_release.py", "tronko_build.conf"):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
     git(tmp_path, "init", "-q", str(tronko))
     git(tronko, "add", "-A")
@@ -152,10 +153,16 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert meta["rcrux_tag"] == RCRUX_TAG
 
     params = meta["build_params"]
-    assert (params["input_sequences"], params["clusters"]) == (N_SEQS, 1)
-    assert params["ancestralclust"]["used"] is False
+    assert (params["input_sequences"], params["clusters"], params["clustered"]) == (
+        N_SEQS,
+        1,
+        False,
+    )
     assert params["tree_builder"] == "VeryFastTree"
-    assert params["tronko_build"]["partition"] == {"mode": "sum_of_pairs", "sp_threshold": 0.1}
+    assert params["config_files"] == ["scripts/tronko_build.conf"]
+    assert params["settings"]["PARTITION"] == "sum_of_pairs"
+    assert params["settings"]["SP_THRESHOLD"] == "0.1"
+    assert params["settings"]["CLUSTER_CUTOFF"] == "25000"
     args = (env["tmp"] / "tronko-build.args").read_text().split()
     assert args[:2] == ["-y", "-e"] and args[3:5] == ["-n", "1"]
     assert args[7:] == ["-s", "-u", "0.1", "-a", "-c", "2"]
@@ -174,8 +181,14 @@ def test_large_input_is_clustered_and_min_leaf_partitioning_is_passed(env):
     result = run(env, "--cluster-cutoff", "3", "--min-leaf", "500")
     assert result.returncode == 0, result.stdout + result.stderr
     params = published(env)["build_params"]
-    assert params["ancestralclust"]["used"] is True and params["clusters"] == 2
-    assert params["tronko_build"]["partition"] == {"mode": "min_leaf", "min_leaf": 500}
+    assert params["clustered"] is True and params["clusters"] == 2
+    assert (params["settings"]["PARTITION"], params["settings"]["MIN_LEAF"]) == ("min_leaf", "500")
+    assert params["overrides"] == [
+        "set:THREADS=2",
+        "set:CLUSTER_CUTOFF=3",
+        "set:PARTITION=min_leaf",
+        "set:MIN_LEAF=500",
+    ]
     args = (env["tmp"] / "tronko-build.args").read_text().split()
     assert args[3:5] == ["-n", "2"] and "-v -f 500" in " ".join(args)
     merged = env["tmp"] / "work" / "build" / "merged"
@@ -197,4 +210,102 @@ def test_missing_required_arguments(env):
         ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--marker", MARKER],
         capture_output=True, text=True, check=False,
     )  # fmt: skip
-    assert result.returncode != 0 and "are required" in result.stderr
+    assert result.returncode != 0 and "needs --rcrux-tag" in result.stderr
+
+
+def commit(repo: Path, path: str, text: str) -> None:
+    (repo / path).parent.mkdir(parents=True, exist_ok=True)
+    (repo / path).write_text(text)
+    git(repo, "add", path)
+    git(repo, "commit", "-q", "-m", f"edit {path}")
+
+
+def test_a_marker_config_is_picked_up_and_reaches_the_tools(env):
+    commit(
+        env["tronko"], f"scripts/tronko_build.d/{MARKER}.conf",
+        "# this marker partitions by leaf count\nPARTITION=min_leaf\nMIN_LEAF = 321\n"
+        'FAMSA_ARGS="--refine-mode on"\nTRONKO_BUILD_ARGS=\n',
+    )  # fmt: skip
+    result = run(env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    params = published(env)["build_params"]
+    assert params["config_files"] == [
+        "scripts/tronko_build.conf",
+        f"scripts/tronko_build.d/{MARKER}.conf",
+    ]
+    assert (params["settings"]["MIN_LEAF"], params["settings"]["FAMSA_ARGS"]) == (
+        "321",
+        "--refine-mode on",
+    )
+    args = (env["tmp"] / "tronko-build.args").read_text().split()
+    assert "-v -f 321" in " ".join(args) and "-a" not in args, "TRONKO_BUILD_ARGS emptied"
+    assert (env["tmp"] / "famsa.args").read_text().split()[:4] == ["-t", "2", "--refine-mode", "on"]
+
+
+@pytest.mark.parametrize(
+    ("order", "expected"),
+    [(["--config", "{conf}", "--set", "SP_THRESHOLD=0.3"], "0.3"),
+     (["--set", "SP_THRESHOLD=0.3", "--config", "{conf}"], "0.25")],
+)  # fmt: skip
+def test_later_overrides_win(env, order, expected):
+    conf = env["tmp"] / "run.conf"
+    conf.write_text("SP_THRESHOLD='0.25'\n")
+    args = [a.format(conf=conf) for a in order]
+    result = subprocess.run(
+        ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--print-config", *args],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    assert f"SP_THRESHOLD={expected}" in result.stdout.splitlines()
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [("SP_THRESHHOLD=0.2", "unknown setting SP_THRESHHOLD"),
+     ("PARTITION=leaves", "PARTITION must be"),
+     ("CLUSTER_CUTOFF=lots", "CLUSTER_CUTOFF must be a whole number"),
+     ("just words", "expected KEY=VALUE")],
+)  # fmt: skip
+def test_bad_settings_are_refused(env, line, message):
+    conf = env["tmp"] / "bad.conf"
+    conf.write_text(line + "\n")
+    result = run(env, "--config", str(conf))
+    assert result.returncode != 0 and message in result.stderr
+
+
+def test_config_values_are_never_run_as_shell(env):
+    conf = env["tmp"] / "run.conf"
+    marker_file = env["tmp"] / "ran"
+    conf.write_text(f"FAMSA_ARGS=$(touch {marker_file})\n")
+    result = subprocess.run(
+        ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--print-config",
+         "--config", str(conf)],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert f"FAMSA_ARGS=$(touch {marker_file})" in result.stdout
+    assert not marker_file.exists()
+
+
+def test_steps_rebuild_after_an_edit_then_publish_separately(env):
+    first = run(env, "--steps", "fetch,build")
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "Publish" not in first.stdout
+    assert git(env["checkout"], "rev-parse", "--abbrev-ref", "HEAD") == "main"
+
+    # Edit a setting, rebuild without fetching again, then publish.
+    commit(env["tronko"], "scripts/tronko_build.conf",
+           (env["tronko"] / "scripts" / "tronko_build.conf").read_text()
+           .replace("SP_THRESHOLD=0.1", "SP_THRESHOLD=0.2"))  # fmt: skip
+    rebuilt = run(env, "--steps", "build")
+    assert rebuilt.returncode == 0, rebuilt.stdout + rebuilt.stderr
+    assert "Fetch" not in rebuilt.stdout
+    published_ = run(env, "--steps", "publish")
+    assert published_.returncode == 0, published_.stdout + published_.stderr
+    meta = published(env)
+    assert meta["build_params"]["settings"]["SP_THRESHOLD"] == "0.2"
+    assert meta["tronko_sha"] == git(env["tronko"], "rev-parse", "HEAD")
+
+
+def test_publish_alone_needs_a_finished_build(env):
+    result = run(env, "--steps", "publish")
+    assert result.returncode != 0 and "no finished build" in result.stderr
