@@ -24,8 +24,12 @@
  *
  * What this module computes, and why it is the same double:
  *
- * - The store holds T[(p*4+b)*Npad + n] = sigma(n,p) ? log(0.01) : V[n][p][b], a copy with no
- *   arithmetic, and the bit S(p,n) = sigma(n,p) taken from the same double with the same == 1.
+ * - The store holds, for every node n and column p, the quartet T(p,b,n) = sigma(n,p) ? log(0.01)
+ *   : V[n][p][b] over b, a copy with no arithmetic, and the bit S(p,n) = sigma(n,p) taken from the
+ *   same double with the same == 1. Most quartets of a tree are repeats (a sentinel column, a
+ *   certain base), so each distinct one is kept once, in D, and Q[p*Npad + n] is its index:
+ *   T(p,b,n) = D[4*Q[p*Npad + n] + b]. Quartets are matched byte for byte, so the double read
+ *   back is the double that was stored.
  *   A nucleotide row adds T, which is log(0.01) exactly where getscore_Arr adds log(0.01) for a
  *   nucleotide and V exactly where it adds V. A -1 row adds log(0.01). A '-' row adds 0 or
  *   log(0.25) and another character adds log(0.01) or nothing, both chosen by S and written as
@@ -52,7 +56,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <pthread.h>
 #include <malloc.h>
 #include <sys/mman.h>
 #include <time.h>
@@ -66,11 +69,12 @@
 #define NS_BIG 9999999999.0            /* getscore_Arr: score=9999999999 when positions[0] == -1 */
 #define NS_ROUND_BYTES (1UL << 30)     /* per-node bytes transposed per round before release */
 #define NS_TRIM_BYTES (2UL << 30)      /* released bytes between malloc_trim calls */
-#define NS_ITEM_BYTES (2UL << 20)      /* target work per relayout item */
+#define NS_MAX_QUARTETS (1u << 29)     /* 4*index is a signed 32-bit gather offset */
 #define NS_SLAB_BYTES (256UL << 20)    /* small trees are carved from slabs of this size */
 #define NS_OWN_MAP_BYTES (32UL << 20)  /* trees at least this large get their own mapping */
 
 ns_tree_t *ns_trees = NULL;
+size_t ns_stream_bytes = NS_ROUND_BYTES;   /* per-node bytes ns_build_streamed holds at a time */
 int ns_max_npad = 0;
 ns_kernel_fn ns_kernel = NULL;
 static double ns_log001, ns_log025;    /* getscore_Arr's log(0.01) and log(0.25) */
@@ -136,7 +140,7 @@ static void *ns_alloc(size_t bytes)
 
 void ns_free_store(int ntrees)
 {
-	(void)ntrees;
+	for (int t = 0; ns_trees && t < ntrees; t++) free(ns_trees[t].D);
 	for (int i = 0; i < ns_nmaps; i++) munmap(ns_maps[i].addr, ns_maps[i].len);
 	free(ns_maps);
 	ns_maps = NULL;
@@ -194,27 +198,37 @@ static int ns_tree_regular(int t, int *stack, unsigned char *cnt)
  * column of any tree is non-sentinel, log(0.25) can never be added and log(0.01) is checked with
  * (p,'-'), (-1,'A') at a sentinel column, which adds 0 and then log(0.01).
  */
+/* The check on the first non-sentinel column of nodes [n0, n1) of tree t; -1 if there is none. */
+static int ns_check_constants_nodes(int t, int n0, int n1)
+{
+	int positions[4];
+	char q[4];
+	int L = numbaseArr[t];
+	for (int n = n0; n < n1; n++) {
+		const type_of_PP *pp = treeArr[t][n].posteriornc;
+		for (int p = 0; p < L; p++) {
+			if (pp[PP_IDX(p, 0)] == 1) continue;
+			double v1, v2;
+			positions[0] = p; positions[1] = -1; positions[2] = -1;
+			q[0] = 'N'; q[1] = 'A'; q[2] = '\0';
+			v1 = getscore_Arr(2, n, t, q, positions, 0, NULL, NULL);
+			positions[0] = p; positions[1] = -1;
+			q[0] = '-'; q[1] = '\0';
+			v2 = getscore_Arr(1, n, t, q, positions, 0, NULL, NULL);
+			return memcmp(&v1, &ns_log001, sizeof(double)) == 0 &&
+			       memcmp(&v2, &ns_log025, sizeof(double)) == 0;
+		}
+	}
+	return -1;
+}
+
 static int ns_check_constants(int ntrees)
 {
 	int positions[4];
 	char q[4];
 	for (int t = 0; t < ntrees; t++) {
-		int N = 2 * numspecArr[t] - 1, L = numbaseArr[t];
-		for (int n = 0; n < N; n++) {
-			const type_of_PP *pp = treeArr[t][n].posteriornc;
-			for (int p = 0; p < L; p++) {
-				if (pp[PP_IDX(p, 0)] == 1) continue;
-				double v1, v2;
-				positions[0] = p; positions[1] = -1; positions[2] = -1;
-				q[0] = 'N'; q[1] = 'A'; q[2] = '\0';
-				v1 = getscore_Arr(2, n, t, q, positions, 0, NULL, NULL);
-				positions[0] = p; positions[1] = -1;
-				q[0] = '-'; q[1] = '\0';
-				v2 = getscore_Arr(1, n, t, q, positions, 0, NULL, NULL);
-				return memcmp(&v1, &ns_log001, sizeof(double)) == 0 &&
-				       memcmp(&v2, &ns_log025, sizeof(double)) == 0;
-			}
-		}
+		int r = ns_check_constants_nodes(t, 0, 2 * numspecArr[t] - 1);
+		if (r >= 0) return r;
 	}
 	for (int t = 0; t < ntrees; t++) {
 		if (numbaseArr[t] < 1) continue;
@@ -229,80 +243,97 @@ static int ns_check_constants(int ntrees)
 
 /* ---------------------------------------------------------------- relayout */
 
-typedef struct { int t, p0, p1; } ns_item_t;   /* a tree and a range of positions (or of nodes) */
-typedef struct {
-	const ns_item_t *items;
-	int nitems;
-	int next;       /* shared counter, atomic */
-	void (*fn)(const ns_item_t *);
-} ns_work_t;
-
 static size_t ns_old_bytes(int t)
 {
 	return (size_t)(2 * numspecArr[t] - 1) * (size_t)numbaseArr[t] * 4 * sizeof(type_of_PP);
 }
 
-/* Write positions [p0, p1) of tree t: T rows (p*4+b), padding lanes, and S rows p. Items of one
- * round own disjoint position ranges, so every byte of T and S has one writer. */
-static void ns_transpose_item(const ns_item_t *it)
+/* The quartets of the tree being built. D grows by doubling; ns_hslot is an open-addressing table
+ * of indices into it, 0 meaning empty. */
+static uint32_t *ns_hslot = NULL;
+static size_t ns_hcap = 0, ns_dcap = 0;
+
+static size_t ns_hash(const double *q)
 {
-	ns_tree_t *s = &ns_trees[it->t];
-	const int N = s->N, Npad = s->Npad, SW = s->SW;
-	const size_t Np = (size_t)Npad;
-	const double k01 = ns_log001;
-	node *nodes = treeArr[it->t];
-	for (int p = it->p0; p < it->p1; p++) {
-		memset(s->S + (size_t)p * SW, 0, (size_t)SW);
-		for (int b = 0; b < 4; b++)
-			for (int n = N; n < Npad; n++) s->T[((size_t)p * 4 + b) * Np + n] = 0.0;
+	uint64_t w[4], h = 0x9e3779b97f4a7c15ULL;
+	memcpy(w, q, sizeof w);
+	for (int i = 0; i < 4; i++) { h ^= w[i]; h *= 0xff51afd7ed558ccdULL; h ^= h >> 32; }
+	return (size_t)h;
+}
+
+/* Quartet 0 is +0.0, what the zero-filled Q of the padding lanes points at; quartet 1 is a
+ * sentinel column's log(0.01). Neither is looked up, so neither is in the table. */
+static void ns_quartets_begin(ns_tree_t *s)
+{
+	ns_hcap = 1 << 16;
+	ns_dcap = 1 << 12;
+	ns_hslot = calloc(ns_hcap, sizeof(uint32_t));
+	s->D = malloc(ns_dcap * 4 * sizeof(double));
+	if (!ns_hslot || !s->D) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	for (int b = 0; b < 4; b++) { s->D[b] = 0.0; s->D[4 + b] = ns_log001; }
+	s->nD = 2;
+}
+
+/* The index of quartet q in the tree, added if new. */
+static uint32_t ns_quartet(ns_tree_t *s, const double *q)
+{
+	size_t mask = ns_hcap - 1, h = ns_hash(q) & mask;
+	for (uint32_t i; (i = ns_hslot[h]) != 0; h = (h + 1) & mask)
+		if (memcmp(s->D + 4 * (size_t)i, q, 4 * sizeof(double)) == 0) return i;
+	if (s->nD == NS_MAX_QUARTETS) {
+		fprintf(stderr, "tronko-assign: a tree has more than %u distinct posterior quartets; rerun with TRONKO_NODESTORE=0\n", NS_MAX_QUARTETS);
+		exit(1);
 	}
-	for (int n0 = 0; n0 < N; n0 += 64) {
-		int n1 = n0 + 64 < N ? n0 + 64 : N;
-		for (int n = n0; n < n1; n++) {
-			const type_of_PP *src = nodes[n].posteriornc;
-			for (int p = it->p0; p < it->p1; p++) {
-				const type_of_PP *v = src + PP_IDX(p, 0);
-				double *dst = s->T + (size_t)p * 4 * Np + n;
-				if (v[0] == 1) {   /* the sentinel test of getscore_Arr, on the same double */
-					s->S[(size_t)p * SW + (n >> 3)] |= (uint8_t)(1u << (n & 7));
-					dst[0] = k01;
-					dst[Np] = k01;
-					dst[2 * Np] = k01;
-					dst[3 * Np] = k01;
-				} else {
-					dst[0] = v[0];
-					dst[Np] = v[1];
-					dst[2 * Np] = v[2];
-					dst[3 * Np] = v[3];
-				}
+	if (s->nD == ns_dcap) {
+		ns_dcap *= 2;
+		s->D = realloc(s->D, ns_dcap * 4 * sizeof(double));
+		if (!s->D) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	}
+	memcpy(s->D + 4 * (size_t)s->nD, q, 4 * sizeof(double));
+	ns_hslot[h] = s->nD++;
+	if (2 * (size_t)s->nD > ns_hcap) {
+		ns_hcap *= 2;
+		free(ns_hslot);
+		ns_hslot = calloc(ns_hcap, sizeof(uint32_t));
+		if (!ns_hslot) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+		mask = ns_hcap - 1;
+		for (uint32_t i = 2; i < s->nD; i++) {
+			for (h = ns_hash(s->D + 4 * (size_t)i) & mask; ns_hslot[h] != 0; h = (h + 1) & mask) {}
+			ns_hslot[h] = i;
+		}
+	}
+	return s->nD - 1;
+}
+
+static void ns_quartets_end(ns_tree_t *s, ns_build_stats_t *st)
+{
+	free(ns_hslot);
+	ns_hslot = NULL;
+	s->D = realloc(s->D, (size_t)s->nD * 4 * sizeof(double));
+	if (!s->D) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	st->store_gib += (double)s->nD * 4 * sizeof(double) / (1024.0 * 1024.0 * 1024.0);
+}
+
+/* Write Q and S for nodes [n0, n1) of tree t from their per-node arrays. Q and S come zero-filled
+ * from their mapping, which is what the padding lanes and the unset bits keep. */
+static void ns_index_nodes(int t, int n0, int n1)
+{
+	ns_tree_t *s = &ns_trees[t];
+	const size_t Np = (size_t)s->Npad;
+	node *nodes = treeArr[t];
+	for (int n = n0; n < n1; n++) {
+		const type_of_PP *src = nodes[n].posteriornc;
+		for (int p = 0; p < s->L; p++) {
+			const type_of_PP *v = src + PP_IDX(p, 0);
+			if (v[0] == 1) {   /* the sentinel test of getscore_Arr, on the same double */
+				s->S[(size_t)p * s->SW + (n >> 3)] |= (uint8_t)(1u << (n & 7));
+				s->Q[(size_t)p * Np + n] = 1;
+			} else {
+				const double q[4] = { v[0], v[1], v[2], v[3] };
+				s->Q[(size_t)p * Np + n] = ns_quartet(s, q);
 			}
 		}
 	}
-}
-
-static void *ns_relayout_worker(void *arg)
-{
-	ns_work_t *w = arg;
-	for (;;) {
-		int i = __atomic_fetch_add(&w->next, 1, __ATOMIC_RELAXED);
-		if (i >= w->nitems) break;
-		w->fn(&w->items[i]);
-	}
-	return NULL;
-}
-
-/* Run fn over items with up to nthreads threads (the caller is one of them), then join. */
-static void ns_parallel(void (*fn)(const ns_item_t *), const ns_item_t *items, int nitems, int nthreads, pthread_t *th)
-{
-	ns_work_t w = { items, nitems, 0, fn };
-	int nt = nthreads < nitems ? nthreads : nitems;
-	int started = 0;
-	for (int i = 1; i < nt; i++) {
-		if (pthread_create(&th[i], NULL, ns_relayout_worker, &w) != 0) break;
-		started = i;
-	}
-	ns_relayout_worker(&w);
-	for (int i = 1; i <= started; i++) pthread_join(th[i], NULL);
 }
 
 static double ns_now(void)
@@ -317,37 +348,28 @@ static int ns_sbit(const ns_tree_t *s, int p, int n)
 	return (s->S[(size_t)p * s->SW + ((size_t)n >> 3)] >> (n & 7)) & 1;
 }
 
-/* Self-check of one tree against its per-node arrays (TRONKO_NODESTORE_CHECK=1). */
-static void ns_check_tree(int t, ns_build_stats_t *st, char *seq_a, int *pos_a, char *seq_b, int *pos_b)
+/* Self-check of nodes [n0, n1) of one tree against their per-node arrays (TRONKO_NODESTORE_CHECK=1). */
+static void ns_check_nodes(int t, int n0, int n1, ns_build_stats_t *st, char *seq_a, int *pos_a, char *seq_b, int *pos_b)
 {
 	const ns_tree_t *s = &ns_trees[t];
 	const size_t Np = (size_t)s->Npad;
-	for (int n = 0; n < s->N; n++) {
+	for (int n = n0; n < n1; n++) {
 		const type_of_PP *pp = treeArr[t][n].posteriornc;
 		for (int p = 0; p < s->L; p++) {
 			int sg = pp[PP_IDX(p, 0)] == 1;
 			if (ns_sbit(s, p, n) != sg) st->check_S_bad++;
 			for (int b = 0; b < 4; b++) {
 				double want = sg ? ns_log001 : (double)pp[PP_IDX(p, b)];
-				double got = s->T[((size_t)p * 4 + b) * Np + n];
+				double got = s->D[4 * (size_t)s->Q[(size_t)p * Np + n] + b];
 				if (memcmp(&want, &got, sizeof(double)) != 0) st->check_T_bad++;
 				if (isnan(pp[PP_IDX(p, b)])) st->check_nan++;
 				st->check_values++;
 			}
 		}
 	}
-	for (int p = 0; p < s->L; p++) {
-		for (int n = s->N; n < s->Npad; n++) {
-			if (ns_sbit(s, p, n)) st->check_pad_bad++;
-			for (int b = 0; b < 4; b++) {
-				double z = s->T[((size_t)p * 4 + b) * Np + n];
-				if (z != 0.0 || signbit(z)) st->check_pad_bad++;
-			}
-		}
-	}
 	/* every leaf: the legacy reader (per-node arrays still present) against the store */
 	int numspec = numspecArr[t];
-	for (int n = numspec - 1; n < 2 * numspec - 1; n++) {
+	for (int n = n0 > numspec - 1 ? n0 : numspec - 1; n < n1; n++) {
 		getSequenceInNodeWithoutNs(t, n, seq_a, pos_a, 0, s->L);
 		ns_leaf_sequence(t, n, seq_b, pos_b, 0, s->L);
 		size_t la = strlen(seq_a);
@@ -357,16 +379,27 @@ static void ns_check_tree(int t, ns_build_stats_t *st, char *seq_a, int *pos_a, 
 	}
 }
 
-int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t *st)
+static void ns_check_padding(int t, ns_build_stats_t *st)
+{
+	const ns_tree_t *s = &ns_trees[t];
+	const size_t Np = (size_t)s->Npad;
+	for (int p = 0; p < s->L; p++) {
+		for (int n = s->N; n < s->Npad; n++) {
+			if (ns_sbit(s, p, n) || s->Q[(size_t)p * Np + n] != 0) st->check_pad_bad++;
+		}
+	}
+}
+
+/* Steps 1 and 2 of a build: every tree is checked before anything changes, then the shapes are
+ * set. Returns 0 with st->reason when the store cannot be used. */
+static int ns_prepare(int ntrees, ns_build_stats_t *st, int *maxL_out)
 {
 	memset(st, 0, sizeof(*st));
 	st->reason = "not attempted";
 	ns_log001 = tronko_log001();
 	ns_log025 = tronko_log025();
 	if (ntrees < 1) { st->reason = "no trees"; return 0; }
-	if (nthreads < 1) nthreads = 1;
 
-	/* 1. every tree, before anything changes */
 	int maxN = 0, maxL = 0;
 	for (int t = 0; t < ntrees; t++) {
 		if (numspecArr[t] < 1 || numbaseArr[t] < 0) { st->reason = "a tree has no species or a negative length"; return 0; }
@@ -381,9 +414,12 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 	free(stack);
 	free(cnt);
 	if (!regular) { st->reason = "a tree is not a proper binary tree reached once from its root"; return 0; }
-	if (!ns_check_constants(ntrees)) { st->reason = "log(0.01) or log(0.25) differs from getscore_Arr"; return 0; }
+	*maxL_out = maxL;
+	return 1;
+}
 
-	/* 2. shapes */
+static void ns_shapes(int ntrees)
+{
 	ns_trees = calloc((size_t)ntrees, sizeof(ns_tree_t));
 	if (!ns_trees) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
 	ns_max_npad = 0;
@@ -395,6 +431,27 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 		s->SW = s->Npad / 8;
 		if (s->Npad > ns_max_npad) ns_max_npad = s->Npad;
 	}
+}
+
+/* Zero-filled Q and S of tree t. */
+static void ns_alloc_tree(int t, ns_build_stats_t *st)
+{
+	ns_tree_t *s = &ns_trees[t];
+	size_t tbytes = ((size_t)s->L * (size_t)s->Npad * sizeof(uint32_t) + 63) & ~(size_t)63;
+	size_t sbytes = ((size_t)s->L * (size_t)s->SW + 63) & ~(size_t)63;
+	char *mem = ns_alloc(tbytes + sbytes > 0 ? tbytes + sbytes : 64);
+	s->Q = (uint32_t *)mem;
+	s->S = (uint8_t *)(mem + tbytes);
+	st->store_gib += (double)(tbytes + sbytes) / (1024.0 * 1024.0 * 1024.0);
+}
+
+int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t *st)
+{
+	int maxL = 0;
+	if (!ns_prepare(ntrees, st, &maxL)) return 0;
+	(void)nthreads;   /* the quartet table has one writer */
+	if (!ns_check_constants(ntrees)) { st->reason = "log(0.01) or log(0.25) differs from getscore_Arr"; return 0; }
+	ns_shapes(ntrees);
 
 	char *seq_a = NULL, *seq_b = NULL;
 	int *pos_a = NULL, *pos_b = NULL;
@@ -404,70 +461,30 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 		if (!seq_a || !seq_b || !pos_a || !pos_b) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
 	}
 
-	/* 3. rounds: transpose a group of trees with all threads, then release their arrays */
-	ns_item_t *items = NULL;
-	int cap_items = 0;
+	/* 3. one tree at a time: index its quartets, then release its arrays */
 	size_t since_trim = 0;
-	pthread_t *th = malloc((size_t)nthreads * sizeof(pthread_t));
-	if (!th) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
-	for (int ta = 0, tb; ta < ntrees; ta = tb) {
-		size_t bytes = 0;
-		for (tb = ta; tb < ntrees && (tb == ta || bytes + ns_old_bytes(tb) <= NS_ROUND_BYTES); tb++)
-			bytes += ns_old_bytes(tb);
-		if (!keep_old && since_trim > 0 && bytes >= NS_ROUND_BYTES) {
-			/* a large tree comes next: return what is already released before its copy is made */
-			double tt = ns_now();
-			malloc_trim(0);
-			st->trims++;
-			st->t_trim += ns_now() - tt;
-			since_trim = 0;
-		}
+	for (int t = 0; t < ntrees; t++) {
+		ns_tree_t *s = &ns_trees[t];
 		double t0 = ns_now();
-		int nitems = 0;
-		for (int t = ta; t < tb; t++) {
-			ns_tree_t *s = &ns_trees[t];
-			size_t tbytes = (size_t)4 * (size_t)s->L * (size_t)s->Npad * sizeof(double);
-			size_t sbytes = ((size_t)s->L * (size_t)s->SW + 63) & ~(size_t)63;
-			char *mem = ns_alloc(tbytes + sbytes > 0 ? tbytes + sbytes : 64);
-			s->T = (double *)mem;
-			s->S = (uint8_t *)(mem + tbytes);
-			st->store_gib += (double)(tbytes + sbytes) / (1024.0 * 1024.0 * 1024.0);
-			if (s->L == 0) continue;
-			size_t per_pos = (size_t)s->N * 4 * sizeof(double);
-			int chunk = (int)(NS_ITEM_BYTES / per_pos);
-			if (chunk < 8) chunk = 8;
-			for (int p0 = 0; p0 < s->L; p0 += chunk) {
-				if (nitems == cap_items) {
-					cap_items = cap_items ? 2 * cap_items : 1024;
-					items = realloc(items, (size_t)cap_items * sizeof(ns_item_t));
-					if (!items) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
-				}
-				items[nitems].t = t;
-				items[nitems].p0 = p0;
-				items[nitems].p1 = p0 + chunk < s->L ? p0 + chunk : s->L;
-				nitems++;
-			}
-		}
-		ns_parallel(ns_transpose_item, items, nitems, nthreads, th);
+		ns_alloc_tree(t, st);
+		ns_quartets_begin(s);
+		ns_index_nodes(t, 0, s->N);
+		ns_quartets_end(s, st);
 		double t1 = ns_now();
 		st->t_transpose += t1 - t0;
-
 		if (check) {
-			for (int t = ta; t < tb; t++) ns_check_tree(t, st, seq_a, pos_a, seq_b, pos_b);
+			ns_check_nodes(t, 0, s->N, st, seq_a, pos_a, seq_b, pos_b);
+			ns_check_padding(t, st);
 			st->checked = 1;
 		}
 		if (!keep_old) {
-			/* every thread that read these arrays has been joined */
 			double t2 = ns_now();
-			for (int t = ta; t < tb; t++) {
-				int N = 2 * numspecArr[t] - 1;
-				for (int n = 0; n < N; n++) {
-					free(treeArr[t][n].posteriornc);
-					treeArr[t][n].posteriornc = NULL;
-				}
-				since_trim += ns_old_bytes(t);
-				st->freed_gib += (double)ns_old_bytes(t) / (1024.0 * 1024.0 * 1024.0);
+			for (int n = 0; n < s->N; n++) {
+				free(treeArr[t][n].posteriornc);
+				treeArr[t][n].posteriornc = NULL;
 			}
+			since_trim += ns_old_bytes(t);
+			st->freed_gib += (double)ns_old_bytes(t) / (1024.0 * 1024.0 * 1024.0);
 			double t3 = ns_now();
 			st->t_free += t3 - t2;
 			if (since_trim >= NS_TRIM_BYTES) {
@@ -485,8 +502,92 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 		st->trims++;
 		st->t_trim += ns_now() - t4;
 	}
-	free(th);
-	free(items);
+	free(seq_a); free(seq_b); free(pos_a); free(pos_b);
+	st->maps = ns_nmaps;
+	st->built = 1;
+	st->reason = "";
+	return 1;
+}
+
+/*
+ * The same store as ns_build, filled while the reference is read. load_nodes(t, n0, n1) allocates
+ * the per-node arrays of nodes [n0, n1) and leaves them as store_PPs_Arr would; they are indexed
+ * with ns_build's own function and freed before the next batch is read, so at most
+ * ns_stream_bytes of per-node arrays exist at a time (one batch of 64 nodes for wider trees) instead
+ * of a whole tree beside its store. Every value written is the double ns_build would have copied.
+ * Returns 0, with nothing read or changed, when a tree fails ns_build's checks. The constants are
+ * checked on the first batch with a non-sentinel column; a difference is a property of the build,
+ * not of the data, and exits with the way back to the per-node arrays.
+ */
+int ns_build_streamed(int ntrees, int nthreads, int check, int (*load_nodes)(int t, int n0, int n1),
+                      void (*tree_loaded)(int t), ns_build_stats_t *st)
+{
+	int maxL = 0;
+	if (!ns_prepare(ntrees, st, &maxL)) return 0;
+	(void)nthreads;   /* the quartet table has one writer */
+	ns_shapes(ntrees);
+
+	char *seq_a = NULL, *seq_b = NULL;
+	int *pos_a = NULL, *pos_b = NULL;
+	if (check) {
+		seq_a = malloc((size_t)maxL + 1); seq_b = malloc((size_t)maxL + 1);
+		pos_a = malloc(((size_t)maxL + 1) * sizeof(int)); pos_b = malloc(((size_t)maxL + 1) * sizeof(int));
+		if (!seq_a || !seq_b || !pos_a || !pos_b) { fprintf(stderr, "tronko-assign: out of memory\n"); exit(1); }
+	}
+	int constants_checked = 0;
+	size_t since_trim = 0;
+	for (int t = 0; t < ntrees; t++) {
+		ns_tree_t *s = &ns_trees[t];
+		ns_alloc_tree(t, st);
+		ns_quartets_begin(s);
+		size_t node_bytes = (size_t)s->L * 4 * sizeof(type_of_PP);
+		int batch = node_bytes ? (int)(ns_stream_bytes / node_bytes) & ~63 : s->N;
+		if (batch < 64) batch = 64;
+		for (int n0 = 0; n0 < s->N; n0 += batch) {
+			int n1 = n0 + batch < s->N ? n0 + batch : s->N;
+			double t0 = ns_now();
+			if (load_nodes(t, n0, n1) != 0) {
+				fprintf(stderr, "tronko-assign: failed to read the posteriors of tree %d\n", t);
+				exit(1);
+			}
+			if (!constants_checked) {
+				int r = ns_check_constants_nodes(t, n0, n1);
+				if (r == 0) {
+					fprintf(stderr, "tronko-assign: log(0.01) or log(0.25) differs from getscore_Arr; rerun with TRONKO_NODESTORE=0\n");
+					exit(1);
+				}
+				constants_checked = r > 0;
+			}
+			ns_index_nodes(t, n0, n1);
+			double t1 = ns_now();
+			st->t_transpose += t1 - t0;
+			if (check) {
+				ns_check_nodes(t, n0, n1, st, seq_a, pos_a, seq_b, pos_b);
+				st->checked = 1;
+			}
+			double t2 = ns_now();
+			for (int n = n0; n < n1; n++) {
+				free(treeArr[t][n].posteriornc);
+				treeArr[t][n].posteriornc = NULL;
+			}
+			since_trim += (size_t)(n1 - n0) * node_bytes;
+			st->freed_gib += (double)(n1 - n0) * (double)node_bytes / (1024.0 * 1024.0 * 1024.0);
+			double t3 = ns_now();
+			st->t_free += t3 - t2;
+			if (since_trim >= NS_TRIM_BYTES) {
+				malloc_trim(0);
+				st->trims++;
+				st->t_trim += ns_now() - t3;
+				since_trim = 0;
+			}
+			st->rounds++;
+		}
+		ns_quartets_end(s, st);
+		if (check) ns_check_padding(t, st);
+		tree_loaded(t);
+	}
+	malloc_trim(0);
+	st->trims++;
 	free(seq_a); free(seq_b); free(pos_a); free(pos_b);
 	st->maps = ns_nmaps;
 	st->built = 1;
@@ -495,8 +596,8 @@ int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t
 }
 
 /* getSequenceInNodeWithoutNs (getSequenceinRoot.c) on the store: a sentinel column emits nothing;
- * otherwise the arg-max over A, C, G, T starting from A with strict <, on the values of T, which
- * are the per-node values wherever the column is not a sentinel. */
+ * otherwise the arg-max over A, C, G, T starting from A with strict <, on the node's quartet,
+ * which holds the per-node values wherever the column is not a sentinel. */
 void ns_leaf_sequence(int t, int node, char *seq, int *posr, int start_position, int end_position)
 {
 	const ns_tree_t *s = &ns_trees[t];
@@ -504,12 +605,12 @@ void ns_leaf_sequence(int t, int node, char *seq, int *posr, int start_position,
 	int count = 0;
 	for (int i = start_position; i < end_position; i++) {
 		if (ns_sbit(s, i, node)) continue;
-		const double *base = s->T + (size_t)i * 4 * Np + (size_t)node;
+		const double *base = s->D + 4 * (size_t)s->Q[(size_t)i * Np + (size_t)node];
 		double maximum = base[0];
 		int index = 0;
 		for (int j = 0; j < 4; j++) {
-			if (maximum < base[(size_t)j * Np]) {
-				maximum = base[(size_t)j * Np];
+			if (maximum < base[j]) {
+				maximum = base[j];
 				index = j;
 			}
 		}
@@ -524,7 +625,7 @@ void ns_leaf_sequence(int t, int node, char *seq, int *posr, int start_position,
 
 /*
  * Row codes, one int32 per row (compiled in ns_sink_add_job):
- *   c >= 0             nucleotide row: add T[c*Npad + n], c = p*4 + b
+ *   c >= 0             nucleotide row: add D[4*Q[p*Npad + n] + b], c = p*4 + b
  *   c == -1            positions[i] == -1: add log(0.01)
  *   c = -2 - p         '-' at column p: add 0 where S(p,n), else log(0.25)
  *   c = -2 - L - p     any other character at column p: add log(0.01) where S(p,n), else nothing
@@ -569,8 +670,9 @@ static void ns_slot_tile_plain##W(const ns_tree_t *t, const ns_slot_t *sl, const
 			for (int k = 0; k < nc; k++) {                                                       \
 				const int32_t c = code[k];                                                       \
 				if (c >= 0) {                                                                    \
-					const double *row = t->T + (size_t)c * Np + t0;                              \
-					for (int x = 0; x < W; x++) acc[x] = acc[x] + row[x];                        \
+					const uint32_t *row = t->Q + (size_t)(c >> 2) * Np + t0;                     \
+					const double *d = t->D + (c & 3);                                            \
+					for (int x = 0; x < W; x++) acc[x] = acc[x] + d[4 * (size_t)row[x]];         \
 				} else if (c == -1) {                                                            \
 					for (int x = 0; x < W; x++) acc[x] = acc[x] + k01;                           \
 				} else {                                                                         \
@@ -596,10 +698,11 @@ static void ns_kernel_plain(const ns_tree_t *t, ns_slot_t *const *slots, int nsl
 }
 
 #if defined(__x86_64__)
-/* AVX2: tiles of 32 nodes in eight 4-lane accumulators. Rows start on 64-byte boundaries (T is
- * 64-byte aligned and Npad is a multiple of 8), t0 is a multiple of 32, slots are multiples of 8
- * doubles into a 64-byte aligned arena: every load and store below is aligned. */
-#define NS_V2_ROW(i) a##i = _mm256_add_pd(a##i, _mm256_load_pd(row + 4 * (i)))
+/* AVX2: tiles of 32 nodes in eight 4-lane accumulators. Rows of Q start on 32-byte boundaries (Q
+ * is 64-byte aligned and Npad is a multiple of 8), t0 is a multiple of 32, slots are multiples of 8
+ * doubles into a 64-byte aligned arena: every load and store below is aligned. A gather reads the
+ * four doubles D[4*q + b] unchanged. */
+#define NS_V2_ROW(i) a##i = _mm256_add_pd(a##i, _mm256_i32gather_pd(d, _mm_slli_epi32(_mm_load_si128((const __m128i *)(row + 4 * (i))), 2), 8))
 #define NS_V2_CST(i) a##i = _mm256_add_pd(a##i, k01)
 #define NS_V2_SPILL(i) _mm256_store_pd(tmp + 4 * (i), a##i)
 #define NS_V2_FILL(i) a##i = _mm256_load_pd(tmp + 4 * (i))
@@ -630,7 +733,8 @@ static void ns_kernel_avx2(const ns_tree_t *t, ns_slot_t *const *slots, int nslo
 					for (int k = 0; k < nc; k++) {
 						const int32_t c = code[k];
 						if (c >= 0) {
-							const double *row = t->T + (size_t)c * Np + t0;
+							const uint32_t *row = t->Q + (size_t)(c >> 2) * Np + t0;
+							const double *d = t->D + (c & 3);
 							NS_V2_ALL(NS_V2_ROW);
 						} else if (c == -1) {
 							NS_V2_ALL(NS_V2_CST);
@@ -650,13 +754,13 @@ static void ns_kernel_avx2(const ns_tree_t *t, ns_slot_t *const *slots, int nslo
 }
 
 /* AVX-512F: tiles of 64 nodes in eight 8-lane accumulators; alignment as above. */
-#define NS_V5_ROW(i) a##i = _mm512_add_pd(a##i, _mm512_load_pd(row + 8 * (i)))
+#define NS_V5_ROW(i) a##i = _mm512_add_pd(a##i, _mm512_i32gather_pd(_mm256_slli_epi32(_mm256_load_si256((const __m256i *)(row + 8 * (i))), 2), d, 8))
 #define NS_V5_CST(i) a##i = _mm512_add_pd(a##i, k01)
 #define NS_V5_SPILL(i) _mm512_store_pd(tmp + 8 * (i), a##i)
 #define NS_V5_FILL(i) a##i = _mm512_load_pd(tmp + 8 * (i))
 #define NS_V5_OUT(i) _mm512_store_pd(out + 8 * (i), _mm512_add_pd(_mm512_load_pd(out + 8 * (i)), a##i))
 
-__attribute__((target("avx512f")))
+__attribute__((target("avx512f,avx2")))
 static void ns_kernel_avx512(const ns_tree_t *t, ns_slot_t *const *slots, int nslots,
                              const int32_t *codes, double *arena)
 {
@@ -680,7 +784,8 @@ static void ns_kernel_avx512(const ns_tree_t *t, ns_slot_t *const *slots, int ns
 					for (int k = 0; k < nc; k++) {
 						const int32_t c = code[k];
 						if (c >= 0) {
-							const double *row = t->T + (size_t)c * Np + t0;
+							const uint32_t *row = t->Q + (size_t)(c >> 2) * Np + t0;
+							const double *d = t->D + (c & 3);
 							NS_V2_ALL(NS_V5_ROW);
 						} else if (c == -1) {
 							NS_V2_ALL(NS_V5_CST);

@@ -9,6 +9,7 @@
 #   - TRONKO_NODESTORE_CHECK=1: before the per-node arrays are released, every stored value is
 #     compared with them and every leaf string with the legacy reader (the run exits 3 and prints
 #     result=FAIL on any difference);
+#   - the reference read into the store in batches of 64 nodes, with the same comparison per batch;
 #   - blocks of 1 and 7 reads, and a 1 MiB block budget that closes blocks before they are full;
 #   - every scoring kernel the CPU supports (TRONKO_NS_KERNEL=plain|avx2|avx512);
 #   - TRONKO_NODESTORE=0, the legacy loop in the same binary;
@@ -81,6 +82,15 @@ if ! grep -q '^nodestore check: .*leaf_mismatch=0 result=PASS$' "$TMP_DIR/selfch
 	FAILS=$((FAILS + 1))
 else
 	grep '^nodestore check:' "$TMP_DIR/selfcheck.log"
+fi
+
+# A zstd reference goes into the store a batch of nodes at a time; 1 MiB makes batches of 64 nodes.
+check stream_batches "$DATA/expected_paired_nw_trkb.tsv" TRONKO_NS_STREAM_MB=1 TRONKO_NODESTORE_CHECK=1 -- "${PAIRED[@]}"
+if ! grep -q 'RELAYOUT_DONE.*rounds=\([2-9]\|[1-9][0-9]\)' "$TMP_DIR/stream_batches.tsvlog" ||
+	! grep -q '^nodestore check: .*leaf_mismatch=0 result=PASS$' "$TMP_DIR/stream_batches.log"; then
+	echo "FAIL: stream_batches: not several batches, or no passing 'nodestore check' line" >&2
+	grep RELAYOUT_DONE "$TMP_DIR/stream_batches.tsvlog" >&2 || true
+	FAILS=$((FAILS + 1))
 fi
 
 check block1 "$DATA/expected_unpaired_r_nw_trkb.tsv" TRONKO_NS_BLOCK_READS=1 -- "${UNPAIRED_R[@]}"

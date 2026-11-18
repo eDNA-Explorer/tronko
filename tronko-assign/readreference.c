@@ -634,7 +634,7 @@ int readReferenceTree( gzFile referenceTree, int* name_specs){
 			}
 			treeArr = malloc(numberOfTrees*sizeof(struct node *));
 			for (i=0; i<numberOfTrees; i++){
-				allocateTreeArrMemory(i,max_nodename);
+				allocateTreeArrMemory(i,max_nodename, 1);
 
 				// Per-tree logging at DEBUG level
 				LOG_DEBUG("Tree %d allocated: nodes=%d, bases=%d", i, 2*numspecArr[i]-1, numbaseArr[i]);
@@ -895,7 +895,7 @@ int readReferenceBinary(const char *filename, int *name_specs) {
         }
 
         // Allocate nodes for this tree (reuse existing function pattern)
-        allocateTreeArrMemory(t, max_nodename);
+        allocateTreeArrMemory(t, max_nodename, 1);
 
         // Store name offsets for later
         uint32_t *name_offsets = calloc(num_nodes, sizeof(uint32_t));
@@ -1191,7 +1191,7 @@ int readReferenceBinaryGzipped(const char *filename, int *name_specs) {
         }
 
         // Allocate nodes for this tree
-        allocateTreeArrMemory(t, max_nodename);
+        allocateTreeArrMemory(t, max_nodename, 1);
 
         // Read node records into temporary array first (for name offset handling)
         uint32_t *name_offsets = calloc(num_nodes, sizeof(uint32_t));
@@ -1506,6 +1506,9 @@ static uint64_t zstd_read_u64(zstd_reader_t *r) {
     return v;
 }
 
+/* The open zstd reference, positioned at the posterior section, between load and closePosteriors. */
+static zstd_reader_t *pp_reader = NULL;
+
 /**
  * Read reference database from zstd-compressed binary format (.trkb)
  * Populates the same global structures as readReferenceTree()
@@ -1666,7 +1669,7 @@ int readReferenceBinaryZstd(const char *filename, int *name_specs) {
             return -1;
         }
 
-        allocateTreeArrMemory(t, max_nodename);
+        allocateTreeArrMemory(t, max_nodename, 0);
 
         uint32_t *name_offsets = calloc(num_nodes, sizeof(uint32_t));
         if (!name_offsets) {
@@ -1717,64 +1720,87 @@ int readReferenceBinaryZstd(const char *filename, int *name_specs) {
         }
     }
 
-    // === Read Posterior Section ===
-    LOG_INFO("Loading posteriors from zstd-compressed binary format...");
-
-    for (int t = 0; t < numberOfTrees; t++) {
-        int num_nodes = 2 * numspecArr[t] - 1;
-        int numbase = numbaseArr[t];
-
-        for (int n = 0; n < num_nodes; n++) {
-            size_t count = numbase * 4;
-
-#ifdef OPTIMIZE_MEMORY
-            if (zstd_reader_read(r, treeArr[t][n].posteriornc, count * sizeof(float)) != count * sizeof(float)) {
-                LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
-                zstd_reader_close(r);
-                return -1;
-            }
-#else
-            float *temp = malloc(count * sizeof(float));
-            if (!temp) {
-                LOG_ERROR("Failed to allocate temp buffer for posterior conversion");
-                zstd_reader_close(r);
-                return -1;
-            }
-            if (zstd_reader_read(r, temp, count * sizeof(float)) != count * sizeof(float)) {
-                LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
-                free(temp);
-                zstd_reader_close(r);
-                return -1;
-            }
-            for (size_t i = 0; i < count; i++) {
-                treeArr[t][n].posteriornc[i] = (double)temp[i];
-            }
-            free(temp);
-#endif
-        }
-
-        LOG_DEBUG("Tree %d: read posteriors for %d nodes (zstd)", t, num_nodes);
-
-        if (g_tsv_log_file) {
-            resource_stats_t stats;
-            get_resource_stats(&stats);
-            fprintf(g_tsv_log_file, "%.3f\tTREE_LOADED\t%.1f\t%.1f\t%.1f\t%.3f\t%.3f\ttree=%d\n",
-                    stats.wall_time_sec,
-                    stats.memory_rss_kb / 1024.0,
-                    stats.memory_vm_size_kb / 1024.0,
-                    stats.memory_vm_rss_peak_kb / 1024.0,
-                    stats.user_time_sec,
-                    stats.system_time_sec,
-                    t);
-            fflush(g_tsv_log_file);
-        }
-    }
-
-    zstd_reader_close(r);
-
-    LOG_INFO("Loaded %d trees from zstd-compressed binary format", numberOfTrees);
+    /* The posterior section is left unread: main reads it with readPosteriorNodes, in file order,
+     * either all at once (readAllPosteriors) or in batches straight into the node store. */
+    pp_reader = r;
 
     return numberOfTrees;
+}
+
+int posteriorsDeferred(void) {
+    return pp_reader != NULL;
+}
+
+/* Allocate and read the posteriors of nodes [n0, n1) of tree t, the next ones in the file. */
+int readPosteriorNodes(int t, int n0, int n1) {
+    size_t count = (size_t)numbaseArr[t] * 4;
+#ifndef OPTIMIZE_MEMORY
+    float *temp = malloc(count * sizeof(float) + 1);
+    if (!temp) {
+        LOG_ERROR("Failed to allocate temp buffer for posterior conversion");
+        return -1;
+    }
+#endif
+    for (int n = n0; n < n1; n++) {
+        type_of_PP *pp = malloc(count * sizeof(type_of_PP) + 1);
+        if (!pp) {
+            LOG_ERROR("Failed to allocate posteriors for tree %d node %d", t, n);
+            return -1;
+        }
+        treeArr[t][n].posteriornc = pp;
+#ifdef OPTIMIZE_MEMORY
+        if (zstd_reader_read(pp_reader, pp, count * sizeof(float)) != count * sizeof(float)) {
+            LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
+            return -1;
+        }
+#else
+        if (zstd_reader_read(pp_reader, temp, count * sizeof(float)) != count * sizeof(float)) {
+            LOG_ERROR("Failed to read posteriors for tree %d node %d (zstd)", t, n);
+            free(temp);
+            return -1;
+        }
+        for (size_t i = 0; i < count; i++) {
+            pp[i] = (double)temp[i];
+        }
+#endif
+    }
+#ifndef OPTIMIZE_MEMORY
+    free(temp);
+#endif
+    return 0;
+}
+
+void logTreeLoaded(int t) {
+    if (g_tsv_log_file) {
+        resource_stats_t stats;
+        get_resource_stats(&stats);
+        fprintf(g_tsv_log_file, "%.3f\tTREE_LOADED\t%.1f\t%.1f\t%.1f\t%.3f\t%.3f\ttree=%d\n",
+                stats.wall_time_sec,
+                stats.memory_rss_kb / 1024.0,
+                stats.memory_vm_size_kb / 1024.0,
+                stats.memory_vm_rss_peak_kb / 1024.0,
+                stats.user_time_sec,
+                stats.system_time_sec,
+                t);
+        fflush(g_tsv_log_file);
+    }
+}
+
+int readAllPosteriors(int numberOfTrees) {
+    LOG_INFO("Loading posteriors from zstd-compressed binary format...");
+    for (int t = 0; t < numberOfTrees; t++) {
+        if (readPosteriorNodes(t, 0, 2 * numspecArr[t] - 1) != 0) {
+            return -1;
+        }
+        logTreeLoaded(t);
+    }
+    return 0;
+}
+
+void closePosteriors(int numberOfTrees) {
+    zstd_reader_close(pp_reader);
+    pp_reader = NULL;
+    LOG_INFO("Loaded %d trees from zstd-compressed binary format", numberOfTrees);
 }
 
 int setNumbase_setNumspec(int numberOfPartitions, int* specs){

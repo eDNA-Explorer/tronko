@@ -9,7 +9,7 @@ void allocatetreememory_for_nucleotide_Arr(int numberOfTrees){
 		}
 	}
 }
-void allocateTreeArrMemory(int whichPartition, int max_nodename){
+void allocateTreeArrMemory(int whichPartition, int max_nodename, int with_posteriors){
 	int i,j;
 	treeArr[whichPartition]=malloc((numspecArr[whichPartition]*2-1)*(sizeof(struct node)));
 	for (i=0; i<(numspecArr[whichPartition]*2-1); i++){
@@ -18,7 +18,7 @@ void allocateTreeArrMemory(int whichPartition, int max_nodename){
 		treeArr[whichPartition][i].down = -2;
 		treeArr[whichPartition][i].depth = -2;
 		/* Single allocation: numbase positions * 4 nucleotides (calloc zeros memory) */
-		treeArr[whichPartition][i].posteriornc = (type_of_PP*)calloc(numbaseArr[whichPartition] * 4, sizeof(type_of_PP));
+		treeArr[whichPartition][i].posteriornc = with_posteriors ? (type_of_PP*)calloc(numbaseArr[whichPartition] * 4, sizeof(type_of_PP)) : NULL;
 	}
 	for(i=numspecArr[whichPartition]-1; i<(numspecArr[whichPartition]*2-1); i++){
 		treeArr[whichPartition][i].name = (char *)malloc(max_nodename*sizeof(char));

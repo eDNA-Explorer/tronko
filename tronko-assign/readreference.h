@@ -39,4 +39,12 @@ int readReferenceBinaryGzipped(const char *filename, int *name_specs);
 // Zstd-compressed binary format reader
 int readReferenceBinaryZstd(const char *filename, int *name_specs);
 
+// The zstd reader returns with the posterior section unread (posteriorsDeferred() == 1). It is then
+// read in file order, node range by node range, and the file is closed with closePosteriors.
+int posteriorsDeferred(void);
+int readPosteriorNodes(int t, int n0, int n1);
+int readAllPosteriors(int numberOfTrees);
+void logTreeLoaded(int t);
+void closePosteriors(int numberOfTrees);
+
 #endif /* _READ_REF_ */
