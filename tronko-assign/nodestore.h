@@ -26,12 +26,15 @@ typedef struct ns_tree {
 	int Npad;     /* N rounded up to a multiple of 8; lanes N..Npad-1 hold +0.0 */
 	int L;        /* alignment columns, numbaseArr[t] */
 	int SW;       /* bytes per sentinel row, Npad/8 */
-	double *T;    /* T[(p*4+b)*Npad + n] = sigma(n,p) ? log(0.01) : posteriornc[n][p*4+b] */
+	uint32_t *Q;  /* Q[p*Npad + n] = index into D of node n's quartet at column p */
+	double *D;    /* D[4*q + b] = sigma(n,p) ? log(0.01) : posteriornc[n][p*4+b]; each distinct quartet once */
+	uint32_t nD;  /* quartets in D; 0 is +0.0 (padding lanes), 1 is log(0.01) (sentinel columns) */
 	uint8_t *S;   /* S[p*SW + n/8] bit n%8 = sigma(n,p) = (posteriornc[n][p*4] == 1) */
 } ns_tree_t;
 
 extern ns_tree_t *ns_trees;   /* NULL unless ns_build succeeded */
 extern int ns_max_npad;       /* largest Npad over all trees */
+extern size_t ns_stream_bytes;   /* per-node bytes ns_build_streamed holds at a time (1 GiB) */
 
 /* 1 when the command line is the production one this path reproduces. */
 int ns_options_eligible(int use_nw, int use_leaf_portion, int print_all_nodes, int enable_pruning,
@@ -43,7 +46,7 @@ typedef struct ns_build_stats {
 	const char *kernel;     /* kernel chosen for scoring */
 	int rounds;             /* relayout rounds (groups of trees transposed together) */
 	int trims;              /* malloc_trim calls */
-	double store_gib;       /* bytes of T and S */
+	double store_gib;       /* bytes of Q, D and S */
 	double freed_gib;       /* bytes of per-node arrays released */
 	int maps;               /* mmap regions holding the store (256 MiB slabs and large trees) */
 	double t_transpose, t_free, t_trim;   /* seconds in each step of the relayout */
@@ -62,6 +65,12 @@ typedef struct ns_build_stats {
  * arrays value by value and every leaf string with the legacy reader before releasing them.
  */
 int ns_build(int ntrees, int nthreads, int keep_old, int check, ns_build_stats_t *st);
+/* The same store, filled while the reference is read: load_nodes(t, n0, n1) supplies the per-node
+ * arrays of a batch of nodes (as after store_PPs_Arr), which are transposed and freed before the next
+ * batch, and tree_loaded(t) is called after each tree. Returns 0 before reading anything if a tree
+ * fails ns_build's checks. */
+int ns_build_streamed(int ntrees, int nthreads, int check, int (*load_nodes)(int t, int n0, int n1),
+                      void (*tree_loaded)(int t), ns_build_stats_t *st);
 void ns_free_store(int ntrees);
 
 /* getSequenceInNodeWithoutNs from the store: the sentinel from S, the arg-max from T. */

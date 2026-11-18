@@ -80,8 +80,9 @@ void allocateMemForResults( resultsStruct *results, int sizeOfChunk, int num_thr
 		scoring_init(results->scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
 	}
 	results->minNodes = (int *)malloc(number_of_total_nodes*sizeof(int));
-	results->LCAnames = (char **)malloc(number_of_total_nodes*sizeof(char *));
-	for(i=0;i<number_of_total_nodes;i++){
+	/* one name per tree tied for the most votes, and a read votes in at most MAX_NUM_BWA_MATCHES trees */
+	results->LCAnames = (char **)malloc(MAX_NUM_BWA_MATCHES*sizeof(char *));
+	for(i=0;i<MAX_NUM_BWA_MATCHES;i++){
 		results->LCAnames[i]=(char *)malloc(max_lineTaxonomy*sizeof(char));
 		for(j=0; j<max_lineTaxonomy; j++){
 			results->LCAnames[i][j] = '\0';
@@ -113,7 +114,7 @@ void freeMemForResults ( resultsStruct *results, int sizeOfChunk, int num_thread
 		free(results->leaf_coordinates[i]);
 	}
 	free(results->voteRoot);
-	for(i=0; i<number_of_total_nodes; i++){
+	for(i=0; i<MAX_NUM_BWA_MATCHES; i++){
 		free(results->LCAnames[i]);
 	}
 	if (use_portion == 1){

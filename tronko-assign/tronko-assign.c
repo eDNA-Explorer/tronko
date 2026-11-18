@@ -140,26 +140,40 @@ char* strupr(char* s){
 #if defined(__x86_64__) || defined(__i386__)
 __attribute__((optimize("fp-contract=off")))
 #endif
-void store_PPs_Arr(int numberOfRoots, double c){
-	int i, j, k, l;
-	for(i=0; i<numberOfRoots; i++){
-		for (j=0; j<2*numspecArr[i]-1; j++){
-			for (k=0; k<numbaseArr[i]; k++){
-				for (l=0; l<4; l++){
-					if ( treeArr[i][j].posteriornc[PP_IDX(k, l)] == -1 ){   //Missing data
-						treeArr[i][j].posteriornc[PP_IDX(k, l)]=1;
-					}else{
-							//treeArr[i][j].posteriornc[PP_IDX(k, l)] = log((c/3) + ((1-(((4*c)/3) * treeArr[i][j].posteriornc[PP_IDX(k, l)]))));
-							double d = 1-c;
-							double e = c/3;
-							double f = d * treeArr[i][j].posteriornc[PP_IDX(k, l)];
-							double g = e * (1-treeArr[i][j].posteriornc[PP_IDX(k, l)]);
-							treeArr[i][j].posteriornc[PP_IDX(k, l)] = log( (f + g) );
-					}
-				}
+static void store_PPs_node(int i, int j, double c){
+	int k, l;
+	for (k=0; k<numbaseArr[i]; k++){
+		for (l=0; l<4; l++){
+			if ( treeArr[i][j].posteriornc[PP_IDX(k, l)] == -1 ){   //Missing data
+				treeArr[i][j].posteriornc[PP_IDX(k, l)]=1;
+			}else{
+					//treeArr[i][j].posteriornc[PP_IDX(k, l)] = log((c/3) + ((1-(((4*c)/3) * treeArr[i][j].posteriornc[PP_IDX(k, l)]))));
+					double d = 1-c;
+					double e = c/3;
+					double f = d * treeArr[i][j].posteriornc[PP_IDX(k, l)];
+					double g = e * (1-treeArr[i][j].posteriornc[PP_IDX(k, l)]);
+					treeArr[i][j].posteriornc[PP_IDX(k, l)] = log( (f + g) );
 			}
 		}
 	}
+}
+#if defined(__x86_64__) || defined(__i386__)
+__attribute__((optimize("fp-contract=off")))
+#endif
+void store_PPs_Arr(int numberOfRoots, double c){
+	int i, j;
+	for(i=0; i<numberOfRoots; i++){
+		for (j=0; j<2*numspecArr[i]-1; j++){
+			store_PPs_node(i, j, c);
+		}
+	}
+}
+/* ns_build_streamed's loader: nodes [n0, n1) of tree t as store_PPs_Arr leaves them. */
+static double g_score_constant;
+static int load_scored_nodes(int t, int n0, int n1){
+	if (readPosteriorNodes(t, n0, n1) != 0) return -1;
+	for (int n = n0; n < n1; n++) store_PPs_node(t, n, g_score_constant);
+	return 0;
 }
 void assignDepthArr(int node0, int node1, int depth, int whichPartitions){
 	if( node0 != -1 && node1 != -1){
@@ -1208,6 +1222,28 @@ int main(int argc, char **argv){
 		printf("Error: No trees loaded from reference file: %s. Exiting...\n", opt.reference_file);
 		exit(-1);
 	}
+	/* The zstd reader leaves the posteriors unread. With the node store they go from the file into
+	 * the store a batch of nodes at a time, so the per-node arrays of a whole tree never exist beside
+	 * its store; otherwise they are all read here, as the other readers have already done. */
+	int ns_wanted = ns_options_eligible(opt.use_nw, opt.use_leaf_portion, opt.print_all_nodes, opt.enable_pruning, opt.early_termination, opt.print_alignments, opt.print_alignments_to_file)
+	    && !(getenv("TRONKO_NODESTORE") && strcmp(getenv("TRONKO_NODESTORE"), "0") == 0);
+	int ns_check = getenv("TRONKO_NODESTORE_CHECK") && strcmp(getenv("TRONKO_NODESTORE_CHECK"), "1") == 0;
+	int ns_streamed = 0;
+	ns_build_stats_t nst;
+	if (posteriorsDeferred()){
+		g_score_constant = opt.score_constant;
+		if (ns_wanted){
+			if (getenv("TRONKO_NS_STREAM_MB") && atoi(getenv("TRONKO_NS_STREAM_MB")) > 0){
+				ns_stream_bytes = (size_t)atoi(getenv("TRONKO_NS_STREAM_MB")) << 20;
+			}
+			ns_streamed = ns_build_streamed(numberOfTrees, opt.number_of_cores, ns_check, load_scored_nodes, logTreeLoaded, &nst);
+		}
+		if (!ns_streamed && readAllPosteriors(numberOfTrees) != 0){
+			printf("Error: Failed to load posteriors from reference file: %s. Exiting...\n", opt.reference_file);
+			exit(-1);
+		}
+		closePosteriors(numberOfTrees);
+	}
 	int max_nodename = name_specs[0];
 	int max_taxname = name_specs[1];
 	int max_lineTaxonomy = name_specs[2];
@@ -1254,7 +1290,9 @@ int main(int argc, char **argv){
 		}
 		exit(1);
 	}
-	store_PPs_Arr(numberOfTrees,opt.score_constant);
+	if (!ns_streamed){
+		store_PPs_Arr(numberOfTrees,opt.score_constant);
+	}
 	int maxNumSpec=0;
 	int maxNumBase=0;
 	int *specs = (int*)malloc(2*sizeof(int));
@@ -1267,10 +1305,10 @@ int main(int argc, char **argv){
 	Cinterval = opt.cinterval;
 	/* Node-innermost store and blocked scoring (nodestore.c), for the production options only.
 	 * TRONKO_NODESTORE=0 keeps the legacy path; TRONKO_NS_KERNEL=plain|avx2|avx512 forces a kernel;
+	 * TRONKO_NS_STREAM_MB sizes the batches of nodes read from a zstd reference into the store;
 	 * TRONKO_NS_BLOCK_READS and TRONKO_NS_BLOCK_MB size the blocks; TRONKO_NODESTORE_CHECK=1
 	 * compares the store with the per-node arrays and every leaf string before releasing them. */
-	if (ns_options_eligible(opt.use_nw, opt.use_leaf_portion, opt.print_all_nodes, opt.enable_pruning, opt.early_termination, opt.print_alignments, opt.print_alignments_to_file)
-	    && !(getenv("TRONKO_NODESTORE") && strcmp(getenv("TRONKO_NODESTORE"), "0") == 0)){
+	if (ns_wanted){
 		const char *kernel_name = ns_select_kernel(getenv("TRONKO_NS_KERNEL"));
 		if (kernel_name == NULL){
 			fprintf(stderr, "TRONKO_NS_KERNEL=%s is unknown or not supported by this CPU. Exiting...\n", getenv("TRONKO_NS_KERNEL"));
@@ -1282,10 +1320,8 @@ int main(int argc, char **argv){
 		if (getenv("TRONKO_NS_BLOCK_MB") && atoi(getenv("TRONKO_NS_BLOCK_MB")) > 0){
 			g_ns_block_bytes = (size_t)atoi(getenv("TRONKO_NS_BLOCK_MB")) << 20;
 		}
-		int ns_check = getenv("TRONKO_NODESTORE_CHECK") && strcmp(getenv("TRONKO_NODESTORE_CHECK"), "1") == 0;
-		ns_build_stats_t nst;
 		TSV_LOG_SIMPLE(tsv_log, "RELAYOUT_START");
-		if (ns_build(numberOfTrees, opt.number_of_cores, 0, ns_check, &nst)){
+		if (ns_streamed || ns_build(numberOfTrees, opt.number_of_cores, 0, ns_check, &nst)){
 			TSV_LOG(tsv_log, "RELAYOUT_DONE", "trees=%d,kernel=%s,store_gib=%.3f,freed_gib=%.3f,rounds=%d,maps=%d,trims=%d,t_transpose=%.2f,t_free=%.2f,t_trim=%.2f,block_reads=%d,block_mb=%zu",
 				numberOfTrees, kernel_name, nst.store_gib, nst.freed_gib, nst.rounds, nst.maps, nst.trims, nst.t_transpose, nst.t_free, nst.t_trim, g_ns_block_reads, g_ns_block_bytes >> 20);
 			if (opt.verbose_level >= 0){
