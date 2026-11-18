@@ -316,12 +316,34 @@ The `reference_tree.txt` file will be output to the `outdir` directory.
 
 ```
 scripts/release_tronko.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
-    --rcrux-checkout ~/rcrux-py --threads 32 --push
+    --tronko-checkout ~/tronko-release --threads 32 --push
 ```
 
-It fetches the release's `curated/lca.fasta` and `lca_taxonomy.txt` from DVC, builds the database with `build-tronko-db.sh` (the pipeline the Jetstream marker databases were built with: `ancestralclust` above 25,000 sequences, then per cluster `famsa`, a tree and `nw_reroot`, then `tronko-build -y`, `tronko-convert`, `bwa index` and `bwa-mem3 index`), and publishes the result with `scripts/tronko_release.py publish`: the database goes to the rcrux DVC remote and `tronko.dvc` is committed on a publish branch of the rcrux-py checkout; merging that branch tags `<marker>_tronko_<version>`. All build output goes to `build.log`. `tronko-build`, `tronko-convert` and `ancestralclust` are compiled from the checkout, which must be clean, so the recorded commit is the code that built the tree.
+It fetches the release's `curated/lca.fasta` and `lca_taxonomy.txt` from DVC, builds the database with `build-tronko-db.sh` (the pipeline the Jetstream marker databases were built with: `ancestralclust` above 25,000 sequences, then per cluster `famsa`, a tree and `nw_reroot`, then `tronko-build -y`, `tronko-convert`, `bwa index` and `bwa-mem3 index`), and publishes the result with `scripts/tronko_release.py publish`: the database goes to this repository's `tronko` DVC remote and `databases/<marker>/tronko.dvc` is committed on a publish branch of a second, clean tronko checkout (`--tronko-checkout`). Merging that branch tags `<marker>_tronko_<version>` in this repository (the "Tag tronko releases" workflow); the pointer and `metadata.json` record the rcrux tag the database was built from. All build output goes to `build.log`. `tronko-build`, `tronko-convert` and `ancestralclust` are compiled from the checkout, which must be clean, so the recorded commit is the code that built the tree.
 
 Build settings are not fixed in the script. They come from `scripts/tronko_build.conf` (the defaults, one commented `KEY=VALUE` per line), then `scripts/tronko_build.d/<marker>.conf` when it exists, then any `--config FILE` and `--set KEY=VALUE` in the order given. Values are read literally, never run as shell, and an unknown key is refused. The settings cover threads and parallel jobs, the clustering cutoff and bin size, the tree tool, sum-of-pairs or min-leaf partitioning, the SP formula, and extra arguments for ancestralclust, FAMSA, the tree tool, tronko-build and bwa (for example `--set TREE_ARGS="-fastexp 2"`). The effective values, the files they came from, and `build-tronko-db.sh`'s own `build_metadata.json` are recorded in `params.json`, published as `build_params.json` and inside `metadata.json`. `--print-config` shows the settings without building, and `--steps build,publish` reruns part of the flow after an edit.
+
+## Release image
+
+`Dockerfile.release` builds an image holding one tronko commit, compiled, and every outside tool the build runs at a fixed version (FAMSA 1.6.1, VeryFastTree 4.0.3, FastTree 2.1.11, RAxML 8.2.12, newick-utils, bwa 0.7.17, BWA-MEM3 0.14.0). The tronko code is cloned at `TRONKO_REF`, so the commit a release records is the code in the image:
+
+```
+docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release:<ref> .
+```
+
+Its entrypoint is `scripts/release_tronko.sh`. Mount a work directory and, for publishing, a clean tronko checkout; pass the credentials for the DVC remotes and a git identity for the publish commit:
+
+```
+docker run --rm \
+    -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+    -e GIT_AUTHOR_NAME -e GIT_AUTHOR_EMAIL -e GIT_COMMITTER_NAME -e GIT_COMMITTER_EMAIL \
+    -v "$PWD/work:/work" -v "$HOME/tronko-release:/release" \
+    tronko-release:<ref> \
+    --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 --work /work --tronko-checkout /release --threads 32
+```
+
+The publish branch is left in the mounted tronko checkout; push it and open the PR from the host. The image is `linux/amd64` only: the alignment and tree tools give different results on arm64, so releases come from one platform. An arm64 host runs it under emulation, which is fine for a small test and far too slow for a real marker.
+
 
 
 # `tronko-assign` using pre-built 16S and COI databases
