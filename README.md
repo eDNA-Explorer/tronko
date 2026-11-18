@@ -5,6 +5,8 @@ A phylogeny-based method for assigning species to metabarcoding reads. It has tw
 - `tronko-build` builds a reference database from trees, alignments and taxonomy.
 - `tronko-assign` assigns reads to species using that database.
 
+`tronko-build -h` and `tronko-assign -h` list every option.
+
 ## Compile
 
 ```
@@ -15,7 +17,7 @@ make -C tronko-assign && make -C tronko-assign bwa-mem3
 
 ## Build a database from an rCRUX release
 
-Build the image once per tronko commit:
+Build the image once per tronko commit. It holds that commit and every tool the build needs, at fixed versions:
 
 ```
 docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release:<ref> .
@@ -38,15 +40,58 @@ To publish it too, drop `--steps` and add a clean tronko checkout and a git iden
 
 Then push the `publish/...` branch from that checkout and open a PR. Merging it tags the release `<marker>_tronko_<version>`.
 
-Settings and their defaults are in `scripts/tronko_build.conf`; change one with `--set KEY=VALUE`. Everything else is in `scripts/release_tronko.sh --help`.
+What each step does:
 
-## Build a database from your own tree
+| Step | What happens |
+|---|---|
+| fetch | Reads the curated LCA FASTA and taxonomy from rcrux-py's DVC remote at `--rcrux-tag`. |
+| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. |
+| publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
+| tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
+
+The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test.
+
+### Build settings
+
+The defaults are our standard recipe, in `scripts/tronko_build.conf`:
+
+| Setting | Default |
+|---|---|
+| `THREADS` | all CPUs |
+| `CLUSTER_CUTOFF` | 25000 (cluster with AncestralClust above this many sequences) |
+| `ANCESTRALCLUST_BIN_SIZE`, `ANCESTRALCLUST_MIN_DESCENDANTS` | 10000, 75 |
+| `TREE_TOOL` | `veryfasttree` (or `fasttree`, `raxml`) |
+| `PARTITION`, `SP_THRESHOLD`, `MIN_LEAF` | `sum_of_pairs`, 0.1, 500 |
+| `SP_FORMULA` | `legacy` (or `corrected`) |
+| `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | 1, 1 |
+| `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
+
+Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
+
+## Build a database from your own trees
+
+Input files:
+
+- **Taxonomy:** `name<TAB>domain;phylum;class;order;family;genus;species`, one line per sequence, all 7 ranks filled (`NA` for an unknown one).
+- **Alignment:** FASTA with each sequence on one line.
+- **Names:** identical in the tree, the alignment and the taxonomy.
+
+One tree:
 
 ```
 tronko-build -l -t tree.nwk -m alignment.fasta -x taxonomy.txt -d outdir
 ```
 
-The taxonomy file is `name<TAB>domain;phylum;class;order;family;genus;species`, one line per sequence, with the same names as the tree and the alignment. `tronko-build -h` lists every option.
+Several clusters, numbered in one directory (`1_MSA.fasta`, `1_taxonomy.txt`, `RAxML_bestTree.1.reroot`, ...), split further by sum-of-pairs score or by leaf count:
+
+```
+tronko-build -y -e clusters_dir -n 2 -d outdir -s -u 0.1
+tronko-build -y -e clusters_dir -n 2 -d outdir -v -f 500
+```
+
+Splitting needs `famsa` on PATH, plus `raxmlHPC-PTHREADS` and `nw_reroot`, or `FastTree` with `-a`. `-J N` splits N clusters at once.
+
+The database is `outdir/reference_tree.txt`. `tronko-convert -i reference_tree.txt -o reference_tree.trkb` makes the binary form, which loads fastest.
 
 ## Assign reads
 
@@ -55,7 +100,27 @@ tronko-assign -r -6 -f reference_tree.trkb -a marker.fasta -p -1 forward.fasta -
 tronko-assign -r -6 -f reference_tree.trkb -a marker.fasta -s -g reads.fasta -o results.txt
 ```
 
-Add `-q` for FASTQ input and `-z` to reverse-complement the second read. `tronko-assign -h` lists every option.
+- Reads can be FASTA or FASTQ (`-q`), plain, gzip or zstd.
+- Orientation is not detected: `-z` reverse-complements the second read of a pair, `-v` a single read.
+- `-6` uses the BWA-MEM3 index beside the reference FASTA, and builds it there if it is missing.
+
+The output is tab-separated, one row per read:
+
+```
+Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node_Number
+```
+
+## Try it on the example data
+
+```
+tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta \
+    -x tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt \
+    -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot -d outdir
+
+tronko-assign -r -f outdir/reference_tree.txt \
+    -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
+    -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta -o results.txt -w
+```
 
 ## Test
 
@@ -66,6 +131,7 @@ tests/test_tronko_build_golden.sh
 
 ## More
 
-- [docs/usage.md](docs/usage.md): input file formats, building from several clusters, output columns and the example data.
-- [docs/](docs/README.md): how the build and the assignment work.
-- Cite: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg)](https://doi.org/10.5281/zenodo.7407318)
+- [docs/](docs/README.md): how the build and the assignment work, with step-by-step workflows in [docs/examples/](docs/examples/).
+- [docs/performance-logging.md](docs/performance-logging.md) and [docs/crash-debugging.md](docs/crash-debugging.md): the `-V`, `-R`, `-T` and `-l` flags.
+- [tests/README.md](tests/README.md): the test suites.
+- Pipes L, Nielsen R (2024). A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets. eLife. https://elifesciences.org/articles/85794
