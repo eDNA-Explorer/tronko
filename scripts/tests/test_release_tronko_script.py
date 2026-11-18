@@ -63,9 +63,20 @@ def env(tmp_path, monkeypatch):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
     (tronko / "lib").mkdir()
     shutil.copy2(REPO / "lib" / "tronko-db.sh", tronko / "lib" / "tronko-db.sh")
-    git(tmp_path, "init", "-q", str(tronko))
+    git(tmp_path, "init", "-q", "-b", "main", str(tronko))
+    subprocess.run(["dvc", "init", "-q"], cwd=tronko, check=True)
+    tronko_remote = tmp_path / "tronko-remote"
+    tronko_remote.mkdir()
+    subprocess.run(
+        ["dvc", "remote", "add", "-d", "tronko", str(tronko_remote)], cwd=tronko, check=True
+    )
     git(tronko, "add", "-A")
     git(tronko, "commit", "-q", "-m", "tronko")
+    # tronko's 'GitHub', and the second checkout a release is committed on.
+    tronko_origin = tmp_path / "tronko-github.git"
+    git(tmp_path, "clone", "-q", "--bare", str(tronko), str(tronko_origin))
+    checkout = tmp_path / "tronko-release"
+    git(tmp_path, "clone", "-q", str(tronko_origin), str(checkout))
 
     # rcrux-py on a bare 'GitHub', with a tagged curated release.
     origin, dev, remote = tmp_path / "github.git", tmp_path / "rcrux-dev", tmp_path / "remote"
@@ -94,9 +105,14 @@ def env(tmp_path, monkeypatch):
     git(dev, "tag", RCRUX_TAG)
     git(dev, "push", "-q", "-u", "origin", "main", "--tags")
 
-    checkout = tmp_path / "rcrux-checkout"
-    git(tmp_path, "clone", "-q", str(origin), str(checkout))
-    return {"tmp": tmp_path, "tronko": tronko, "origin": origin, "checkout": checkout}
+    return {
+        "tmp": tmp_path,
+        "tronko": tronko,
+        "origin": origin,
+        "checkout": checkout,
+        "tronko_remote": tronko_remote,
+        "rcrux_remote": remote,
+    }
 
 
 def run(env, *extra: str) -> subprocess.CompletedProcess[str]:
@@ -104,7 +120,7 @@ def run(env, *extra: str) -> subprocess.CompletedProcess[str]:
         [
             "bash", str(env["tronko"] / "scripts" / "release_tronko.sh"),
             "--marker", MARKER, "--rcrux-tag", RCRUX_TAG,
-            "--rcrux-checkout", str(env["checkout"]), "--rcrux-repo", str(env["origin"]),
+            "--tronko-checkout", str(env["checkout"]), "--rcrux-repo", str(env["origin"]),
             "--work", str(env["tmp"] / "work"), "--threads", "2", *extra,
         ],
         capture_output=True, text=True, check=False,
@@ -125,6 +141,9 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     branch = git(checkout, "rev-parse", "--abbrev-ref", "HEAD")
     assert branch == f"publish/{MARKER}-tronko-v1.0.0"
     assert git(checkout, "ls-remote", "--heads", "origin", branch)
+    # The release is stored in tronko's DVC remote; rcrux's holds only its own tier.
+    rcrux_objects = sum(1 for p in env["rcrux_remote"].rglob("*") if p.is_file())
+    assert any(env["tronko_remote"].rglob("*")) and rcrux_objects == 3
     meta = published(env)
     assert meta["tronko_sha"] == git(env["tronko"], "rev-parse", "HEAD")
     assert meta["rcrux_tag"] == RCRUX_TAG
@@ -313,7 +332,16 @@ def test_publish_alone_needs_a_finished_build(env):
     assert result.returncode != 0 and "no finished build" in result.stderr
 
 
-REAL_TOOLS = ("famsa", "nw_reroot", "bwa", "bwa-mem3", "raxmlHPC-PTHREADS", "fasta2phyml.pl", "make", "gcc")
+REAL_TOOLS = (
+    "famsa",
+    "nw_reroot",
+    "bwa",
+    "bwa-mem3",
+    "raxmlHPC-PTHREADS",
+    "fasta2phyml.pl",
+    "make",
+    "gcc",
+)
 
 
 @pytest.mark.skipif(

@@ -15,9 +15,9 @@
 #            tronko-build, tronko-convert and ancestralclust are compiled from
 #            this checkout, which must be clean, so the recorded commit built
 #            the tree.
-#   publish  tronko_release.py publish: dvc push -r rcrux, commit on a publish
-#            branch of the rcrux-py checkout; merging it tags
-#            <marker>_tronko_<version>
+#   publish  tronko_release.py publish: dvc push -r tronko, commit on a publish
+#            branch of a second tronko checkout; merging it tags
+#            <marker>_tronko_<version> in the tronko repository
 #
 # Settings come from scripts/tronko_build.conf, then
 # scripts/tronko_build.d/<marker>.conf if it exists, then each --config FILE
@@ -26,7 +26,7 @@
 #
 # Usage (from a tronko checkout):
 #   scripts/release_tronko.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
-#       --rcrux-checkout ~/rcrux-py [--work DIR] [--steps fetch,build,publish] \
+#       --tronko-checkout ~/tronko-release [--work DIR] [--steps fetch,build,publish] \
 #       [--config FILE]... [--set KEY=VALUE]... [--threads N] \
 #       [--sp-threshold 0.1 | --min-leaf 500] [--cluster-cutoff N] \
 #       [--tronko-version v2.0.0 | --bump minor] [--replace] [--push] [--print-config]
@@ -81,7 +81,7 @@ load_config() {
 }
 
 # --- Options (overrides applied in order, after the config files) -----------
-MARKER="" RCRUX_TAG="" RCRUX_CHECKOUT="" RCRUX_REPO="" WORK="" STEPS="fetch,build,publish"
+MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" WORK="" STEPS="fetch,build,publish"
 PRINT_CONFIG=0
 OVERRIDES=()  # "config:FILE" or "set:KEY=VALUE"
 PUBLISH_OPTS=()
@@ -89,7 +89,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --marker) MARKER="$2"; shift 2 ;;
         --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
-        --rcrux-checkout) RCRUX_CHECKOUT="$2"; shift 2 ;;
+        --tronko-checkout) TRONKO_CHECKOUT="$2"; shift 2 ;;
         --rcrux-repo) RCRUX_REPO="$2"; shift 2 ;;
         --work) WORK="$2"; shift 2 ;;
         --steps) STEPS="$2"; shift 2 ;;
@@ -154,9 +154,9 @@ fi
 [ -n "$MARKER" ] || die "--marker is required"
 if has_step fetch && [ -z "$RCRUX_TAG" ]; then die "fetch needs --rcrux-tag"; fi
 if has_step publish; then
-    [ -n "$RCRUX_CHECKOUT" ] || die "publish needs --rcrux-checkout"
-    [ -d "$RCRUX_CHECKOUT/.git" ] || die "$RCRUX_CHECKOUT is not an rcrux-py checkout"
-    RCRUX_CHECKOUT="$(cd "$RCRUX_CHECKOUT" && pwd)"
+    [ -n "$TRONKO_CHECKOUT" ] || die "publish needs --tronko-checkout (a clean tronko checkout to commit the release on)"
+    [ -d "$TRONKO_CHECKOUT/.git" ] || die "$TRONKO_CHECKOUT is not a git checkout"
+    TRONKO_CHECKOUT="$(cd "$TRONKO_CHECKOUT" && pwd)"
 fi
 
 WORK="${WORK:-$PWD/tronko-release-$MARKER}"
@@ -303,5 +303,5 @@ if has_step publish; then
     BUILT_SHA="$(sed -n 's/.*"tronko_sha": "\([^"]*\)".*/\1/p' "$PARAMS")"
     run "${TOOL[@]}" publish --marker "$MARKER" --build-dir "$OUT" --inputs "$INPUT/inputs.json" \
         --build-log "$LOG" --build-params "$PARAMS" --tronko-sha "$BUILT_SHA" \
-        --rcrux-checkout "$RCRUX_CHECKOUT" ${PUBLISH_OPTS[@]+"${PUBLISH_OPTS[@]}"}
+        --tronko-checkout "$TRONKO_CHECKOUT" ${PUBLISH_OPTS[@]+"${PUBLISH_OPTS[@]}"}
 fi

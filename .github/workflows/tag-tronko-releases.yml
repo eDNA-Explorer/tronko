@@ -1,0 +1,40 @@
+name: Tag tronko releases
+
+# A merged publish PR carries the release version in its pointer,
+# databases/<marker>/tronko.dvc (meta.release_version, stamped by
+# scripts/tronko_release.py publish). This tags the merge commit
+# <marker>_tronko_<version>. Tags pushed with GITHUB_TOKEN start no other
+# workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "databases/*/tronko.dvc"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-tronko-releases
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install "pyyaml>=6,<7"
+
+      - name: Tag published releases
+        run: |
+          python scripts/tronko_release.py tag \
+            --changed-since "${{ github.event.before }}" --ref "${{ github.sha }}"
