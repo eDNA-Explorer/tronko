@@ -1,604 +1,137 @@
 # tronko
 
-![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)
-![Comprehensive Tests](https://github.com/lpipes/tronko/workflows/Tests/badge.svg)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg)](https://doi.org/10.5281/zenodo.7407318)
+A phylogeny-based method for assigning species to metabarcoding reads. It has two programs:
 
-A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets
+- `tronko-build` builds a reference database from trees, alignments and taxonomy.
+- `tronko-assign` assigns reads to species using that database.
 
-In the tronko package there are two modules: `tronko-build` and `tronko-assign`. `tronko-build` is for building custom reference databases that tronko-assign uses as input. We have two reference databases currently available for download with `tronko-assign`. Cytochrome oxidase I (COI) which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GGWACWGGWTGAACWGTWTAYCCYCC` and reverse primer `TANACYTCnGGRTGNCCRAARAAYCA`. 16S which was custom built with <a href="https://github.com/limey-bean/CRUX_Creating-Reference-libraries-Using-eXisting-tools">CRUX</a> using forward primer `GTGCCAGCMGCCGCGGTAA` and reverse primer `GACTACHVGGGTATCTAATCC`.
+`tronko-build -h` and `tronko-assign -h` list every option.
 
-Alignment-based and composition-based assignment methods calculate the lowest common ancestor (LCA) using data only in the leaf nodes of a phylogeny (A). The advantage of Tronko is that it stores fractional likelihoods in all nodes of a phylogeny and calculates the LCA based on all nodes in the tree (B).
-<img src="https://github.com/lpipes/tronko/blob/main/Overview_Figure.jpg?raw=true">
+## Compile
 
-# tronko-build
-`tronko-build` is for building custom reference databases to be used with `tronko-assign`.
-
-	tronko-build [OPTIONS] -d [OUTPUT DIRECTORY]
-	
-		-h, usage:
-		-d [DIRECTORY], REQUIRED, full path to output directory
-		-y, use a partition directory (you want to partition or you have multiple clusters)
-		-l, use only single tree (do not partition)
-		-t [FILE], compatible only with -l, rooted phylogenetic tree [FILE: Newick]
-		-m [FILE], comptabile only with -l, multiple sequence alignment [FILE: FASTA] (can be gzipped)
-		-x [FILE], taxonomy file [FILE: FASTA_header	domain;phylum;class;order;family;genus;species, use only with -l]
-		-e [DIRECTORY], compatible only with -y, directory for reading multiple clusters
-		-n [INT], compatible only with -y, number of partitions in read directory
-		-b [INT], comptabile only with -y, restart partitions with partition number [default: 0]
-		-s, compatible only with -y, partition using sum-of-pairs score [can't use with -f, use with -s]
-		-u [FLOAT], compatible only with -y, minimum threshold for sum of pairs score [default: 0.5]
-		-v, compatible only with -y, partition using minimum number of leaf nodes [can't use with -s, use with -f]
-		-f [INT], don't partition less than the minimum number of leaf nodes [can't use with -s, use with -v, use only with -y]
-		-g, don't flag missing data
-		-c, [INT] Number of FAMSA threads to use (0 means use all threads) [default: 1]
-		-p, break the db build into two steps
-		-r, remove unused trees and copy trees from initial partition directory [can only be used with -p]
-		-i, [STRING] set the prefix for output partitions in -d
-		-a, use fasttree instead of RAxML
-
-# tronko-assign
-`tronko-assign` is for species assignment of queries. It requires a `tronko-build` database.
-
-	tronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF FASTA FILE] -o [OUTPUT FILE]
-	
-		-h, usage:
-		-r, REQUIRED, use a reference
-		-f [FILE], REQUIRED, path to reference database file, can be gzipped
-		-a [FILE], REQUIRED, path to reference fasta file (for bwa database)
-		-o [FILE], REQUIRED, path to output file
-		-p, use paired-end reads
-		-s, use single reads
-		-v, when using single reads, reverse-complement it
-		-z, when using paired-end reads,  reverse-complement the second read
-		-g [FILE], compatible only with -s, path to single-end reads file
-		-1 [FILE], compatible only with -p, path to paired-end forward read file
-		-2 [FILE], compatible only with -p, path to paired-end reverse read file
-		-c [INT], LCA cut-off to use [default:5]
-		-C [INT], number of cores [default:1]
-		-L [INT], number of lines to read for assignment [default:50000]
-		-P, print alignments to stdout
-		-w, use Needleman-Wunsch Alignment Algorithm (default: WFA)
-		-q, Query is FASTQ [default is FASTA]
-		-e, Use only a portion of the reference sequences
-		-n [INT], compatible only with -e, Padding (Number of bases) to use in the portion of the reference sequences
-		-5 [FILE], Print tree number and leaf number and exit
-		-6, Use the BWA-MEM3 index beside the -a FASTA, building it there first if a file is missing
-		-u, Score constant [default: 0.01]
-		-V [LEVEL], Enable verbose logging [0=ERROR, 1=WARN, 2=INFO, 3=DEBUG] [default: disabled]
-		-l [FILE], Log file path [default: stderr only]
-		-R, Enable resource monitoring (memory/CPU usage)
-		-T, Enable timing information
-
-## Verbose Logging and Performance Monitoring
-
-`tronko-assign` includes comprehensive logging capabilities to monitor performance and troubleshoot issues:
-
-### Basic Verbose Logging
-```bash
-# Enable INFO level logging to stderr
-tronko-assign -V2 [other options...]
-
-# Enable DEBUG level logging with maximum detail
-tronko-assign -V3 [other options...]
+```
+sudo apt-get install -y zlib1g-dev libzstd-dev    # macOS: brew install zlib zstd gcc
+make -C tronko-build
+make -C tronko-assign && make -C tronko-assign bwa-mem3
 ```
 
-### Logging to File
-```bash
-# Write logs to a file (also logs to stderr)
-tronko-assign -V2 -l assignment.log [other options...]
+## Build a database from an rCRUX release
+
+Build the image once per tronko commit. It holds that commit and every tool the build needs, at fixed versions:
+
+```
+docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release:<ref> .
 ```
 
-### Resource Monitoring
-```bash
-# Monitor memory and CPU usage at each milestone
-tronko-assign -V2 -R [other options...]
+Build a database (it lands in `./work/out`):
+
+```
+docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
+    tronko-release:<ref> --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
+    --work /work --steps fetch,build --threads 32
 ```
 
-### Timing Information
-```bash
-# Include timing information between processing milestones
-tronko-assign -V2 -T [other options...]
+To publish it too, drop `--steps` and add a clean tronko checkout and a git identity:
+
+```
+    -e GIT_AUTHOR_NAME -e GIT_AUTHOR_EMAIL -e GIT_COMMITTER_NAME -e GIT_COMMITTER_EMAIL \
+    -v "$HOME/tronko-release:/release"   ...   --tronko-checkout /release
 ```
 
-### Comprehensive Monitoring
-```bash
-# Enable all logging features for detailed performance analysis
-tronko-assign -V3 -T -R -l comprehensive.log [other options...]
+Then push the `publish/...` branch from that checkout and open a PR. Merging it tags the release `<marker>_tronko_<version>`.
+
+What each step does:
+
+| Step | What happens |
+|---|---|
+| fetch | Reads the curated LCA FASTA and taxonomy from rcrux-py's DVC remote at `--rcrux-tag`. |
+| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. |
+| publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
+| tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
+
+The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test.
+
+### Build settings
+
+The defaults are our standard recipe, in `scripts/tronko_build.conf`:
+
+| Setting | Default |
+|---|---|
+| `THREADS` | all CPUs |
+| `CLUSTER_CUTOFF` | 25000 (cluster with AncestralClust above this many sequences) |
+| `ANCESTRALCLUST_BIN_SIZE`, `ANCESTRALCLUST_MIN_DESCENDANTS` | 10000, 75 |
+| `TREE_TOOL` | `veryfasttree` (or `fasttree`, `raxml`) |
+| `PARTITION`, `SP_THRESHOLD`, `MIN_LEAF` | `sum_of_pairs`, 0.1, 500 |
+| `SP_FORMULA` | `legacy` (or `corrected`) |
+| `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | 1, 1 |
+| `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
+
+Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
+
+## Build a database from your own trees
+
+Input files:
+
+- **Taxonomy:** `name<TAB>domain;phylum;class;order;family;genus;species`, one line per sequence, all 7 ranks filled (`NA` for an unknown one).
+- **Alignment:** FASTA with each sequence on one line.
+- **Names:** identical in the tree, the alignment and the taxonomy.
+
+One tree:
+
+```
+tronko-build -l -t tree.nwk -m alignment.fasta -x taxonomy.txt -d outdir
 ```
 
-The logging system tracks 18 key milestones throughout the assignment process including:
-- Program startup and option parsing
-- Reference database loading 
-- BWA index creation
-- Memory allocation
-- Batch processing start/completion
-- Sequence alignment and placement
-- Results writing and cleanup
+Several clusters, numbered in one directory (`1_MSA.fasta`, `1_taxonomy.txt`, `RAxML_bestTree.1.reroot`, ...), split further by sum-of-pairs score or by leaf count:
 
-Log levels:
-- `-V0`: ERROR messages only
-- `-V1`: WARN and ERROR messages  
-- `-V2`: INFO, WARN, and ERROR messages (recommended)
-- `-V3`: DEBUG, INFO, WARN, and ERROR messages (most verbose)
+```
+tronko-build -y -e clusters_dir -n 2 -d outdir -s -u 0.1
+tronko-build -y -e clusters_dir -n 2 -d outdir -v -f 500
+```
 
-Tronko uses the <a href="https://github.com/smarco/WFA2-lib">Wavefront Alignment Algorithm (version 2)</a> or <a href="https://github.com/noporpoise/seq-align">Needleman-Wunsch Algorithm</a> for semi-global alignments. It uses <a href="https://github.com/lh3/bwa">bwa</a> for alignment to leaf nodes, and uses <a href="https://github.com/DavidLeeds/hashmap">David Leeds' hashmap</a> for hashmap implementation in C. `tronko-assign` does not reverse complement your reads automatically. You must use options `-v` or `-z` to reverse complement your read for better alignment to the reference database. For more information on the direction of your reads based on your library prep, please refer to this helpful blog here: <a href="http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html">http://onetipperday.blogspot.com/2012/07/how-to-tell-which-library-type-to-use.html</a>.
+Splitting needs `famsa` on PATH, plus `raxmlHPC-PTHREADS` and `nw_reroot`, or `FastTree` with `-a`. `-J N` splits N clusters at once.
 
-## Example output
+The database is `outdir/reference_tree.txt`. `tronko-convert -i reference_tree.txt -o reference_tree.trkb` makes the binary form, which loads fastest.
 
-The output file is a tab-delimited text file where only the forward readname is retained (if using paired-end reads). The output displays the taxonomic path for assignment, the score, the number of forward read mismatches with the `bwa` hit, the number of reverse read mismatches with the `bwa` hit, the tree number for the best assignment (0 if using 1 tree), and the node number the read (or reads in the case of paired-end reads) was assigned to. For single-end reads, the `Reverse_Mismatch` will always be 0 and the `Forward_Mismatch` is the number of read mismatches with the `bwa` hit.
+## Assign reads
+
+```
+tronko-assign -r -6 -f reference_tree.trkb -a marker.fasta -p -1 forward.fasta -2 reverse.fasta -o results.txt
+tronko-assign -r -6 -f reference_tree.trkb -a marker.fasta -s -g reads.fasta -o results.txt
+```
+
+- Reads can be FASTA or FASTQ (`-q`), plain, gzip or zstd.
+- Orientation is not detected: `-z` reverse-complements the second read of a pair, `-v` a single read.
+- `-6` uses the BWA-MEM3 index beside the reference FASTA, and builds it there if it is missing.
+
+The output is tab-separated, one row per read:
 
 ```
 Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node_Number
-GU572157.1_8_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-54.258690	5.000000	4.00000	0	1095
-GU572157.1_7_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-42.871226	1.000000	6.00000	0	1095
-GU572157.1_6_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-59.952407	7.000000	3.00000	0	1098
-GU572157.1_5_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-31.483761	2.000000	4.00000	0	1095
-GU572157.1_4_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-31.483761	2.000000	3.00000	0	1095
-GU572157.1_3_1	Eukaryota;Chordata;Aves;Charadriiformes;Alcidae;Uria;Uria aalge	-54.258690	2.000000	7.00000	0	1095
 ```
 
-# INSTALLATION
-
-1. Clone the [GitHub repo](https://github.com/lpipes/tronko), e.g. with `git clone https://github.com/lpipes/tronko.git`
-2. Install build dependencies:
-   - **Debian/Ubuntu**: `sudo apt-get install -y zlib1g-dev libzstd-dev`
-   - **RHEL/CentOS/Fedora**: `sudo dnf install -y zlib-devel libzstd-devel`
-   - **macOS (Homebrew)**: `brew install zlib zstd`
-3. Run `make` in the `tronko-build` and `tronko-assign` directories.
-4. Copy the `tronko-build` and `tronko-assign` binaries to your path.
-
-`tronko-assign` uses [pthreads](http://en.wikipedia.org/wiki/POSIX_Threads), [zlib](http://en.wikipedia.org/wiki/Zlib), and [zstd](https://github.com/facebook/zstd) as its dependencies.
-
-## Supported Input Formats
-
-`tronko-assign` accepts FASTA/FASTQ query files in the following formats:
-- **Plain text** (`.fasta`, `.fastq`)
-- **Gzip compressed** (`.fasta.gz`, `.fastq.gz`)
-- **Zstandard compressed** (`.fasta.zst`, `.fastq.zst`)
-
-Compression format is auto-detected from file magic bytes, not file extension. This allows for streaming decompression with minimal memory overhead (~256 KB for zstd buffers).
-
-`tronko-build` only has dependencies if using the partition procedure for the initial trees. These are <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>, which must be installed in your path. By default, `tronko-build` uses `raxmlHPC-PTHREADS` to estimate trees, if you choose the `-a` option to use `FastTree` instead, you must have `FastTree` installed in your path.
-
-	cd tronko/tronko-build
-	make
-	../tronko-assign
-	make
-
-# SINGULARITY CONTAINER
-
-To use the container download:
-
-	singularity pull library://lpipes/tronko/tronko:1.0
-
-To run `tronko-assign` with the container:
-
-	singularity exec --bind <root-dir-to-bind-to-container> tronko_1.0.sif tronko-assign
-
-To run `tronko-build` with the container:
-
-	singularity exec --bind <root-dir-to-bind-to-container> tronko_1.0.sif tronko-build
-
-# `tronko-assign` Usage
-Tronko does not detect the correct orientation of the reads. If your reverse read needs to be reverse complemented use the option `-z`. The default options of Tronko assume that your reads are in FASTA format. If you want to assign reads in FASTQ format, use the option `-q`. You will also need a FASTA file (not gzipped) of all of your reference sequences in the reference database (use the option `-a`). `tronko-assign` will create a BWA-MEM3 index (`bwa-mem3 index`) of the reference sequences beside the FASTA, with the extensions *.fasta.amb, .ann, .pac and .bwt.2bit.64, in every run. With `-6` it uses that index if all four files are present, and otherwise builds it once beside the FASTA (under a temporary name, renamed into place, so a build that is stopped part-way is never taken for an index; the FASTA's directory must be writable). Runs that share a reference should pass `-6`: the first builds the index, the others find it. The reads (and reference database file) can be gzipped or not gzipped. Assigning paired-end reads in FASTA format:
-```
-tronko-assign -r -f [tronko-build REFERENCE DB FILE] -p -1 [FORWARD READS FASTA] -2 [REVERSE READS FASTA] -a [REFERENCE SEQUENCES FASTA] -o [OUTPUT FILE]
-```
-Assigning single-end reads in FASTA format:
-```
-tronko-assign -r -f [tronko-build REFERENCE DB FILE] -s -g [READS FASTA] -a [REFERENCE SEQUENCES FASTA] -o [OUTPUT FILE]
-```
-
-# `tronko-build` Usage
-
-## `tronko-build` Simple Usage (using 1 phylogenetic tree)
-```
-tronko-build -l -t [Rooted Newick Tree] -m [Multiple Sequence Alignment FASTA] -x [TAXONOMY FILE] -d [FULL PATH TO OUTPUT DIRECTORY] 
-```
-The taxonomy file is a `.txt` file that has the following format:
-```
-FASTA_header\tdomain;phylum;class;order;family;genus;species
-```
-The tree file, MSA file, and the taxonomy file must all contain identical corresponding names. The MSA file should not contain any line breaks. To remove line breaks we recommend
-```
-sed -i ':a; $!N; /^>/!s/\n\([^>]\)/\1/; ta; P; D' test.fasta
-```
-## `tronko-build` example datasets
-
-An example dataset for a single tree is provided in `tronko-build/example_datasets/single_tree`. The dataset includes 1466 COI sequences from the order Charadriiformes. The MSA is `tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta`, the taxonomy file is `tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt`, and the tree file is `tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot`. To build the reference database for `tronko-assign` for this dataset, run `tronko-build` with the following command (`-l` specifies using a single tree):
-```
-tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta -x tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot -d tronko-build/example_datasets/single_tree
-```
-An example dataset for multiple trees is provided in `tronko-build/example_datasets/multiple_trees/one_MSA`. The dataset includes 99 COI sequences from different species. The MSA is `tronko-build/example_datasets/multiple_trees/one_MSA/1_MSA.fasta`, the taxonomy file is `tronko-build/example_datasets/multiple_trees/one_MSA/1_taxonomy.txt`, and the tree file is `tronko-build/example_datasets/multiple_trees/one_MSA/RAxML_bestTree.1.reroot`. To build the reference database and partition it using the Sum-of-Pairs score (see manuscript), run `tronko-build` with the following command [-d is REQUIRED and must contain the full path NOT relative path):
-```
-tronko-build -y -e tronko-build/example_datasets/multiple_trees/one_MSA -n 1 -d [FULL PATH TO OUTPUT DIRECTORY] -s
-```
-
-An example dataset to not partition multiple tree is provided in `tronko-build/example_datasets/multiple_trees/multiple_MSA`. The dataset include 99 COI sequences from different species. To build the reference database and not partition the database, set the `-f` parameter higher than the number of sequences in the dataset. Run `tronko-build` with the following command [Make sure `-d` is supplied with the full path to the output directory]:
-```
-tronko-build -y -e tronko-build/example_datasets/multiple_trees/multiple_MSA -n 5 -d outdir_multiple_MSA -v -f 500
-```
-
-A successful run will produce a `tronko-assign` reference database named `reference_tree.txt` in the output directory. The `reference_tree.txt` database file is what is used to run `tronko-assign`.
-
-## `tronko-assign` example datasets
-
-An example dataset for `tronko-assign` is provided in `example_datasets/single_tree`. This dataset contains single-end reads (`example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta`) and paired-end reads (forward read: `example_datasets/single_tree/missingreads_pairedend_150bp_2error_read1.fasta` and reverse read: `example_datasets/single_tree/missingreads_pairedend_150bp_2error_read2.fasta`). For the single-end reads, there are 164 150bp reads with 2% simulated error/polymorphisms from the following sequence (taxonomically classified on NCBI as Uria aalge):
+## Try it on the example data
 
 ```
->GU572157.1
-CCTGGCTGGTAATCTAGCCCATGCCGGAGCTTCAGTGGATTTAGCAATCTTCTCCCTTCACTTAGCAGGTGTATCATCTATTCTAGGCGCTATCAACTTTATCACAACAGCCATCAACATAAAGCCTCCAGCCCTCTCACAATACCAAACCCCCCTATTCGTATGATCAGTACTTATCACTGCTGTCCTACTACTACTCTCACTCCCAGTACTTGCTGCTGGTATCACTATATTACTAACAGATCGAAACTTAAACACAACATTCTTTGATCCAGCTGGAGGTGGTGACCCAGTACTTTACCAACACCTCTTC
-``` 
+tronko-build -l -m tronko-build/example_datasets/single_tree/Charadriiformes_MSA.fasta \
+    -x tronko-build/example_datasets/single_tree/Charadriiformes_taxonomy.txt \
+    -t tronko-build/example_datasets/single_tree/RAxML_bestTree.Charadriiformes.reroot -d outdir
 
-This particular sequence, `GU572157.1`, has been removed from the single tree example database. To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment and a default LCA cut-off of 5):
-
-```
-tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta -o example_datasets/single_tree/missingreads_singleend_150bp_2error_results.txt -w
-```
-
-To obtain assignments, run `tronko-assign` with the single tree example database from `tronko-build` with the following command for the paired-end reads (using the Needleman-Wunsch alignment and a default LCA cut-off of 5):
-
-```
-tronko-assign -r -f tronko-build/example_datasets/single_tree/reference_tree.txt -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta -p -1 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read1.fasta -2 example_datasets/single_tree/missingreads_pairedend_150bp_2error_read2.fasta -o example_datasets/single_tree/missingreads_pairedend_150bp_2error_results.txt -w
+tronko-assign -r -f outdir/reference_tree.txt \
+    -a tronko-build/example_datasets/single_tree/Charadriiformes.fasta \
+    -s -g example_datasets/single_tree/missingreads_singleend_150bp_2error.fasta -o results.txt -w
 ```
 
-An example dataset for `tronko-assign` with multiple trees is provided in `example_datasets/multiple_trees`. This dataset contains single-end reads (`example_datasets/multiple_trees/missingreads_singleend_150bp_2error.fasta`) and paired-end reads (forward read: `example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta` and reverse read: `example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read2.fasta`). For the single-end reads, there are 84 150bp reads with 2% simulated error/polymorphisms from the following sequence (taxonomically classified on NCBI as Sagitta elegans):
+## Test
 
 ```
->KP857443.1
-TTTGAGCACTGTGGGACATAGGGGTGGAGCAGTGGATTTGGGTATCTTCTCTTTGCACCTGGCTGGCGTTAGAAGAATCTTGGGGAGAGCTAATTTTATTACCACTATCACCAATATAAAAGGGGAAGGTATGACTATAGAACTCATGCCTTTATTCGTGTGGGCGGTGCTCCTCACGGCTGTCTTACTTTTACTCTCTCTACCTGTATTAGCTGGGGCTATCACAATGTTAC
-```
-
-This particular sequence, `KP857443.1`, has been removed from the multiple trees example databases. To obtain assignments, run `tronko-assign` with the multiple trees example database with partitions from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and a default LCA cut-off of 5 `-c 5`):
-
-```
-tronko-assign -r -f out_oneMSA/reference_tree.txt -s -g example_datasets/multiple_trees/missingreads_singleend_150bp_2error.fasta -o example_datasets/multiple_trees/missingreads_singleend_150bp_2error_partition_results.txt -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
-```
-
-To assign paired-end reads on the same reference database run `tronko-assign`:
-```
-tronko-assign -r -f out_oneMSA/reference_tree.txt -p -1 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta -2 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read2.fasta -o example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_partition_results.txt -a -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
-```
-
-To obtain assignments, run `tronko-assign` with the multiple trees example database with multiple MSAs from `tronko-build` with the following command for the single-end reads (using the Needleman-Wunsch alignment `-w` and a default LCA cut-off of 5 `-c 5`):
-
-```
-tronko-assign -r -f outdir_multiple_MSA/reference_tree.txt -s -g example_datasets/multiple_trees/missingreads_singleend_150bp_2error.fasta -o example_datasets/multiple_trees/missingreads_singleend_150bp_2error_multiple_MSA_results.txt -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
-```
-
-To assign paired-end reads on the same reference database run `tronko-assign`:
-```
-tronko-assign -r -f outdir_multiple_MSA/reference_tree.txt -p -1 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read1.fasta -2 example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_read2.fasta -o example_datasets/multiple_trees/missingreads_pairedend_150bp_2error_multiple_MSA_results.txt -a tronko-build/example_datasets/multiple_trees/one_MSA/1.fasta
-```
-
-## More on `tronko-build` Usage with multiple trees
-
-`tronko-build` requires a multiple sequence alignment (FASTA format), rooted phylogenetic tree (Newick format), and a corresponding taxonomy file for each cluster build. All of the files should be in one directory and specify the directory with `-e` with each cluster being designated by a number. MSA files should be named `[Number]_MSA.fasta`, taxonomy files should be named `[Number]_taxonomy.txt`, and tree files should be named `RAxML_bestTree.[Number].reroot`. Example of the contents of a directory containing 3 clusters:
-```
-1_MSA.fasta
-2_MSA.fasta
-3_MSA.fasta
-1_taxonomy.txt
-2_taxonomy.txt
-3_taxonomy.txt
-RAxML_bestTree.1.reroot
-RAxML_bestTree.2.reroot
-RAxML_bestTree.3.reroot
-```
-Once you have the cluster files prepared and you have created an output directory (the program assumes the output directory already exists), an example command is
-```
-tronko-build -y -e [DIRECTORY CONTAINING MSA, TAX, and TREE FILES] -n [NUMBER OF PARTITIONS] -d [OUTPUT DIRECTORY] -s
-```
-For the example with 3 clusters, an example command partitioning by sum-of-pairs score would be:
-```
-tronko-build -y -e [DIRECTORY CONTAINING MSA, TAX, and TREE FILES] -n 3 -d output -s
-```
-The reference database file will be output to `[OUTPUT DIRECTORY]/reference_tree.txt`. The `reference_tree.txt` file is the reference database file that `tronko-assign` requires for assignment.
-
-To partition the reference database further (see manuscript for details) the following dependencies are needed to be installed in your path (no dependencies needed for `tronko-assign` and for building a reference database with a single tree or without partitioning the database): <a href="https://github.com/stamatak/standard-RAxML">`raxmlHPC-PTHREADS`</a>, <a href="https://github.com/refresh-bio/FAMSA">`famsa`</a>, `nw_reroot` from <a href="https://anaconda.org/bioconda/newick_utils/files">Newick utilties</a>, <a href="https://raw.githubusercontent.com/lpipes/tronko/main/scripts/fasta2phyml.pl">`fasta2phyml.pl`</a>, and <a href="https://ftp.gnu.org/gnu/sed/">`sed`</a>. Partitioning the database further is only needed when the underlying MSA is unreliable. An example command to create the reference database and partition a database that contains 100 initial clusters using the sum-of-squares approach:
-
-```
-tronko-build -y -e initial_clusters_directory -d outdir -n 100 -s
-```
-
-The `reference_tree.txt` file will be output to the `outdir` directory. An example command to create the reference database and partition a database that contains 100 initial clusters using a threshold for the number of leaf nodes (i.e., 500 leaf nodes):
-
-```
-tronko-build -y -e initial_clusters_directory -d outdir -n 100 -v -f 500
-```
-
-The `reference_tree.txt` file will be output to the `outdir` directory.
-
-# Releasing a reference database
-
-`scripts/release_tronko.sh` builds a tronko database from a tagged rcrux-py release and publishes it, in one command:
-
-```
-scripts/release_tronko.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
-    --rcrux-checkout ~/rcrux-py --threads 32 --push
-```
-
-It fetches the release's `curated/lca.fasta` and `lca_taxonomy.txt` from DVC, clusters with `ancestralclust` above 25,000 sequences, aligns (`famsa`), builds and roots a tree per cluster (`VeryFastTree`/`FastTree`, `nw_reroot`), runs `tronko-build -y`, converts to `reference_tree.trkb` and builds the BWA index. `tronko-build` and `tronko-convert` are compiled from this checkout, whose commit is recorded. Every setting goes to `params.json` and all output to `build.log`; `scripts/tronko_release.py publish` then stores the database in the rcrux DVC remote and commits `tronko.dvc` on a publish branch of the rcrux-py checkout. Merging that branch tags `<marker>_tronko_<version>`.
-
-Build settings are not fixed in the script. They come from `scripts/tronko_build.conf` (the defaults, one commented `KEY=VALUE` per line), then `scripts/tronko_build.d/<marker>.conf` when it exists, then any `--config FILE` and `--set KEY=VALUE` in the order given. Values are read literally, never run as shell, and an unknown key is refused. Everything is editable this way: clustering cutoff and ancestralclust parameters, extra FAMSA / tree-builder / tronko-build / bwa arguments, the tree builder, rooting, and sum-of-pairs or min-leaf partitioning. The effective values and the files they came from are recorded in the published `params.json`. `--print-config` shows them without building, and `--steps build,publish` reruns part of the flow after an edit.
-
-
-# `tronko-assign` using pre-built 16S and COI databases
-
-First download the databases from Zenodo (<a href="https://doi.org/10.5281/zenodo.7407318"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.7407318.svg" alt="DOI"></a>). To assign FASTQ (`-q`) paired-end reads (`-p`) using the 16S database (and reverse-complement the reverse read `-z`) with Needleman-Wunsch (`-w`), 16 cores (`-C 16`), and an LCA cut-off of 5 (`-c 5`):
-
-```
-tronko-assign -r -q -p -z -w -C 16 -c 5 -f 16S_tronko_build.txt.gz -a 16S.fasta -1 16S_TW-DR-1-S88_F_filt.fastq.gz -2 16S_TW-DR-1-S88_R_filt.fastq.gz -o 16S_TW-DR-1-S88_results.txt 
-```  
-
-With the CO1 database and same parameters:
-```
-tronko-assign -r -q -p -z -w -C 16 -c 5 -f CO1_tronko_build.txt.gz -a CO1.fasta -1 CO1_TW-DR-1-S88_F_filt.fastq.gz -2 CO1_TW-DR-1-S88_R_filt.fastq.gz -o CO1_TW-DR-1-S88_results.txt
-```
-
-# Testing
-
-Tronko includes a comprehensive testing suite to ensure reliability and help with development.
-
-## Quick Testing
-
-### Unit Tests
-Test core functionality including crash debugging, signal handling, and corruption detection:
-```bash
-cd tests
-make -f Makefile.simple smoke
-```
-
-### Integration Tests  
-Test binary functionality, command-line interfaces, and data validation:
-```bash
-cd tests
-make -f Makefile.simple test_simple_workflows
-./test_simple_workflows
-```
-
-### Functional Tests
-Test end-to-end workflows with real datasets:
-```bash
-./test_with_example_data.sh
-```
-
-## Comprehensive Testing
-
-### Full Test Suite
-Run all tests (unit, integration, and functional):
-```bash
-cd tests
-make -f Makefile.simple test
-```
-
-### Using the Test Runner
-The test runner provides convenient options for different testing scenarios:
-```bash
-# Run all tests
+tests/test_tronko_build_golden.sh
 ./run_tests.sh
-
-# Run only unit tests  
-./run_tests.sh --unit-only
-
-# Run only integration tests
-./run_tests.sh --integration-only
-
-# Generate code coverage report
-./run_tests.sh --coverage
-
-# Run with memory leak detection
-./run_tests.sh --valgrind
-
-# Verbose output for debugging
-./run_tests.sh --verbose
 ```
 
-## Docker Testing
+## More
 
-Test in a consistent containerized environment:
-```bash
-# Build and run tests in Docker
-docker compose up -d
-docker compose exec tronko-dev bash -c "cd /app/tests && make -f Makefile.simple test"
-
-# Or use the test runner in Docker
-docker compose exec tronko-dev bash -c "cd /app && ./run_tests.sh"
-```
-
-## Continuous Integration
-
-Tests run automatically on every push via GitHub Actions:
-- **Quick Tests**: Fast validation on all branches (~2-3 minutes)
-- **Comprehensive Tests**: Full validation on main/experimental/develop branches (~10-15 minutes)
-- **Performance Tests**: Benchmarking on main/experimental branches
-
-View test status: [![Quick Tests](https://github.com/lpipes/tronko/workflows/Quick%20Tests/badge.svg)](https://github.com/lpipes/tronko/actions)
-
-## Test Categories
-
-### Unit Tests
-- **Framework**: Unity (lightweight C testing framework)
-- **Coverage**: Crash debugging system, corruption detection, signal handling
-- **Location**: `tests/unit/`
-
-### Integration Tests
-- **Coverage**: Binary existence, command-line interfaces, error handling
-- **Location**: `tests/integration/`
-
-### Functional Tests  
-- **Coverage**: End-to-end workflows, real data processing, crash testing
-- **Location**: `test_with_example_data.sh`
-
-For detailed testing documentation, see [`tests/README.md`](tests/README.md).
-
-# Reproducibility and Variance
-
-`tronko-assign` uses BWA's multi-threaded alignment engine, which introduces non-deterministic ordering of candidate matches. This results in approximately **3% variance** in taxonomic assignments between runs with identical inputs when using multiple cores.
-
-## Understanding the Variance
-
-- **Magnitude**: ~3% of reads may receive different taxonomic assignments across runs
-- **Nature**: Differences are unbiased (equal probability of more/less specific results)
-- **Cause**: BWA's work-stealing thread scheduler finds matches in variable order
-- **Scientific Impact**: Variance is typically smaller than biological variation in most studies
-
-### What This Means
-
-The variance affects individual read assignments, not overall community composition. For most metabarcoding studies:
-- ✅ Community-level statistics (abundance, diversity) remain stable
-- ✅ Biological replicates average out technical variance
-- ✅ Differential abundance analysis is unaffected when using proper statistical methods
-- ⚠️ Exact read-by-read reproducibility requires special modes (see below)
-
-## Achieving Reproducible Results
-
-### Option 1: Single-Threaded Mode (100% Deterministic)
-
-Use the `-C 1` flag to run in deterministic single-threaded mode:
-
-```bash
-tronko-assign -C 1 -r -f reference.trkb -a reference.fasta -p \
-  -1 forward.fasta -2 reverse.fasta -o results.txt
-```
-
-**Trade-offs**:
-- ✅ Perfect reproducibility (identical results every run)
-- ❌ 10-16x slower than multi-threaded mode
-- 👍 **Use for**: Validation, testing, regression checks, publications requiring exact reproducibility
-
-### Option 2: Standard Multi-Threaded Mode (Fast, ~3% Variance)
-
-Use multiple cores for performance (default or explicit `-C N`):
-
-```bash
-tronko-assign -C 16 -r -f reference.trkb -a reference.fasta -p \
-  -1 forward.fasta -2 reverse.fasta -o results.txt
-```
-
-**Trade-offs**:
-- ✅ Fast execution (scales with CPU cores)
-- ⚠️ ~3% variance between runs
-- 👍 **Use for**: Standard workflows, exploratory analysis, production pipelines
-
-### Option 3: Consensus Voting (Best of Both Worlds)
-
-Run multiple times and aggregate results for both speed and reproducibility:
-
-```bash
-# Run 3 times in parallel
-tronko-assign -C 16 [...] -o run1.txt &
-tronko-assign -C 16 [...] -o run2.txt &
-tronko-assign -C 16 [...] -o run3.txt &
-wait
-
-# Aggregate results (see consensus script in scripts/)
-# (Consensus voting script to be implemented)
-```
-
-**Trade-offs**:
-- ✅ Reduces variance from ~3% to ~0.3-0.6%
-- ✅ Can parallelize across runs (3 runs ≈ 3x cost but parallelizable)
-- 👍 **Use for**: Critical datasets, regulatory submissions, important publications
-
-## Testing for Variance
-
-Measure variance on your specific dataset using the test script:
-
-```bash
-cd tronko-assign
-
-./scripts/test_determinism.sh \
-  -r /path/to/reference.trkb \
-  -a /path/to/reference.fasta \
-  -1 /path/to/forward.fasta \
-  -2 /path/to/reverse.fasta \
-  -n 3 \
-  -c 16 \
-  -k
-```
-
-This will run 3 replicates and report variance statistics.
-
-### Expected Results
-
-- **Single-threaded** (`-c 1`): 0% variance (identical results)
-- **Multi-threaded** (e.g., `-c 16`): 2-4% variance depending on dataset and core count
-- **Higher core counts**: Slightly higher variance due to increased thread contention
-
-## Recommendations by Use Case
-
-| Use Case | Recommended Mode | Cores | Expected Variance |
-|----------|------------------|-------|-------------------|
-| Validation / Testing | Single-threaded | `-C 1` | 0% |
-| Exploratory Analysis | Multi-threaded | `-C 4-16` | ~3% |
-| Production Pipeline | Multi-threaded | `-C 8-16` | ~3% |
-| Publication (standard) | Multi-threaded | `-C 4-16` | ~3% |
-| Publication (exact reproducibility) | Single-threaded | `-C 1` | 0% |
-| Regulatory Submission | Consensus voting | `-C 16`, 3 runs | <0.5% |
-
-## Technical Details
-
-For developers and advanced users:
-
-- **Root cause**: BWA's `kt_for()` work-stealing scheduler in `bwa_source_files/kthread.c`
-- **Propagation**: Variable match order → different tie-breaking in `placement.c:893`
-- **Floating-point sensitivity**: Confidence interval comparisons (`placement.c:930`) sensitive to small score differences
-- **Not affected by**: WFA2 alignment (deterministic), scoring algorithm (deterministic), result collection order (deterministic)
-
-For detailed technical analysis, see:
-- Research document: `thoughts/shared/research/2026-01-03-non-determinism-mitigation-strategies.md`
-- Baseline measurement: `thoughts/shared/research/2026-01-03-non-determinism-baseline-measurement.md`
-
-## FAQ
-
-**Q: Is this a bug?**
-A: No, this is inherent to BWA's multi-threaded design. It's a performance/reproducibility trade-off present in many bioinformatics tools.
-
-**Q: Will this affect my biological conclusions?**
-A: For most metabarcoding studies, no. The variance is small (~3%) and unbiased, similar to technical replicates.
-
-**Q: Can I use tronko-assign in CI/CD pipelines?**
-A: Yes, but use statistical comparison (e.g., expect <5% difference) rather than exact output matching. Or use `-C 1` for exact regression tests.
-
-**Q: Does this affect accuracy?**
-A: No, accuracy is identical. The algorithm is sound; only the specific reads assigned to borderline taxa vary slightly.
-
-**Q: Will this be fixed in future versions?**
-A: We are exploring options including BWA seed control and alternative aligners. For now, single-threaded mode provides perfect reproducibility when needed.
-
-## Advanced Features
-
-Tronko includes comprehensive logging and debugging capabilities:
-
-### Performance Monitoring
-```bash
-# Enable performance logging with resource monitoring
-tronko-assign -V2 -R -T -l performance.log [options...]
-```
-
-### Crash Debugging
-Automatic crash detection with root cause analysis:
-```bash
-# Crash debugging is always enabled
-# View crash reports in /tmp/tronko_assign_crash_*.crash
-tronko-assign -V2 [options...]  # Enhanced context capture
-```
-
-### Documentation
-- **[Performance Logging Guide](docs/performance-logging.md)**: Comprehensive performance monitoring, resource tracking, and optimization
-- **[Crash Debugging Guide](docs/crash-debugging.md)**: Advanced crash detection, root cause analysis, and debugging workflows
-- **[Complete Documentation Index](docs/index.md)**: Full documentation overview and quick reference
-- **[Experiments Log](EXPERIMENTS_LOG.md)**: Benchmark results and optimization experiments (memory vs accuracy tradeoffs)
-
-# Performance
-
-We performed a leave-one-species-out test comparing Tronko (with LCA cut-offs for the score of 0, 5, 10, 15, and 20 with Needleman-Wunsch alignment) to kraken2, metaphlan2, and MEGAN for 1,467 COI sequences from 253 species from the order Charadriiformes using 150bp x 2 paired-end sequences and 150bp and 300bp single-end sequences using 0, 1, and 2% error/polymorphism.
-<img src="https://github.com/lpipes/tronko/blob/main/LSO.png?raw=true">
-Using leave-one-species-out and simulating reads (both paired-end and single-end) with a 0-2% error (or polymorphism), Tronko detected the correct genus more accurately than the other methods even when using an aggressive cut-off (i.e., when cut-off=0) (D and G).
-
-# Citation
-
-Pipes L, and Nielsen R (2024) A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets. eLife.
-https://elifesciences.org/articles/85794.pdf
+- [docs/](docs/README.md): how the build and the assignment work, with step-by-step workflows in [docs/examples/](docs/examples/).
+- [docs/performance-logging.md](docs/performance-logging.md) and [docs/crash-debugging.md](docs/crash-debugging.md): the `-V`, `-R`, `-T` and `-l` flags.
+- [tests/README.md](tests/README.md): the test suites.
+- Pipes L, Nielsen R (2024). A rapid phylogeny-based method for accurate community profiling of large-scale metabarcoding datasets. eLife. https://elifesciences.org/articles/85794

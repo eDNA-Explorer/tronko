@@ -5,16 +5,19 @@
 # setting, or to publish a build already made):
 #   fetch    curated/lca.fasta + lca_taxonomy.txt from the rcrux DVC remote at
 #            --rcrux-tag
-#   build    ancestralclust above CLUSTER_CUTOFF sequences, else one cluster;
-#            per cluster FAMSA → VeryFastTree/FastTree → nw_reroot;
+#   build    build-tronko-db.sh: ancestralclust above CLUSTER_CUTOFF sequences,
+#            else one cluster; per cluster FAMSA → tree → nw_reroot;
 #            tronko-build -y; final partitions → <marker>.fasta + taxonomy;
-#            tronko-convert → reference_tree.trkb; bwa index. Writes
-#            params.json (every setting) and build.log (all output).
-#            tronko-build and tronko-convert are compiled from this checkout,
-#            which must be clean, so the recorded commit built the tree.
-#   publish  tronko_release.py publish: dvc push -r rcrux, commit on a publish
-#            branch of the rcrux-py checkout; merging it tags
-#            <marker>_tronko_<version>
+#            tronko-convert → reference_tree.trkb; bwa and bwa-mem3 index. Writes
+#            params.json (every setting, and build-tronko-db.sh's own
+#            build_metadata.json; published as build_params.json) and
+#            build.log (all output).
+#            tronko-build, tronko-convert and ancestralclust are compiled from
+#            this checkout, which must be clean, so the recorded commit built
+#            the tree.
+#   publish  tronko_release.py publish: dvc push -r tronko, commit on a publish
+#            branch of a second tronko checkout; merging it tags
+#            <marker>_tronko_<version> in the tronko repository
 #
 # Settings come from scripts/tronko_build.conf, then
 # scripts/tronko_build.d/<marker>.conf if it exists, then each --config FILE
@@ -23,13 +26,13 @@
 #
 # Usage (from a tronko checkout):
 #   scripts/release_tronko.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
-#       --rcrux-checkout ~/rcrux-py [--work DIR] [--steps fetch,build,publish] \
+#       --tronko-checkout ~/tronko-release [--work DIR] [--steps fetch,build,publish] \
 #       [--config FILE]... [--set KEY=VALUE]... [--threads N] \
 #       [--sp-threshold 0.1 | --min-leaf 500] [--cluster-cutoff N] \
 #       [--tronko-version v2.0.0 | --bump minor] [--replace] [--push] [--print-config]
 #
-# Needs on PATH: famsa, VeryFastTree or FastTree, nw_reroot (REROOT=true), bwa,
-# ancestralclust above CLUSTER_CUTOFF, git, dvc; plus AWS credentials for the
+# Needs on PATH: famsa, the tree tool (VeryFastTree, FastTree or
+# raxmlHPC-PTHREADS), nw_reroot, bwa, git, dvc; plus AWS credentials for the
 # rcrux DVC remote (JS2 S3).
 
 # Settings are assigned by name (printf -v from the config files).
@@ -37,17 +40,18 @@
 set -euo pipefail
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
-die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n==> %s\n' "$*"; }
 run() { printf '+ %s\n' "$*"; "$@"; }
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../lib/tronko-db.sh
+. "$REPO/lib/tronko-db.sh"  # input checks; its die is replaced below
+die() { echo "error: $*" >&2; exit 1; }
 
 # Every setting a config file or --set may change; anything else is a typo.
-SETTINGS="THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_SEEDS_PER_BIN \
-ANCESTRALCLUST_MAX_SEEDS ANCESTRALCLUST_MIN_DESCENDANTS ANCESTRALCLUST_MIN_CLUSTER \
-ANCESTRALCLUST_MAX_CLUSTER ANCESTRALCLUST_ARGS FAMSA_ARGS TREE_BUILDER VERYFASTTREE_ARGS \
-FASTTREE_ARGS REROOT PARTITION SP_THRESHOLD MIN_LEAF TRONKO_BUILD_ARGS BWA_INDEX_ARGS"
+SETTINGS="THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
+ANCESTRALCLUST_ARGS CLUSTER_JOBS FAMSA_ARGS TREE_TOOL TREE_ARGS PARTITION SP_THRESHOLD MIN_LEAF \
+SP_FORMULA TRONKO_BUILD_JOBS TRONKO_BUILD_ARGS BWA_INDEX_ARGS"
 for key in $SETTINGS; do printf -v "$key" '%s' ""; done
 CONFIG_FILES=()
 
@@ -77,7 +81,7 @@ load_config() {
 }
 
 # --- Options (overrides applied in order, after the config files) -----------
-MARKER="" RCRUX_TAG="" RCRUX_CHECKOUT="" RCRUX_REPO="" WORK="" STEPS="fetch,build,publish"
+MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" WORK="" STEPS="fetch,build,publish"
 PRINT_CONFIG=0
 OVERRIDES=()  # "config:FILE" or "set:KEY=VALUE"
 PUBLISH_OPTS=()
@@ -85,7 +89,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --marker) MARKER="$2"; shift 2 ;;
         --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
-        --rcrux-checkout) RCRUX_CHECKOUT="$2"; shift 2 ;;
+        --tronko-checkout) TRONKO_CHECKOUT="$2"; shift 2 ;;
         --rcrux-repo) RCRUX_REPO="$2"; shift 2 ;;
         --work) WORK="$2"; shift 2 ;;
         --steps) STEPS="$2"; shift 2 ;;
@@ -124,16 +128,18 @@ OVERRIDES_TEXT=""
 [ "${#OVERRIDES[@]}" -eq 0 ] || OVERRIDES_TEXT="${OVERRIDES[*]}"
 
 # --- Check the settings ---------------------------------------------------------
-for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_SEEDS_PER_BIN \
-        ANCESTRALCLUST_MAX_SEEDS ANCESTRALCLUST_MIN_DESCENDANTS ANCESTRALCLUST_MIN_CLUSTER \
-        ANCESTRALCLUST_MAX_CLUSTER MIN_LEAF; do
+for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
+        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS; do
     case "${!key}" in '' | *[!0-9]*) die "$key must be a whole number, got '${!key}'" ;; esac
 done
-case "$SP_THRESHOLD" in '' | *[!0-9.]* | *.*.*) die "SP_THRESHOLD must be a number, got '$SP_THRESHOLD'" ;; esac
+for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
+    [ "${!key}" -ge 1 ] || die "$key must be at least 1"
+done
+[[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "SP_THRESHOLD must be a number like 0.1, got '$SP_THRESHOLD'"
 case "$PARTITION" in sum_of_pairs | min_leaf) ;; *) die "PARTITION must be sum_of_pairs or min_leaf" ;; esac
-case "$TREE_BUILDER" in auto | VeryFastTree | FastTree | fasttree) ;;
-    *) die "TREE_BUILDER must be auto, VeryFastTree, FastTree or fasttree" ;; esac
-case "$REROOT" in true | false) ;; *) die "REROOT must be true or false" ;; esac
+case "$TREE_TOOL" in veryfasttree | fasttree | raxml) ;;
+    *) die "TREE_TOOL must be veryfasttree, fasttree or raxml" ;; esac
+case "$SP_FORMULA" in legacy | corrected) ;; *) die "SP_FORMULA must be legacy or corrected" ;; esac
 for step in $(echo "$STEPS" | tr ',' ' '); do
     case "$step" in fetch | build | publish) ;; *) die "unknown step $step (fetch, build, publish)" ;; esac
 done
@@ -148,15 +154,15 @@ fi
 [ -n "$MARKER" ] || die "--marker is required"
 if has_step fetch && [ -z "$RCRUX_TAG" ]; then die "fetch needs --rcrux-tag"; fi
 if has_step publish; then
-    [ -n "$RCRUX_CHECKOUT" ] || die "publish needs --rcrux-checkout"
-    [ -d "$RCRUX_CHECKOUT/.git" ] || die "$RCRUX_CHECKOUT is not an rcrux-py checkout"
-    RCRUX_CHECKOUT="$(cd "$RCRUX_CHECKOUT" && pwd)"
+    [ -n "$TRONKO_CHECKOUT" ] || die "publish needs --tronko-checkout (a clean tronko checkout to commit the release on)"
+    [ -d "$TRONKO_CHECKOUT/.git" ] || die "$TRONKO_CHECKOUT is not a git checkout"
+    TRONKO_CHECKOUT="$(cd "$TRONKO_CHECKOUT" && pwd)"
 fi
 
 WORK="${WORK:-$PWD/tronko-release-$MARKER}"
 mkdir -p "$WORK"
 WORK="$(cd "$WORK" && pwd)"
-INPUT="$WORK/input" BUILD="$WORK/build" OUT="$WORK/out"
+INPUT="$WORK/input" OUT="$WORK/out"
 LOG="$WORK/build.log" PARAMS="$WORK/params.json"
 if [ -n "${PYTHON:-}" ]; then
     PY=("$PYTHON")
@@ -182,128 +188,90 @@ if has_step fetch; then
 fi
 
 # ---------------------------------------------------------------------------
-build() {
-    local fasta="$INPUT/lca.fasta" taxonomy="$INPUT/lca_taxonomy.txt"
-    local famsa_args=() tree_args=() tronko_args=() bwa_args=() cluster_args=()
-    read -r -a famsa_args <<< "$FAMSA_ARGS"
-    read -r -a tronko_args <<< "$TRONKO_BUILD_ARGS"
-    read -r -a bwa_args <<< "$BWA_INDEX_ARGS"
-    read -r -a cluster_args <<< "$ANCESTRALCLUST_ARGS"
-    if [ "$TREE_BUILDER" = "VeryFastTree" ]; then
-        read -r -a tree_args <<< "$VERYFASTTREE_ARGS"
-        tree_args+=(-threads "$THREADS")
-    else
-        read -r -a tree_args <<< "$FASTTREE_ARGS"
-    fi
-    local n_seqs n_clusters=0
-    n_seqs="$(grep -c '^>' "$fasta")"
-    echo "tronko build of $MARKER: $n_seqs sequences, tronko $TRONKO_SHA, tree builder $TREE_BUILDER"
-
-    say "Cluster"
-    if [ "$n_seqs" -gt "$CLUSTER_CUTOFF" ]; then
-        command -v ancestralclust >/dev/null || die "ancestralclust not found; needed above $CLUSTER_CUTOFF sequences"
-        local bins=$(( (n_seqs + ANCESTRALCLUST_BIN_SIZE - 1) / ANCESTRALCLUST_BIN_SIZE ))
-        local seeds=$(( bins * ANCESTRALCLUST_SEEDS_PER_BIN ))
-        [ "$seeds" -le "$ANCESTRALCLUST_MAX_SEEDS" ] || seeds="$ANCESTRALCLUST_MAX_SEEDS"
-        echo "ancestralclust: $bins bins, $seeds seeds"
-        run ancestralclust ${cluster_args[@]+"${cluster_args[@]}"} -i "$fasta" -b "$bins" -r "$seeds" \
-            -p "$ANCESTRALCLUST_MIN_DESCENDANTS" -d "$BUILD/clusters/" \
-            -m "$ANCESTRALCLUST_MIN_CLUSTER" -x "$ANCESTRALCLUST_MAX_CLUSTER"
-    else
-        echo "$n_seqs sequences, at most $CLUSTER_CUTOFF: one cluster"
-        cp "$fasta" "$BUILD/clusters/0.fasta"
-    fi
-
-    say "Align, tree and root each cluster"
-    for cluster in "$BUILD"/clusters/*.fasta; do
-        [ -e "$cluster" ] || die "clustering produced no clusters"
-        local i="$n_clusters" work="$BUILD/clusters/$n_clusters"
-        local msa="$BUILD/merged/${i}_MSA.fasta" tree="$BUILD/merged/RAxML_bestTree.${i}.reroot"
-        mkdir -p "$work"
-        # The cluster's taxonomy rows, by FASTA header.
-        awk -F '\t' 'NR == FNR { tax[$1] = $2; next }
-            /^>/ { id = substr($1, 2); sub(/[ \t].*/, "", id); if (id in tax) print id "\t" tax[id] }' \
-            "$taxonomy" "$cluster" > "$BUILD/merged/${i}_taxonomy.txt"
-        run famsa -t "$THREADS" ${famsa_args[@]+"${famsa_args[@]}"} "$cluster" "$work/msa.raw.fasta"
-        # tronko-build needs one line per sequence; FAMSA wraps them.
-        awk '/^>/ { if (seq != "") print seq; print; seq = ""; next } { seq = seq $0 }
-            END { if (seq != "") print seq }' "$work/msa.raw.fasta" > "$msa"
-        "$TREE_BUILDER" ${tree_args[@]+"${tree_args[@]}"} "$msa" > "$work/tree.unrooted"
-        if [ "$REROOT" = true ] && nw_reroot "$work/tree.unrooted" > "$tree" && [ -s "$tree" ]; then
-            :
-        else
-            [ "$REROOT" = false ] || echo "warning: nw_reroot failed for cluster $i; using the unrooted tree"
-            cp "$work/tree.unrooted" "$tree"
-        fi
-        n_clusters=$(( n_clusters + 1 ))
-    done
-    echo "$n_clusters cluster(s)"
-
-    say "tronko-build"
-    local partition=(-s -u "$SP_THRESHOLD")
-    [ "$PARTITION" = sum_of_pairs ] || partition=(-v -f "$MIN_LEAF")
-    run "$TRONKO_BUILD" -y -e "$BUILD/merged" -n "$n_clusters" -d "$BUILD/tronko-build" \
-        "${partition[@]}" ${tronko_args[@]+"${tronko_args[@]}"} -c "$THREADS"
-
-    say "Final partitions → $MARKER.fasta, ${MARKER}_taxonomy.txt"
-    local finals="$BUILD/tronko-build/final_partitions.txt"
-    [ -s "$finals" ] || die "tronko-build wrote no final_partitions.txt"
-    : > "$OUT/$MARKER.fasta"
-    : > "$OUT/${MARKER}_taxonomy.txt"
-    while read -r p; do
-        [ -n "$p" ] || continue
-        cat "$BUILD/tronko-build/partition$p.fasta" >> "$OUT/$MARKER.fasta"
-        cat "$BUILD/tronko-build/partition${p}_taxonomy.txt" >> "$OUT/${MARKER}_taxonomy.txt"
-    done < "$finals"
-
-    say "reference_tree.trkb and BWA index"
-    run "$TRONKO_CONVERT" -i "$BUILD/tronko-build/reference_tree.txt" -o "$OUT/reference_tree.trkb" -v
-    run bwa index ${bwa_args[@]+"${bwa_args[@]}"} "$OUT/$MARKER.fasta"
-}
-
 if has_step build; then
     say "Preflight"
     [ -s "$INPUT/inputs.json" ] || die "no fetched inputs in $INPUT; run the fetch step"
     TRONKO_SHA="$(git -C "$REPO" rev-parse HEAD)"
-    if [ -z "${TRONKO_BUILD:-}" ]; then
-        run make -s -C "$REPO/tronko-build"
-        TRONKO_BUILD="$REPO/tronko-build/tronko-build"
-    fi
-    if [ -z "${TRONKO_CONVERT:-}" ]; then
-        run make -s -C "$REPO/tronko-convert"
-        TRONKO_CONVERT="$REPO/tronko-convert/tronko-convert"
-    fi
-    for tool in famsa bwa; do command -v "$tool" >/dev/null || die "$tool not found on PATH"; done
-    [ "$REROOT" = false ] || command -v nw_reroot >/dev/null || die "nw_reroot not found on PATH"
-    if [ "$TREE_BUILDER" = auto ]; then
-        for candidate in VeryFastTree FastTree fasttree ""; do
-            [ -n "$candidate" ] || die "VeryFastTree or FastTree not found on PATH"
-            if command -v "$candidate" >/dev/null; then TREE_BUILDER="$candidate"; break; fi
+    # BUILD_TRONKO_DB names a build script to run in place of this checkout's.
+    BUILD_SCRIPT="${BUILD_TRONKO_DB:-}"
+    if [ -z "$BUILD_SCRIPT" ]; then
+        for tool in tronko-build tronko-convert ancestralclust; do
+            run make -s -C "$REPO/$tool"
+            PATH="$REPO/$tool:$PATH"
         done
+        PATH="$PATH:$REPO/bin"  # fasta2phyml.pl
+        # BWA-MEM3 is a pinned outside release, not this checkout's code.
+        if ! command -v bwa-mem3 >/dev/null; then
+            run make -s -C "$REPO/tronko-assign" bwa-mem3
+            PATH="$REPO/tronko-assign:$PATH"
+        fi
+        BUILD_SCRIPT="$REPO/build-tronko-db.sh"
     fi
-    command -v "$TREE_BUILDER" >/dev/null || die "$TREE_BUILDER not found on PATH"
 
-    rm -rf "$BUILD" "$OUT"
-    mkdir -p "$BUILD/clusters" "$BUILD/merged" "$BUILD/tronko-build" "$OUT"
+    # The names fetch saved the tier's files under, and the tag it came from.
+    input_field() { sed -n "s/.*\"$1\": \"\([^\"]*\)\".*/\1/p" "$INPUT/inputs.json"; }
+    FASTA="$INPUT/$(input_field fasta)" SOURCE_TAXONOMY="$INPUT/$(input_field taxonomy)"
+    [ -f "$FASTA" ] && [ -f "$SOURCE_TAXONOMY" ] || die "$INPUT does not hold the files inputs.json names"
+
+    # rCRUX writes accession, taxid, lineage; tronko-build reads accession, lineage.
+    # The taxids are published in their own file after the build.
+    TAXONOMY="$WORK/taxonomy.2col.txt"
+    TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$SOURCE_TAXONOMY" | sort -u)"
+    case "$TAXONOMY_COLUMNS" in
+        2) cp "$SOURCE_TAXONOMY" "$TAXONOMY" ;;
+        3) cut -f1,3 "$SOURCE_TAXONOMY" > "$TAXONOMY" ;;
+        *) die "$SOURCE_TAXONOMY must have 2 or 3 tab-separated columns on every line" ;;
+    esac
+    # Checked now, so a bad input stops in seconds and not after the build.
+    check_taxonomy_ranks "$TAXONOMY" 2 || die "every lineage needs $TAX_RANKS ranks"
+    check_accession_charset "$TAXONOMY" || die "accessions cannot contain ':' or spaces"
+    [ -z "$(cut -f1 "$TAXONOMY" | sort | uniq -d | head -1)" ] || die "the taxonomy repeats an accession"
+    check_accession_sets "$FASTA" "$TAXONOMY" || die "the FASTA and the taxonomy cover different accessions"
+
+    BUILD_ARGS=(-f "$FASTA" -t "$TAXONOMY" -o "$OUT" -p "$MARKER" -T "$THREADS"
+        --rcrux-tag "$(input_field rcrux_tag)"
+        -C "$CLUSTER_CUTOFF" -B "$ANCESTRALCLUST_BIN_SIZE" -P "$ANCESTRALCLUST_MIN_DESCENDANTS"
+        -J "$CLUSTER_JOBS" --tree-tool "$TREE_TOOL" --tb-jobs "$TRONKO_BUILD_JOBS"
+        --ancestralclust-args "$ANCESTRALCLUST_ARGS" --famsa-args "$FAMSA_ARGS"
+        --tree-args "$TREE_ARGS" --tronko-build-args "$TRONKO_BUILD_ARGS"
+        --bwa-args "$BWA_INDEX_ARGS")
+    if [ "$PARTITION" = sum_of_pairs ]; then
+        BUILD_ARGS+=(-s "$SP_THRESHOLD")
+    else
+        BUILD_ARGS+=(--min-leaf "$MIN_LEAF")
+    fi
+    [ "$SP_FORMULA" = corrected ] || BUILD_ARGS+=(-L)
+
+    say "Build"
+    rm -rf "$OUT"
     : > "$LOG"
-    build 2>&1 | tee -a "$LOG"
+    run bash "$BUILD_SCRIPT" "${BUILD_ARGS[@]}" 2>&1 | tee -a "$LOG"
     [ -s "$OUT/reference_tree.trkb" ] || die "build failed; see $LOG"
+    # Sets and counts: a count alone hides one sequence dropped and another repeated.
+    n_in="$(grep -c '^>' "$FASTA")" n_out="$(grep -c '^>' "$OUT/$MARKER.fasta")"
+    [ "$n_in" = "$n_out" ] || die "only $n_out of $n_in sequences reached $OUT/$MARKER.fasta"
+    check_accession_sets "$OUT/$MARKER.fasta" "$TAXONOMY" || die "$OUT/$MARKER.fasta does not hold the input's accessions"
+    # <marker>_taxonomy.txt stays accession, lineage, which is what its readers
+    # split on; rCRUX's taxids go beside it, in the same row order.
+    if [ "$TAXONOMY_COLUMNS" = 3 ]; then
+        awk -F '\t' -v OFS='\t' 'NR == FNR { taxid[$1] = $2; next }
+            !($1 in taxid) { print "no taxid for " $1 > "/dev/stderr"; exit 1 }
+            { print $1, taxid[$1] }' "$SOURCE_TAXONOMY" "$OUT/${MARKER}_taxonomy.txt" \
+            > "$OUT/${MARKER}_taxids.txt" || die "could not write ${MARKER}_taxids.txt"
+    fi
 
-    # Every effective setting and what the build found, so params.json says
-    # exactly how this tree was made.
+    # Every effective setting, and what the build recorded about itself, so
+    # params.json says exactly how this tree was made.
     for key in $SETTINGS; do export "TB_SETTING_$key=${!key}"; done
     TB_SETTINGS="$SETTINGS" TB_CONFIG_FILES="${CONFIG_FILES[*]}" \
         TB_OVERRIDES="$OVERRIDES_TEXT" TB_TRONKO_SHA="$TRONKO_SHA" \
-        TB_INPUTS="$INPUT/inputs.json" TB_TREE_BUILDER="$TREE_BUILDER" \
-        TB_INPUT="$INPUT/lca.fasta" TB_MERGED="$BUILD/merged" \
+        TB_INPUTS="$INPUT/inputs.json" TB_BUILD="$OUT/build_metadata.json" \
         "${PY[@]}" - "$PARAMS" "$REPO" <<'PY'
 import json, os, sys
 from pathlib import Path
 
 env = os.environ
 repo = Path(sys.argv[2])
-n_seqs = sum(1 for line in open(env["TB_INPUT"], "rb") if line.startswith(b">"))
-settings = {k: env[f"TB_SETTING_{k}"] for k in env["TB_SETTINGS"].split()}
 config_files = [
     os.path.relpath(f, repo) if f.startswith(str(repo)) else f
     for f in env["TB_CONFIG_FILES"].split()
@@ -314,13 +282,10 @@ json.dump(
         "tronko_sha": env["TB_TRONKO_SHA"],
         "rcrux_tag": json.load(open(env["TB_INPUTS"]))["rcrux_tag"],
         "input_tier": "lca",
-        "input_sequences": n_seqs,
-        "clusters": len(list(Path(env["TB_MERGED"]).glob("*_MSA.fasta"))),
-        "clustered": n_seqs > int(settings["CLUSTER_CUTOFF"]),
-        "tree_builder": env["TB_TREE_BUILDER"],
         "config_files": config_files,
         "overrides": env["TB_OVERRIDES"].split(),
-        "settings": settings,
+        "settings": {k: env[f"TB_SETTING_{k}"] for k in env["TB_SETTINGS"].split()},
+        "build": json.load(open(env["TB_BUILD"])),
     },
     open(sys.argv[1], "w"),
     indent=2,
@@ -338,5 +303,5 @@ if has_step publish; then
     BUILT_SHA="$(sed -n 's/.*"tronko_sha": "\([^"]*\)".*/\1/p' "$PARAMS")"
     run "${TOOL[@]}" publish --marker "$MARKER" --build-dir "$OUT" --inputs "$INPUT/inputs.json" \
         --build-log "$LOG" --build-params "$PARAMS" --tronko-sha "$BUILT_SHA" \
-        --rcrux-checkout "$RCRUX_CHECKOUT" ${PUBLISH_OPTS[@]+"${PUBLISH_OPTS[@]}"}
+        --tronko-checkout "$TRONKO_CHECKOUT" ${PUBLISH_OPTS[@]+"${PUBLISH_OPTS[@]}"}
 fi

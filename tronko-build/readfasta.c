@@ -116,9 +116,7 @@ int setNumspecArr(gzFile partitionsFile){
 					else if (c=='t') seqArr_heap[whichPartitions][row][m] = 3;
 					else if (c=='n'||c=='-'||c=='~') seqArr_heap[whichPartitions][row][m] = 4;
 					else{
-						printf("\nBAD BASE (%c) in species %i base %i",c ,row+1,m+1);
-						scanf("%i",&row);
-						exit(-1);
+						seqArr_heap[whichPartitions][row][m] = 4;
 					}
 				}
 			}
@@ -162,9 +160,8 @@ void readseq(gzFile infile, int max_nodename, struct masterArr *master){
 					else if (c=='t' || c=='T') master->msa[row][m] = 3;
 					else if (c=='n'||c=='-'||c=='~' || c=='N') master->msa[row][m] = 4;
 					else{
-						printf("\nBAD BASE (%c) in species %i base %i",c ,row+1,m+1);
-						scanf("%i",&row);
-						exit(-1);
+						/* IUPAC ambiguity codes → treat as missing data */
+						master->msa[row][m] = 4;
 					}
 				}
 			}

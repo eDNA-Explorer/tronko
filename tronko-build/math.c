@@ -1078,8 +1078,9 @@ void inittransitionmatrix(double lambda)
       }*/
   if (eigen(1, A[0], STATESPACE, RRVAL, RIVAL, RRVEC[0], RIVEC[0], workspace) != 0)
   {
-    printf("Transitions matrix did not converge or contained non-real values!\n");
-    exit(-1);
+    /* No valid substitution model: posteriors computed from here would be wrong. */
+    fprintf(stderr, "Error: transitions matrix did not converge or contained non-real values\n");
+    exit(EXIT_FAILURE);
   }
   for (i=0; i<STATESPACE; i++)
     for (j=0; j<STATESPACE; j++)

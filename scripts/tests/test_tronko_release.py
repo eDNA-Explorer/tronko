@@ -43,7 +43,7 @@ def write_params(tmp_path: Path) -> Path:
     return path
 
 
-def test_required_files_are_the_eight_assign_reads():
+def test_required_files_include_both_aligner_indexes():
     assert tr.required_files("M") == [
         "M.fasta",
         "M.fasta.amb",
@@ -51,6 +51,7 @@ def test_required_files_are_the_eight_assign_reads():
         "M.fasta.bwt",
         "M.fasta.pac",
         "M.fasta.sa",
+        "M.fasta.bwt.2bit.64",
         "reference_tree.trkb",
         "M_taxonomy.txt",
     ]
@@ -172,11 +173,29 @@ def rcrux_repo(tmp_path):
     git(origin, "tag", f"{MARKER}_v1.0.0")
     # Drop the local cache so fetch must read the remote.
     subprocess.run(["rm", "-rf", str(origin / ".dvc" / "cache")], check=True)
-    return {"origin": origin, "remote": remote, "decoy": decoy}
+    # The tronko repository, where a build is published: remote 'tronko'.
+    tronko = tmp_path / "tronko-origin"
+    tronko_remote = tmp_path / "remote-tronko"
+    for path in (tronko, tronko_remote):
+        path.mkdir()
+    git(tronko, "init", "-q", "-b", "main")
+    dvc(tronko, "init", "-q")
+    dvc(tronko, "remote", "add", "-d", "tronko", str(tronko_remote))
+    dvc(tronko, "remote", "add", "gcs", str(decoy))
+    git(tronko, "add", "-A")
+    git(tronko, "commit", "-q", "-m", "tronko")
+    return {
+        "origin": origin,
+        "remote": remote,
+        "decoy": decoy,
+        "tronko": tronko,
+        "tronko_remote": tronko_remote,
+    }
 
 
-def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux_repo):
+def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_path, rcrux_repo):
     origin, remote, decoy = rcrux_repo["origin"], rcrux_repo["remote"], rcrux_repo["decoy"]
+    rcrux_objects = sorted(p for p in remote.rglob("*") if p.is_file())
 
     work = tmp_path / "work"
     inputs = tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(origin))
@@ -187,8 +206,8 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
     assert (work / "lca.fasta").read_text() == ">l1\nACGT\n"
     assert json.loads((work / "inputs.json").read_text()) == inputs
 
-    checkout = tmp_path / "rcrux-checkout"
-    git(tmp_path, "clone", "-q", str(origin), str(checkout))
+    checkout = tmp_path / "tronko-checkout"
+    git(tmp_path, "clone", "-q", str(rcrux_repo["tronko"]), str(checkout))
     build = write_build(tmp_path / "build")
     log = tmp_path / "build.log"
     log.write_text("tronko-build -y -u 0.1\n")
@@ -206,7 +225,10 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
     assert git(checkout, "status", "--porcelain") == ""
     assert f"databases/{MARKER}/tronko.dvc" in git(checkout, "show", "--name-only", "--format=")
     assert meta["rcrux_tag"] == f"{MARKER}_v1.0.0"
-    assert any(remote.rglob("*")), "build was not pushed to the rcrux remote"
+    assert any(rcrux_repo["tronko_remote"].rglob("*")), "build was not pushed to tronko's remote"
+    assert sorted(p for p in remote.rglob("*") if p.is_file()) == rcrux_objects, (
+        "publish must not write to the rcrux remote"
+    )
     assert not any(decoy.rglob("*")), "versioning must never touch the gcs remote"
 
     # A second publish of the same version is refused once the tag exists.
@@ -214,7 +236,7 @@ def test_fetch_publish_tag_round_trip_uses_only_the_rcrux_remote(tmp_path, rcrux
     git(checkout, "merge", "-q", "--no-ff", "-m", "merge", f"publish/{MARKER}-tronko-v1.0.0")
     with pytest.raises(ValueError, match="carries .* v1.0.0, not v2.0.0"):
         tr.tag(MARKER, "v2.0.0", checkout, ref="main", push=False)
-    assert tr.tag(MARKER, "v1.0.0", checkout, ref="main", push=False) == f"{MARKER}_tronko_v1.0.0"
+    assert tr.tag(MARKER, None, checkout, ref="main", push=False) == f"{MARKER}_tronko_v1.0.0"
     assert git(checkout, "rev-parse", f"{MARKER}_tronko_v1.0.0") == git(
         checkout, "rev-parse", "main"
     )
@@ -228,9 +250,9 @@ def _merge_into_origin(origin: Path, checkout: Path, branch: str) -> None:
 
 
 def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
-    origin = rcrux_repo["origin"]
+    origin = rcrux_repo["tronko"]
     work = tmp_path / "work"
-    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(origin))
+    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
     checkout = tmp_path / "checkout"
     git(tmp_path, "clone", "-q", str(origin), str(checkout))
     log = tmp_path / "build.log"
@@ -248,7 +270,7 @@ def test_publish_refuses_existing_tronko_without_replace(tmp_path, rcrux_repo):
 
 def test_publish_branches_from_the_latest_origin_main(tmp_path, rcrux_repo):
     inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
-    origin = rcrux_repo["origin"]
+    origin = rcrux_repo["tronko"]
     (origin / "NEWS.md").write_text("merged after the clone\n")
     git(origin, "add", "NEWS.md")
     git(origin, "commit", "-q", "-m", "later work on main")
@@ -335,7 +357,7 @@ def _publish_ready(tmp_path, rcrux_repo):
     work = tmp_path / "work"
     tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
     checkout = tmp_path / "checkout"
-    git(tmp_path, "clone", "-q", str(rcrux_repo["origin"]), str(checkout))
+    git(tmp_path, "clone", "-q", str(rcrux_repo["tronko"]), str(checkout))
     log = tmp_path / "build.log"
     log.write_text("log\n")
     return work / "inputs.json", checkout, log, write_build(tmp_path / "build")
@@ -366,3 +388,17 @@ def test_publish_refuses_a_version_already_tagged(tmp_path, rcrux_repo):
     git(checkout, "tag", f"{MARKER}_tronko_v1.0.0")
     with pytest.raises(ValueError, match="already exists"):
         tr.publish(MARKER, build, inputs, log, write_params(tmp_path), "v1.0.0", checkout)
+
+
+def test_tag_changed_tags_a_merged_release_once(tmp_path, rcrux_repo):
+    """What the Tag tronko releases workflow runs on a push to main."""
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    before = git(checkout, "rev-parse", "main")
+    tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    git(checkout, "checkout", "-q", "main")
+    git(checkout, "merge", "-q", "--no-ff", "-m", "merge", f"publish/{MARKER}-tronko-v1.0.0")
+    assert tr.tag_changed(checkout, before, "main", push=False) == [f"{MARKER}_tronko_v1.0.0"]
+    assert git(checkout, "rev-parse", f"{MARKER}_tronko_v1.0.0") == git(
+        checkout, "rev-parse", "main"
+    )
+    assert tr.tag_changed(checkout, before, "main", push=False) == [], "a rerun tags nothing"

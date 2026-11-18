@@ -13,6 +13,8 @@ tronko-assign/tronko-assign
 tronko-assign/bwa-mem3
 tronko-assign/build/
 tronko-build/tronko-build
+tronko-convert/tronko-convert
+ancestralclust/ancestralclust
 *.o
 *.so
 
