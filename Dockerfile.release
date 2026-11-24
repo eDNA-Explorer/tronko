@@ -1,14 +1,14 @@
 # The image that builds and releases tronko reference databases
 # (scripts/release_tronko.sh). It holds one tronko commit, compiled, and every
-# outside tool the build runs, at fixed versions. See "Releasing a reference
-# database" in README.md.
+# outside tool the build runs, at fixed versions. See "Build a database from an
+# rCRUX release" in README.md; ops/release/launch.sh runs it on a VM.
 #
 # linux/amd64 only, on purpose: the alignment and tree tools give different
 # results on arm64, so releases come from one platform. An arm64 host (Apple
 # Silicon) runs it under emulation, which is fine for a small test and far too
 # slow for a real marker.
 #
-#   docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release:<ref> .
+#   docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release .
 #
 # The tronko code comes from TRONKO_REF, not from the build context, so the
 # commit recorded in a release's metadata is the code in the image.
