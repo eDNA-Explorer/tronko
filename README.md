@@ -23,11 +23,11 @@ One command builds a database on a Jetstream2 VM and opens its release PR:
 ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
 ```
 
-It creates the VM, runs the release image there, prints the PR and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
+It creates the VM, builds and runs the release image there, prints the PR and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
 
 It takes every build setting below as an option (`--set KEY=VALUE`; not `--config FILE`, which the VM cannot read), plus `--ref` (the tronko commit, branch or tag to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
 
-The image is `Dockerfile.release`: one tronko commit and every tool the build needs, at fixed versions. CI pushes one for each commit on `main`; for another commit, run `gh workflow run build-push-tronko-release.yml -f ref=<commit>`.
+The image is `Dockerfile.release`: one tronko commit and every tool the build needs, at fixed versions. The VM builds it at `--ref` before it starts.
 
 To build without a VM (it lands in `./work/out`, nothing is published):
 
