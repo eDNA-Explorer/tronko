@@ -1,6 +1,6 @@
 # The release VM's boot script. launch.sh puts "#!/bin/bash" and these settings
 # above it and passes the result as the server's user data:
-#   IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN
+#   IMAGE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN
 #   GIT_NAME GIT_EMAIL ARGS (release_tronko.sh options)
 #
 # Everything it prints goes to the server's console log, which is what
@@ -14,7 +14,6 @@ trap '[ "$?" = 0 ] || echo "TRONKO_RELEASE failed"; poweroff' EXIT
 
 GITHUB_REPO=eDNA-Explorer/tronko
 
-echo "$REGISTRY_TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${IMAGE%%/*}"
 docker pull --quiet "$IMAGE"
 mkdir -p /work
 git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPO.git" /work/release
