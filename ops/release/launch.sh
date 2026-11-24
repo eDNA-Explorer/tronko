@@ -16,7 +16,8 @@
 #   launch.sh delete NAME    delete a VM and its disk
 #
 # OPTIONS are scripts/release_tronko.sh's (--set KEY=VALUE, --sp-threshold,
-# --bump, ...) and are checked here before anything is created.
+# --bump, ...) and are checked here before anything is created. --config,
+# --steps, --work and --tronko-checkout do not apply to a VM.
 #
 # Needs gcloud, openstack, gh and jq; the js2-worker service account key at
 # ~/.rcrux/gcs-key.json (it reads the Jetstream credentials and the image);
@@ -46,14 +47,14 @@ wait_for() {
     echo "waiting for $1 (Ctrl-C is safe; '$0 wait $1' picks it up again)"
     until [ "$(openstack server show "$1" -f value -c status)" = SHUTOFF ]; do sleep 60; done
     local result
-    result="$(openstack console log show "$1" | tr -d '\r' | grep -o 'TRONKO_RELEASE .*' | tail -1)"
+    result="$(openstack console log show "$1" | tr -d '\r' | grep -o 'TRONKO_RELEASE .*' | tail -1 || true)"
     case "$result" in
         "TRONKO_RELEASE ok "*)
             delete "$1"
             echo "${result#TRONKO_RELEASE ok }"
             ;;
         *)
-            openstack console log show --lines 40 "$1"
+            openstack console log show --lines 40 "$1" || true
             die "$1 failed and is kept, powered off; '$0 delete $1' removes it"
             ;;
     esac
@@ -80,6 +81,20 @@ while [ $# -gt 0 ]; do
         --volume) VOLUME="$2"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         --marker) MARKER="$2"; ARGS+=("$1" "$2"); shift 2 ;;
+        # release_tronko.sh checks these two only when it publishes, after the build.
+        --bump)
+            case "$2" in major | minor | patch) ;; *) die "--bump must be major, minor or patch" ;; esac
+            ARGS+=("$1" "$2"); shift 2
+            ;;
+        --tronko-version)
+            [[ "$2" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "--tronko-version must look like v1.0.0"
+            ARGS+=("$1" "$2"); shift 2
+            ;;
+        # The VM cannot read a local file, always runs every step, and sets its own paths.
+        --config | --steps | --work | --tronko-checkout | --print-config)
+            die "$1 does not work here; settings go in --set KEY=VALUE"
+            ;;
+        -h | --help) usage ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
@@ -87,12 +102,13 @@ done
 case " ${ARGS[*]} " in *" --rcrux-tag "*) ;; *) die "--rcrux-tag is required" ;; esac
 "$HERE/../../scripts/release_tronko.sh" "${ARGS[@]}" --print-config > /dev/null
 
-SHA="$(git ls-remote https://github.com/eDNA-Explorer/tronko.git "$REF" | head -1 | cut -f1)"
-IMAGE="$REGISTRY/tronko-release:${SHA:-$REF}"
+# The commit behind a branch, a tag or a short SHA: images are tagged by commit.
+SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)" || die "no tronko commit $REF"
+IMAGE="$REGISTRY/tronko-release:$SHA"
 REGISTRY_TOKEN="$(gcloud auth print-access-token)"
 curl -fsS -o /dev/null -H "Authorization: Bearer $REGISTRY_TOKEN" \
-    "https://${REGISTRY%%/*}/v2/${REGISTRY#*/}/tronko-release/manifests/${SHA:-$REF}" 2> /dev/null \
-    || die "no image $IMAGE; build it: gh workflow run build-push-tronko-release.yml -f ref=$REF"
+    "https://${REGISTRY%%/*}/v2/${REGISTRY#*/}/tronko-release/manifests/$SHA" 2> /dev/null \
+    || die "no image $IMAGE; build it: gh workflow run build-push-tronko-release.yml -f ref=$SHA"
 
 : "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
 GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
