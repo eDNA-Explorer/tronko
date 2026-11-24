@@ -14,14 +14,18 @@ trap '[ "$?" = 0 ] || echo "TRONKO_RELEASE failed"; poweroff' EXIT
 
 GITHUB_REPO=eDNA-Explorer/tronko
 
+# git here and in the container (the publish push, and the fetch step's read of
+# the private rcrux-py) signs in to GitHub from this file.
+git config --global credential.helper store
+(umask 077 && echo "https://x-access-token:$GH_TOKEN@github.com" > /root/.git-credentials)
 mkdir -p /work
-git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPO.git" /work/release
+git clone --quiet "https://github.com/$GITHUB_REPO.git" /work/release
 # The image is built here, not pulled: Dockerfile.release fetches tronko at SHA
 # itself, so it needs no build context.
 git -C /work/release show "$SHA:Dockerfile.release" \
     | docker build --quiet --build-arg TRONKO_REF="$SHA" -t tronko-release -
 
-docker run --rm -v /work:/work \
+docker run --rm -v /work:/work -v /root/.gitconfig:/root/.gitconfig:ro -v /root/.git-credentials:/root/.git-credentials:ro \
     -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
     -e GIT_AUTHOR_NAME="$GIT_NAME" -e GIT_AUTHOR_EMAIL="$GIT_EMAIL" \
     -e GIT_COMMITTER_NAME="$GIT_NAME" -e GIT_COMMITTER_EMAIL="$GIT_EMAIL" \
