@@ -4,13 +4,14 @@
 #   GIT_NAME GIT_EMAIL ARGS (release_tronko.sh options)
 #
 # Everything it prints goes to the server's console log, which is what
-# "launch.sh logs" shows. The last line is "TRONKO_RELEASE ok <PR url>" or
-# "TRONKO_RELEASE failed"; then the VM powers off, which is what launch.sh
-# waits for.
+# "launch.sh logs" shows, between "TRONKO_RELEASE start" and "TRONKO_RELEASE ok
+# <PR url>" or "TRONKO_RELEASE failed"; then the VM powers off, which is what
+# launch.sh waits for.
 set -euo pipefail
 exec > >(tee /var/log/tronko-release.log > /dev/console) 2>&1
 export HOME=/root
 trap '[ "$?" = 0 ] || echo "TRONKO_RELEASE failed"; poweroff' EXIT
+echo "TRONKO_RELEASE start"
 
 GITHUB_REPO=eDNA-Explorer/tronko
 

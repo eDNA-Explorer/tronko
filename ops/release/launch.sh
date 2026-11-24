@@ -52,7 +52,8 @@ wait_for() {
             echo "${result#TRONKO_RELEASE ok }"
             ;;
         *)
-            openstack console log show --lines 40 "$1" || true
+            # This script's output, without the shutdown that follows it.
+            openstack console log show "$1" | tr -d '\r' | sed -n '/TRONKO_RELEASE start/,/TRONKO_RELEASE failed/p' | tail -40 || true
             die "$1 failed and is kept, powered off; '$0 delete $1' removes it"
             ;;
     esac
