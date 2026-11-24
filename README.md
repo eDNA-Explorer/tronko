@@ -17,28 +17,26 @@ make -C tronko-assign && make -C tronko-assign bwa-mem3
 
 ## Build a database from an rCRUX release
 
-Build the image once per tronko commit. It holds that commit and every tool the build needs, at fixed versions:
+One command builds a database on a Jetstream2 VM and opens its release PR:
 
 ```
-docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release:<ref> .
+ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
 ```
 
-Build a database (it lands in `./work/out`):
+It creates the VM, runs the release image there, prints the PR and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
+
+It takes every build setting below as an option, plus `--ref` (the tronko commit to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
+
+The image is `Dockerfile.release`: one tronko commit and every tool the build needs, at fixed versions. CI pushes one for each commit on `main`; for another commit, run `gh workflow run build-push-tronko-release.yml -f ref=<commit>`.
+
+To build without a VM (it lands in `./work/out`, nothing is published):
 
 ```
+docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release .
 docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
-    tronko-release:<ref> --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
+    tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
     --work /work --steps fetch,build --threads 32
 ```
-
-To publish it too, drop `--steps` and add a clean tronko checkout and a git identity:
-
-```
-    -e GIT_AUTHOR_NAME -e GIT_AUTHOR_EMAIL -e GIT_COMMITTER_NAME -e GIT_COMMITTER_EMAIL \
-    -v "$HOME/tronko-release:/release"   ...   --tronko-checkout /release
-```
-
-Then push the `publish/...` branch from that checkout and open a PR. Merging it tags the release `<marker>_tronko_<version>`.
 
 What each step does:
 

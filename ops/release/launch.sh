@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Build and publish a tronko reference database on a Jetstream2 VM, from here.
+#
+#   ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
+#
+# It creates a VM that runs the tronko-release image (Dockerfile.release, built
+# and pushed by the "Build and push tronko-release image" workflow) at --ref,
+# pushes the publish branch and opens its PR, then powers off. This script
+# waits, prints the PR and deletes the VM. Merging the PR tags the release.
+# Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
+#
+#   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run] OPTIONS
+#   launch.sh list           the release VMs and their states
+#   launch.sh logs NAME      a VM's console: the build's output so far
+#   launch.sh wait NAME      wait for a VM; print its PR and delete it, or show why it failed
+#   launch.sh delete NAME    delete a VM and its disk
+#
+# OPTIONS are scripts/release_tronko.sh's (--set KEY=VALUE, --sp-threshold,
+# --bump, ...) and are checked here before anything is created.
+#
+# Needs gcloud, openstack, gh and jq; the js2-worker service account key at
+# ~/.rcrux/gcs-key.json (it reads the Jetstream credentials and the image);
+# and AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for the Jetstream S3 remotes.
+# The VM gets those keys, a one-hour registry token and your GitHub token
+# (GH_TOKEN, else gh's) in its user data, and is deleted when it succeeds.
+set -euo pipefail
+
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
+die() { echo "error: $*" >&2; exit 1; }
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REGISTRY=northamerica-northeast2-docker.pkg.dev/edna-explorer-shared/jetstream2-images
+FLAVOR="${FLAVOR:-m3.2xl}"
+VOLUME="${VOLUME:-300}"
+VM_IMAGE="${VM_IMAGE:-Featured-Ubuntu22}"  # has Docker
+NETWORK="${NETWORK:-auto_allocated_network}"
+
+delete() {
+    local volume
+    volume="$(openstack server show "$1" -f json -c volumes_attached | jq -r '.volumes_attached[0].id')"
+    openstack server delete --wait "$1"
+    openstack volume delete "$volume"
+}
+
+wait_for() {
+    echo "waiting for $1 (Ctrl-C is safe; '$0 wait $1' picks it up again)"
+    until [ "$(openstack server show "$1" -f value -c status)" = SHUTOFF ]; do sleep 60; done
+    local result
+    result="$(openstack console log show "$1" | tr -d '\r' | grep -o 'TRONKO_RELEASE .*' | tail -1)"
+    case "$result" in
+        "TRONKO_RELEASE ok "*)
+            delete "$1"
+            echo "${result#TRONKO_RELEASE ok }"
+            ;;
+        *)
+            openstack console log show --lines 40 "$1"
+            die "$1 failed and is kept, powered off; '$0 delete $1' removes it"
+            ;;
+    esac
+}
+
+case "${1:-}" in -h | --help | "") usage ;; esac
+
+export CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="${GCP_KEY:-$HOME/.rcrux/gcs-key.json}"
+OPENSTACK_CREDENTIALS="$(gcloud secrets versions access latest --secret=openstack-credentials --project=edna-explorer-shared)"
+eval "$OPENSTACK_CREDENTIALS"
+
+case "$1" in
+    list) openstack server list --name '^tronko-release-' -c Name -c Status; exit ;;
+    logs) openstack console log show "${2:?NAME}"; exit ;;
+    wait) wait_for "${2:?NAME}"; exit ;;
+    delete) delete "${2:?NAME}"; exit ;;
+esac
+
+REF=main DRY_RUN=0 MARKER="" ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --ref) REF="$2"; shift 2 ;;
+        --flavor) FLAVOR="$2"; shift 2 ;;
+        --volume) VOLUME="$2"; shift 2 ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        --marker) MARKER="$2"; ARGS+=("$1" "$2"); shift 2 ;;
+        *) ARGS+=("$1"); shift ;;
+    esac
+done
+[ -n "$MARKER" ] || die "--marker is required"
+case " ${ARGS[*]} " in *" --rcrux-tag "*) ;; *) die "--rcrux-tag is required" ;; esac
+"$HERE/../../scripts/release_tronko.sh" "${ARGS[@]}" --print-config > /dev/null
+
+SHA="$(git ls-remote https://github.com/eDNA-Explorer/tronko.git "$REF" | head -1 | cut -f1)"
+IMAGE="$REGISTRY/tronko-release:${SHA:-$REF}"
+REGISTRY_TOKEN="$(gcloud auth print-access-token)"
+curl -fsS -o /dev/null -H "Authorization: Bearer $REGISTRY_TOKEN" \
+    "https://${REGISTRY%%/*}/v2/${REGISTRY#*/}/tronko-release/manifests/${SHA:-$REF}" 2> /dev/null \
+    || die "no image $IMAGE; build it: gh workflow run build-push-tronko-release.yml -f ref=$REF"
+
+: "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
+GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
+GIT_NAME="$(git config user.name)" GIT_EMAIL="$(git config user.email)"
+
+USER_DATA="$(mktemp)"
+trap 'rm -f "$USER_DATA"' EXIT
+{
+    echo '#!/bin/bash'
+    for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
+        printf '%s=%q\n' "$key" "${!key}"
+    done
+    printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"
+    cat "$HERE/vm_run.sh"
+} > "$USER_DATA"
+
+NAME="tronko-release-$(echo "$MARKER" | tr 'A-Z_' 'a-z-')-$(date +%m%d%H%M)"
+CREATE=(openstack server create "$NAME" --flavor "$FLAVOR" --image "$VM_IMAGE" --network "$NETWORK"
+    --boot-from-volume "$VOLUME" --user-data "$USER_DATA" --wait)
+[ -z "${KEY_NAME:-}" ] || CREATE+=(--key-name "$KEY_NAME")  # only to ssh in from inside Jetstream
+if [ "$DRY_RUN" = 1 ]; then
+    echo "would run: ${CREATE[*]}"
+    exit
+fi
+"${CREATE[@]}" > /dev/null
+wait_for "$NAME"
