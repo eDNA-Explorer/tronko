@@ -5,8 +5,10 @@ Check that a finished build assigns reads correctly, with a synthetic community.
 The community, its reads and the scoring are synthetic-fastq-toolkit's, the
 code the assignment benchmark uses (edna-explorer-data-pipelines,
 libraries/synthetic-fastq-toolkit): species drawn from the build's own
-reference with lognormal abundances, read pairs as QC hands them to assignment,
-and the benchmark's per-rank metrics. tronko-assign assigns them the way
+reference with equal abundance, read pairs as QC hands them to assignment, and
+the benchmark's per-rank metrics. Equal abundance gives each species the same
+weight in the scores, as the classifier benchmarks do; a skewed community lets
+a few species decide them. tronko-assign assigns them the way
 production does (paired, -z -w -6, LCA cut-off 10).
 
 The reads come from sequences in the database, so this shows the database and
@@ -25,6 +27,7 @@ import tempfile
 from pathlib import Path
 
 from synthetic_fastq.benchmark_reads import load_read_truth, simulate_community
+from synthetic_fastq.community import RankAbundanceModel
 from synthetic_fastq.scoring.reads import score_reads
 
 # production's tronko-assign settings (qc-tools-lib LCA_CUTOFF)
@@ -50,6 +53,7 @@ def run(
             read_length=read_length,
             output_dir=work,
             seed=seed,
+            abundance_model=RankAbundanceModel.UNIFORM,
         )
         output = work / "assigned.txt"
         command = [
