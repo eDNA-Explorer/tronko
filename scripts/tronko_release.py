@@ -396,7 +396,13 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
     cluster_sizes = [
         int(m.group(1)) for line in log if (m := re.search(r"Launched cluster \d+ \(.* (\d+) seqs\)", line))
     ]
-    sp_scores = [float(line.split()[1]) for line in log if line.startswith("SPscore: ")]
+    # A tree is under the sum-of-pairs threshold when tronko-build wanted to split it
+    # and could not: every refused split, less the input clusters refused before any
+    # scoring. (Its SPscore lines also cover partitions it split and dropped, and
+    # arrive cut up by its other output, so they are not read.)
+    weak_trees = sum("partition too small" in line for line in log) - sum(
+        "materialising unsplit cluster" in line for line in log
+    )
     # tronko-build's list of the partitions that became trees; absent from a build made elsewhere.
     final = build_dir / "final_partitions.txt"
     partition_sizes = [
@@ -464,9 +470,14 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         "## Shape (smallest / median / largest)",
         f"- sequences per cluster: {_spread(cluster_sizes)}; {len(cluster_sizes)} clusters",
         f"- sequences per tree: {_spread(partition_sizes)}; {len(partition_sizes):,} trees",
-        f"- sum-of-pairs scores: {_spread(sp_scores)}; "
-        f"{sum(1 for score in sp_scores if score > float(settings.get('SP_THRESHOLD', 'inf'))):,} of "
-        f"{len(sp_scores):,} above the {settings.get('SP_THRESHOLD', '?')} threshold",
+        *(
+            [
+                f"- trees under the {settings.get('SP_THRESHOLD')} sum-of-pairs threshold, "
+                f"too small to split further: {weak_trees:,} of {build.get('n_trees', 0):,}"
+            ]
+            if settings.get("PARTITION") == "sum_of_pairs"
+            else []
+        ),
         "",
         "## Taxonomy",
         "- distinct names: " + ", ".join(f"{len(names):,} {rank}" for rank, names in zip(TAXONOMY_RANKS, named)),

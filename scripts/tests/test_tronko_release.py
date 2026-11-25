@@ -416,8 +416,8 @@ def _report_metadata(tmp_path, taxonomy_rows=2):
         "row_counts": {"fasta_records": 2, "taxonomy_rows": taxonomy_rows},
         "build_params": {
             "overrides": ["set:CLUSTER_JOBS=8"],
-            "settings": {"SP_THRESHOLD": "0.1"},
-            "build": {"input_sequences": 2, "ac_clusters": 1, "n_trees": 1},
+            "settings": {"PARTITION": "sum_of_pairs", "SP_THRESHOLD": "0.1"},
+            "build": {"input_sequences": 2, "ac_clusters": 1, "n_trees": 3},
         },
     }
 
@@ -427,13 +427,23 @@ def test_release_report_passes_a_consistent_build_and_describes_it(tmp_path):
     (build / "final_partitions.txt").write_text("0\n")
     (build / "partition0_taxonomy.txt").write_text("a\tx\nb\ty\n")
     log = tmp_path / "build.log"
-    log.write_text("  Launched cluster 0 (PID 1, 2 seqs)\nSPscore: 0.05\nSPscore: 0.4\n")
+    # As tronko-build writes it: score lines cut by its other output, a 0.05 parent
+    # split into three, one of them under the threshold but too small to split, and
+    # an input cluster too small to split at all.
+    log.write_text(
+        "  Launched cluster 0 (PID 1, 2 seqs)\n"
+        "SPscore: 0.050000\nSPscore: 0.200000\nSPscore: 0.300000\n"
+        "SPscore:   writeNewick start (root=0, numspec=11)\n080000\n"
+        "SPscore: -  createNewRoots: partition too small, returning early\n"
+        "  createNewRoots: partition too small, returning early\n"
+        "materialising unsplit cluster 1 as partition9\n"
+    )
     report = tr.release_report(_report_metadata(tmp_path), build, log, None)
     assert report.startswith("All checks passed")
     assert "settings changed from the recipe: CLUSTER_JOBS=8" in report
     assert "sequences per cluster: 2 / 2 / 2; 1 clusters" in report
     assert "sequences per tree: 2 / 2 / 2; 1 trees" in report
-    assert "1 of 2 above the 0.1 threshold" in report
+    assert "trees under the 0.1 sum-of-pairs threshold, too small to split further: 1 of 3" in report
     assert "2 species" in report and "sequences with no species name: 0 of 2" in report
 
 
