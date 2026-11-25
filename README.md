@@ -61,7 +61,7 @@ The defaults are our standard recipe, in `scripts/tronko_build.conf`:
 | `TREE_TOOL` | `veryfasttree` (or `fasttree`, `raxml`) |
 | `PARTITION`, `SP_THRESHOLD`, `MIN_LEAF` | `sum_of_pairs`, 0.1, 500 |
 | `SP_FORMULA` | `legacy` (or `corrected`) |
-| `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | 1, 1 |
+| `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | one per 8 threads each (8 on 64 CPUs) |
 | `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
 
 Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
