@@ -35,21 +35,22 @@ VM_IMAGE="${VM_IMAGE:-Featured-Ubuntu22}"  # has Docker
 NETWORK="${NETWORK:-auto_allocated_network}"
 
 delete() {
-    local volume
-    volume="$(openstack server show "$1" -f json -c volumes_attached | jq -r '.volumes_attached[0].id')"
+    local volumes
+    volumes="$(openstack server show "$1" -f json -c volumes_attached | jq -r '.volumes_attached[].id')"
     openstack server delete --wait "$1"
-    openstack volume delete "$volume"
+    [ -z "$volumes" ] || openstack volume delete $volumes
 }
 
 wait_for() {
+    openstack server show "$1" > /dev/null  # no such VM stops here; a later lost connection only retries
     echo "waiting for $1 (Ctrl-C is safe; '$0 wait $1' picks it up again)"
     until [ "$(openstack server show "$1" -f value -c status)" = SHUTOFF ]; do sleep 60; done
     local result
     result="$(openstack console log show "$1" | tr -d '\r' | grep -o 'TRONKO_RELEASE .*' | tail -1 || true)"
     case "$result" in
         "TRONKO_RELEASE ok "*)
-            delete "$1"
             echo "${result#TRONKO_RELEASE ok }"
+            delete "$1"
             ;;
         *)
             # This script's output, without the shutdown that follows it.
@@ -100,13 +101,20 @@ done
 [ -n "$MARKER" ] || die "--marker is required"
 case " ${ARGS[*]} " in *" --rcrux-tag "*) ;; *) die "--rcrux-tag is required" ;; esac
 "$HERE/../../scripts/release_tronko.sh" "${ARGS[@]}" --print-config > /dev/null
+# Publish refuses a marker main already has without --replace; say so before the build, not after.
+case " ${ARGS[*]} " in
+    *" --replace "*) ;;
+    *) ! gh api "repos/eDNA-Explorer/tronko/contents/databases/$MARKER/tronko.dvc" > /dev/null 2>&1 \
+        || die "main already has a tronko release of $MARKER; pass --replace to publish the next version" ;;
+esac
 
 # The commit behind a branch, a tag or a short SHA; the VM builds the image at it.
 SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)" || die "no tronko commit $REF"
 
 : "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
 GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
-GIT_NAME="$(git config user.name)" GIT_EMAIL="$(git config user.email)"
+# The release commit is made as you.
+GIT_NAME="$(git config user.name)" && GIT_EMAIL="$(git config user.email)" || die "set git user.name and user.email"
 
 USER_DATA="$(mktemp)"
 trap 'rm -f "$USER_DATA"' EXIT
