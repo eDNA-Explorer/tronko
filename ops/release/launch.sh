@@ -61,7 +61,11 @@ publish() {
     git -C "$repo" fetch --quiet origin main  # the bundle's base
     git -C "$repo" fetch --quiet "$bundle" "refs/heads/$branch"
     git -C "$repo" push --quiet origin "FETCH_HEAD:refs/heads/$branch"
-    gh pr view "$branch" --repo eDNA-Explorer/tronko --json url --jq .url 2> /dev/null \
+    # An open PR for the branch is reused (a rerun of wait); a closed one is not.
+    local open
+    open="$(gh pr list --repo eDNA-Explorer/tronko --head "$branch" --state open --json url --jq '.[0].url // empty')" \
+        || die "pushed $branch, but could not look up its PR; '$0 wait NAME' tries again"
+    [ -n "$open" ] && echo "$open" \
         || gh pr create --repo eDNA-Explorer/tronko --base main --head "$branch" \
             --title "$(git -C "$repo" log -1 --format=%s FETCH_HEAD)" \
             --body "$(git -C "$repo" log -1 --format=%b FETCH_HEAD)"
