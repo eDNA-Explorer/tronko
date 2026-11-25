@@ -32,7 +32,7 @@ The image is `Dockerfile.release`: one tronko commit and every tool the build ne
 To build without a VM (it lands in `./work/out`, nothing is published):
 
 ```
-docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release .
+docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .
 docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
     tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
     --work /work --steps fetch,build --threads 32
@@ -63,6 +63,7 @@ The defaults are our standard recipe, in `scripts/tronko_build.conf`:
 | `SP_FORMULA` | `legacy` (or `corrected`) |
 | `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | one per 8 threads each (8 on 64 CPUs) |
 | `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
+| `ASSIGNMENT_CHECK_SPECIES`, `ASSIGNMENT_CHECK_READS` | 100, 5000 (a synthetic community assigned after the build; 0 reads skips it) |
 
 Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
 

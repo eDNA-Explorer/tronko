@@ -122,6 +122,7 @@ def run(env, *extra: str) -> subprocess.CompletedProcess[str]:
             "--marker", MARKER, "--rcrux-tag", RCRUX_TAG,
             "--tronko-checkout", str(env["checkout"]), "--rcrux-repo", str(env["origin"]),
             "--work", str(env["tmp"] / "work"), "--threads", "2", *extra,
+            "--set", "ASSIGNMENT_CHECK_READS=0",
         ],
         capture_output=True, text=True, check=False,
     )  # fmt: skip
@@ -378,7 +379,8 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     result = subprocess.run(
         ["bash", str(tronko / "scripts" / "release_tronko.sh"), "--marker", "EXAMPLE",
          "--work", str(work), "--steps", "build", "--threads", "2",
-         "--set", "TREE_TOOL=raxml", "--set", "TRONKO_BUILD_ARGS=--one-thread-below 0"],
+         "--set", "TREE_TOOL=raxml", "--set", "TRONKO_BUILD_ARGS=--one-thread-below 0",
+         "--set", "ASSIGNMENT_CHECK_READS=0"],
         capture_output=True, text=True, check=False,
     )  # fmt: skip
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]

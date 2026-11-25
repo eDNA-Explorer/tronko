@@ -64,6 +64,9 @@ METADATA_FILENAME = "metadata.json"
 INPUTS_FILENAME = "inputs.json"
 BUILD_LOG_FILENAME = "build.log"
 BUILD_PARAMS_FILENAME = "build_params.json"
+ASSIGNMENT_CHECK_FILENAME = "assignment_check.json"
+# Reads drawn from the database itself should not be assigned a wrong name.
+ASSIGNMENT_WRONG_WARNING = 0.01
 
 
 def required_files(marker: str) -> list[str]:
@@ -80,8 +83,8 @@ def required_files(marker: str) -> list[str]:
 def published_files(build_dir: Path, marker: str) -> list[str]:
     """The required files, plus <marker>_taxids.txt when the build wrote one
     (rCRUX's taxid per accession; a 2-column input has none)."""
-    taxids = f"{marker}_taxids.txt"
-    return required_files(marker) + ([taxids] if (build_dir / taxids).is_file() else [])
+    optional = (f"{marker}_taxids.txt", ASSIGNMENT_CHECK_FILENAME)
+    return required_files(marker) + [name for name in optional if (build_dir / name).is_file()]
 
 
 def file_digest(path: Path, algorithm: str) -> str:
@@ -381,6 +384,31 @@ def _spread(values: list[float]) -> str:
     return f"{min(values):,g} / {statistics.median(values):,g} / {max(values):,g}"
 
 
+def assignment_section(check: dict) -> list[str]:
+    settings, reads = check["settings"], check["settings"]["reads"]
+    return [
+        "## Assignment check",
+        f"{reads:,} read pairs of {settings['read_length']} bp from a synthetic community of "
+        f"{settings['species']} species drawn from this database, assigned with tronko-assign "
+        f"(LCA cut-off {settings['lca_cutoff']}) and scored as the assignment benchmark scores:",
+        "",
+        "| | correct | unresolved | wrong | precision | recall | F1 |",
+        "|---|---|---|---|---|---|---|",
+        *(
+            f"| {rank} | "
+            + " | ".join(f"{s[k]:,} ({s[k] / reads:.1%})" for k in ("correct", "unresolved", "wrong"))
+            + " | "
+            + " | ".join(f"{s[k]:.3f}" for k in ("precision", "recall", "f1"))
+            + " |"
+            for rank, s in check["by_rank"].items()
+        ),
+        "",
+        "Unresolved: assigned no further than a higher rank. The reads come from sequences "
+        "in the database, so this does not measure accuracy on unseen species.",
+        "",
+    ]
+
+
 def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: dict | None) -> str:
     """The release PR's description: what a reviewer checks before merging.
 
@@ -429,6 +457,14 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         )
     if problems:
         warnings.append(f"the build log has {len(problems)} error lines, the first: `{problems[0][:200]}`")
+    check_path = build_dir / ASSIGNMENT_CHECK_FILENAME
+    check = json.loads(check_path.read_text()) if check_path.is_file() else None
+    for rank, result in (check or {}).get("by_rank", {}).items():
+        if result["wrong"] > check["settings"]["reads"] * ASSIGNMENT_WRONG_WARNING:
+            warnings.append(
+                f"the assignment check put {result['wrong']:,} of {check['settings']['reads']:,} "
+                f"reads in the wrong {rank}"
+            )
     if previous and counts["fasta_records"] < previous["row_counts"]["fasta_records"] * (1 - SHRINK_WARNING):
         warnings.append(
             f"more than {SHRINK_WARNING:.0%} fewer sequences than {previous['tronko_version']}"
@@ -479,6 +515,7 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
             else []
         ),
         "",
+        *(assignment_section(check) if check else []),
         "## Taxonomy",
         "- distinct names: " + ", ".join(f"{len(names):,} {rank}" for rank, names in zip(TAXONOMY_RANKS, named)),
         f"- sequences with no species name: {no_species:,} of {len(lineages):,}",

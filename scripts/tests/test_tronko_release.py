@@ -466,3 +466,27 @@ def test_publish_puts_the_report_in_the_commit_the_pr_is_made_from(tmp_path, rcr
     tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
     assert git(checkout, "log", "-1", "--format=%s").startswith(f"Publish {MARKER} tronko v1.0.0")
     assert "## Taxonomy" in git(checkout, "log", "-1", "--format=%b")
+
+
+def test_release_report_shows_the_assignment_check_and_flags_wrong_names(tmp_path):
+    build = write_build(tmp_path / "build")
+    log = tmp_path / "build.log"
+    log.write_text("")
+    check = {
+        "settings": {"species": 100, "reads": 1000, "read_length": 150, "lca_cutoff": 10},
+        "by_rank": {
+            "species": {"correct": 700, "unresolved": 280, "wrong": 20,
+                        "precision": 0.972, "recall": 0.7, "f1": 0.814},
+            "genus": {"correct": 900, "unresolved": 95, "wrong": 5,
+                      "precision": 0.994, "recall": 0.9, "f1": 0.945},
+            "family": {"correct": 990, "unresolved": 10, "wrong": 0,
+                       "precision": 1.0, "recall": 0.99, "f1": 0.995},
+        },
+    }
+    (build / tr.ASSIGNMENT_CHECK_FILENAME).write_text(json.dumps(check))
+    assert tr.ASSIGNMENT_CHECK_FILENAME in tr.published_files(build, MARKER)
+    report = tr.release_report(_report_metadata(tmp_path), build, log, None)
+    assert report.startswith("**Checks failed:**")
+    assert "the assignment check put 20 of 1,000 reads in the wrong species" in report
+    assert "wrong genus" not in report
+    assert "| species | 700 (70.0%) | 280 (28.0%) | 20 (2.0%) | 0.972 | 0.700 | 0.814 |" in report
