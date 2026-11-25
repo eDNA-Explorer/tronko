@@ -33,7 +33,7 @@ To build without a VM (it lands in `./work/out`, nothing is published):
 
 ```
 docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .
-docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
+docker run --rm --ipc=host -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
     tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
     --work /work --steps fetch,build --threads 32
 ```

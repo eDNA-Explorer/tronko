@@ -25,7 +25,9 @@ git clone --quiet "https://github.com/$GITHUB_REPO.git" /work/release
 echo "$REGISTRY_TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${IMAGE%%/*}"
 docker pull --quiet "$IMAGE"
 
-docker run --rm -v /work:/work -v /root/.gitconfig:/root/.gitconfig:ro -v /root/.git-credentials:/root/.git-credentials:ro \
+# --ipc=host: tronko-assign (the assignment check) stages its BWA-MEM3 index in
+# /dev/shm, and a container's own is 64 MB.
+docker run --rm --ipc=host -v /work:/work -v /root/.gitconfig:/root/.gitconfig:ro -v /root/.git-credentials:/root/.git-credentials:ro \
     -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
     -e GIT_AUTHOR_NAME="$GIT_NAME" -e GIT_AUTHOR_EMAIL="$GIT_EMAIL" \
     -e GIT_COMMITTER_NAME="$GIT_NAME" -e GIT_COMMITTER_EMAIL="$GIT_EMAIL" \
