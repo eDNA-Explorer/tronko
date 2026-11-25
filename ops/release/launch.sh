@@ -3,10 +3,10 @@
 #
 #   ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
 #
-# It creates a VM that runs the release image (Dockerfile.release) at --ref: the
-# one CI pushed for a commit on main, else one the VM builds. The VM pushes the
-# publish branch and opens its PR, then powers off. This script waits, prints the
-# PR and deletes the VM. Merging the PR tags the release.
+# It creates a VM that pulls the release image CI pushed for --ref (every commit
+# on main has one), runs it, pushes the publish branch and opens its PR, then
+# powers off. This script waits, prints the PR and deletes the VM. Merging the PR
+# tags the release.
 # Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
 #
 #   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run] OPTIONS
@@ -34,6 +34,7 @@ FLAVOR="${FLAVOR:-m3.2xl}"
 VOLUME="${VOLUME:-300}"
 VM_IMAGE="${VM_IMAGE:-Featured-Ubuntu22}"  # has Docker
 NETWORK="${NETWORK:-auto_allocated_network}"
+REGISTRY=northamerica-northeast2-docker.pkg.dev/edna-explorer-shared/jetstream2-images
 
 delete() {
     local volumes
@@ -110,12 +111,16 @@ case " ${ARGS[*]} " in
         || die "main already has a tronko release of $MARKER; pass --replace to publish the next version" ;;
 esac
 
-# The commit behind a branch, a tag or a short SHA; the VM builds the image at it.
+# The commit behind a branch, a tag or a short SHA; the image is tagged with it.
 SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)" || die "no tronko commit $REF"
 
 : "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
 GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
+IMAGE="$REGISTRY/tronko-release:$SHA"
 REGISTRY_TOKEN="$(gcloud auth print-access-token)"  # js2-worker's, to pull the image; lasts an hour
+curl -fsS -o /dev/null -H "Authorization: Bearer $REGISTRY_TOKEN" \
+    "https://${REGISTRY%%/*}/v2/${REGISTRY#*/}/tronko-release/manifests/$SHA" 2> /dev/null \
+    || die "no image $IMAGE; build it: gh workflow run build-push-tronko-release.yml -f ref=$SHA"
 # The release commit is made as you.
 GIT_NAME="$(git config user.name)" && GIT_EMAIL="$(git config user.email)" || die "set git user.name and user.email"
 
@@ -123,7 +128,7 @@ USER_DATA="$(mktemp)"
 trap 'rm -f "$USER_DATA"' EXIT
 {
     echo '#!/bin/bash'
-    for key in SHA REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
+    for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
         printf '%s=%q\n' "$key" "${!key}"
     done
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"

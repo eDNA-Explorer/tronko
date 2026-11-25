@@ -27,7 +27,7 @@ It creates the VM, runs the release image there, prints the PR and deletes the V
 
 It takes every build setting below as an option (`--set KEY=VALUE`; not `--config FILE`, which the VM cannot read), plus `--ref` (the tronko commit, branch or tag to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
 
-The image is `Dockerfile.release`: one tronko commit and every tool the build needs, at fixed versions. CI pushes one for every commit on `main`, which the VM pulls; for any other `--ref` the VM builds it first.
+The image is `Dockerfile.release`: one tronko commit and every tool the build needs, at fixed versions. CI pushes one for every commit on `main`, which the VM pulls. For any other `--ref`, build it first: `gh workflow run build-push-tronko-release.yml -f ref=<commit>`.
 
 To build without a VM (it lands in `./work/out`, nothing is published):
 
