@@ -491,3 +491,28 @@ def test_release_report_shows_the_assignment_check_and_flags_wrong_names(tmp_pat
     assert "the assignment check put 20 of 1,000 reads in the wrong species" in report
     assert "wrong genus" not in report
     assert "| species | 700 (70.0%) | 280 (28.0%) | 20 (2.0%) | 0.972 | 0.700 | 0.814 |" in report
+
+
+def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_repo):
+    """What the release VM does: the tag's commit, curated.dvc and remote settings
+    from files, the data from the remote, no access to the rcrux repository."""
+    origin, tag = rcrux_repo["origin"], f"{MARKER}_v1.0.0"
+    pointer = tmp_path / "pointer"
+    pointer.mkdir()
+    (pointer / "commit").write_text(git(origin, "rev-parse", f"{tag}^{{commit}}") + "\n")
+    (pointer / "curated.dvc").write_text(git(origin, "show", f"{tag}:databases/{MARKER}/curated.dvc"))
+    (pointer / "dvc_config").write_text(git(origin, "show", f"{tag}:.dvc/config"))
+
+    by_git = tr.fetch(MARKER, tag, tmp_path / "git", rcrux_repo=str(origin))
+    by_pointer = tr.fetch(MARKER, tag, tmp_path / "pointer-out", rcrux_repo=str(origin), pointer_dir=pointer)
+    assert by_pointer == by_git
+    assert (tmp_path / "pointer-out" / "lca.fasta").read_bytes() == (tmp_path / "git" / "lca.fasta").read_bytes()
+
+    # A file that is not the one the listing names is refused.
+    listing = json.loads(next(rcrux_repo["remote"].rglob("*.dir")).read_text())
+    lca = next(e for e in listing if e["relpath"] == "lca.fasta")
+    stored = rcrux_repo["remote"] / "files" / "md5" / lca["md5"][:2] / lca["md5"][2:]
+    stored.chmod(0o644)  # DVC stores objects read-only
+    stored.write_text(">x\nAAAA\n")
+    with pytest.raises(ValueError, match="is not md5"):
+        tr.fetch(MARKER, tag, tmp_path / "bad", rcrux_repo=str(origin), pointer_dir=pointer)

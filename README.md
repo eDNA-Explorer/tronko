@@ -20,10 +20,12 @@ make -C tronko-assign && make -C tronko-assign bwa-mem3
 One command builds a database on a Jetstream2 VM and opens its release PR:
 
 ```
-ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
+ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0
 ```
 
-It creates the VM, runs the release image there, prints the PR and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
+It creates the VM, runs the release image there, then pushes the release's branch and opens its PR with your own `git` and `gh`, and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`.
+
+The VM gets the storage keys and no GitHub credential. Before launching, the launcher reads the rcrux tag with your `gh`: its commit, the marker's `curated.dvc` and the rcrux remote's settings. The VM then downloads the inputs from that remote by hash. It commits the release on the VM and prints it on the console as a git bundle (a few KB, with its checksum), which the launcher pushes. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
 
 It takes every build setting below as an option (`--set KEY=VALUE`; not `--config FILE`, which the VM cannot read), plus `--ref` (the tronko commit, branch or tag to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
 
@@ -34,7 +36,7 @@ To build without a VM (it lands in `./work/out`, nothing is published):
 ```
 docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .
 docker run --rm --ipc=host -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
-    tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
+    tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0 \
     --work /work --steps fetch,build --threads 32
 ```
 

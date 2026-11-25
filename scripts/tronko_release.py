@@ -250,30 +250,69 @@ def resolve_tag_commit(repo: str, tag: str) -> str:
     return commit
 
 
+def remote_object(remote: dict, md5: str) -> tuple[object, str]:
+    """A filesystem and the path of one object in a DVC 3 remote (files/md5/ab/cdef...)."""
+    import fsspec
+
+    url = remote["url"]
+    protocol, _, root = url.partition("://") if "://" in url else ("file", "", url)
+    options = {"client_kwargs": {"endpoint_url": remote["endpointurl"]}} if "endpointurl" in remote else {}
+    return fsspec.filesystem(protocol, **options), f"{root.rstrip('/')}/files/md5/{md5[:2]}/{md5[2:]}"
+
+
+def read_pointer(pointer_dir: Path) -> tuple[str, str, dict]:
+    """The rcrux commit, curated.dvc and the rcrux remote's settings that the launcher saved."""
+    from configobj import ConfigObj
+
+    config = ConfigObj(str(pointer_dir / "dvc_config"))
+    return (
+        (pointer_dir / "commit").read_text().strip(),
+        (pointer_dir / "curated.dvc").read_text(),
+        dict(config[f'remote "{RCRUX_REMOTE}"']),
+    )
+
+
 def fetch(
     marker: str,
     rcrux_tag: str,
     out_dir: Path,
     rcrux_repo: str = DEFAULT_RCRUX_REPO,
+    pointer_dir: Path | None = None,
 ) -> dict:
-    """Download the curated inputs at an rcrux tag and write inputs.json."""
-    from dvc.api import DVCFileSystem
+    """Download the curated inputs at an rcrux tag and write inputs.json.
 
-    commit = resolve_tag_commit(rcrux_repo, rcrux_tag)
-    # Pin the commit, not the tag name, so a moved tag cannot change what is read.
-    fs = DVCFileSystem(rcrux_repo, rev=commit, remote=RCRUX_REMOTE)
-    marker_dir = f"databases/{marker}"
-    with fs.open(f"{marker_dir}/curated.dvc", "r") as handle:
-        curated_md5 = dvc_out_md5(handle.read())
-
-    listing = [Path(p).name for p in fs.ls(f"{marker_dir}/curated", detail=False)]
-    fasta_name, taxonomy_name = curated_input_names(listing, marker)
-
+    With pointer_dir, the tag's commit, curated.dvc and the rcrux remote's
+    settings come from files there (the release launcher reads them with the
+    user's GitHub access), and the files from the remote by hash alone, so
+    this needs storage keys and no access to rcrux-py.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     input_files = {}
+    if pointer_dir is None:
+        from dvc.api import DVCFileSystem
+
+        commit = resolve_tag_commit(rcrux_repo, rcrux_tag)
+        # Pin the commit, not the tag name, so a moved tag cannot change what is read.
+        fs = DVCFileSystem(rcrux_repo, rev=commit, remote=RCRUX_REMOTE)
+        marker_dir = f"databases/{marker}"
+        with fs.open(f"{marker_dir}/curated.dvc", "r") as handle:
+            curated_md5 = dvc_out_md5(handle.read())
+        listing = [Path(p).name for p in fs.ls(f"{marker_dir}/curated", detail=False)]
+        fasta_name, taxonomy_name = curated_input_names(listing, marker)
+        for name in (fasta_name, taxonomy_name):
+            fs.get_file(f"{marker_dir}/curated/{name}", str(out_dir / name))
+    else:
+        commit, curated_dvc, remote = read_pointer(pointer_dir)
+        curated_md5 = dvc_out_md5(curated_dvc)
+        fs, path = remote_object(remote, curated_md5)
+        md5s = {entry["relpath"]: entry["md5"] for entry in json.loads(fs.cat_file(path))}
+        fasta_name, taxonomy_name = curated_input_names(list(md5s), marker)
+        for name in (fasta_name, taxonomy_name):
+            fs.get_file(remote_object(remote, md5s[name])[1], str(out_dir / name))
+            if file_digest(out_dir / name, "md5") != md5s[name]:
+                raise ValueError(f"curated/{name} from the {RCRUX_REMOTE} remote is not md5 {md5s[name]}")
     for name in (fasta_name, taxonomy_name):
         local = out_dir / name
-        fs.get_file(f"{marker_dir}/curated/{name}", str(local))
         if local.stat().st_size == 0:
             raise ValueError(f"curated/{name} at {rcrux_tag} is empty")
         input_files[f"curated/{name}"] = file_digest(local, "md5")
@@ -774,6 +813,9 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument("--rcrux-tag", required=True, help="e.g. CO1_BF3_BR2_v1.0.0")
     p_fetch.add_argument("--out", required=True, type=Path)
     p_fetch.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
+    p_fetch.add_argument(
+        "--rcrux-pointer", type=Path, help="Directory with the tag's commit, curated.dvc and dvc_config"
+    )
 
     p_pub = sub.add_parser("publish", help="Track a finished build in the tronko repo's DVC")
     p_pub.add_argument("--marker", required=True)
@@ -818,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "fetch":
-            inputs = fetch(args.marker, args.rcrux_tag, args.out, args.rcrux_repo)
+            inputs = fetch(args.marker, args.rcrux_tag, args.out, args.rcrux_repo, args.rcrux_pointer)
             print(f"Wrote {args.out / INPUTS_FILENAME} (input_md5 {inputs['input_md5']})")
         elif args.command == "publish":
             metadata = publish(

@@ -82,7 +82,7 @@ load_config() {
 }
 
 # --- Options (overrides applied in order, after the config files) -----------
-MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" WORK="" STEPS="fetch,build,publish"
+MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" RCRUX_POINTER="" WORK="" STEPS="fetch,build,publish"
 PRINT_CONFIG=0
 OVERRIDES=()  # "config:FILE" or "set:KEY=VALUE"
 PUBLISH_OPTS=()
@@ -92,6 +92,7 @@ while [ $# -gt 0 ]; do
         --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
         --tronko-checkout) TRONKO_CHECKOUT="$2"; shift 2 ;;
         --rcrux-repo) RCRUX_REPO="$2"; shift 2 ;;
+        --rcrux-pointer) RCRUX_POINTER="$2"; shift 2 ;;
         --work) WORK="$2"; shift 2 ;;
         --steps) STEPS="$2"; shift 2 ;;
         --config) OVERRIDES+=("config:$2"); shift 2 ;;
@@ -189,6 +190,7 @@ if has_step fetch; then
     say "Fetch $RCRUX_TAG"
     FETCH_ARGS=(--marker "$MARKER" --rcrux-tag "$RCRUX_TAG" --out "$INPUT")
     [ -z "$RCRUX_REPO" ] || FETCH_ARGS+=(--rcrux-repo "$RCRUX_REPO")
+    [ -z "$RCRUX_POINTER" ] || FETCH_ARGS+=(--rcrux-pointer "$RCRUX_POINTER")
     run "${TOOL[@]}" fetch "${FETCH_ARGS[@]}"
 fi
 

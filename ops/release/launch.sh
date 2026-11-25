@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
 # Build and publish a tronko reference database on a Jetstream2 VM, from here.
 #
-#   ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
+#   ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0
 #
 # It creates a VM that pulls the release image CI pushed for --ref (every commit
-# on main has one), runs it, pushes the publish branch and opens its PR, then
-# powers off. This script waits, prints the PR and deletes the VM. Merging the PR
-# tags the release.
-# Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
+# on main has one), runs it, pushes the database to the DVC remote and commits
+# the release, then powers off. This script waits, pushes the publish branch and
+# opens its PR with your git and gh, and deletes the VM. Merging the PR tags the
+# release. Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
 #
 #   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run] OPTIONS
 #   launch.sh list           the release VMs and their states
 #   launch.sh logs NAME      a VM's console: the build's output so far
-#   launch.sh wait NAME      wait for a VM; print its PR and delete it, or show why it failed
+#   launch.sh wait NAME      wait for a VM; open its PR and delete it, or show why it failed
 #   launch.sh delete NAME    delete a VM and its disk
 #
 # OPTIONS are scripts/release_tronko.sh's (--set KEY=VALUE, --sp-threshold,
 # --bump, ...) and are checked here before anything is created. --config,
 # --steps, --work and --tronko-checkout do not apply to a VM.
 #
-# Needs gcloud, openstack, gh and jq; the js2-worker service account key at
+# Needs gcloud, openstack, gh, git and jq; the js2-worker service account key at
 # ~/.rcrux/gcs-key.json (it reads the Jetstream credentials); and
 # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for the Jetstream S3 remotes.
-# The VM gets those keys and your GitHub token (GH_TOKEN, else gh's) in its
-# user data, and is deleted when it succeeds.
+# The VM gets those keys in its user data and no GitHub credential: this script
+# reads the rcrux tag for it, and pushes and opens the PR itself. The VM is
+# deleted when it succeeds.
 set -euo pipefail
 
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; exit "${1:-0}"; }
@@ -43,15 +44,37 @@ delete() {
     [ -z "$volumes" ] || openstack volume delete $volumes
 }
 
+# Push the release commit the VM printed as a bundle, and open (or find) its PR.
+publish() {
+    local console="$1" branch sha bundle repo
+    read -r branch sha < <(grep '^TRONKO_BUNDLE [^ ]* [0-9a-f]\{64\}$' <<< "$console" | tail -1 | cut -d' ' -f2-) || true
+    [ -n "${branch:-}" ] || die "no release bundle on the console"
+    bundle="$(mktemp)"
+    awk '/^TRONKO_BUNDLE [^ ]* [0-9a-f]+$/ { body = 1; next } /^TRONKO_BUNDLE end$/ { body = 0 }
+        body && /^[A-Za-z0-9+\/=]+$/' <<< "$console" | base64 --decode > "$bundle"
+    [ "$( { sha256sum 2> /dev/null || shasum -a 256; } < "$bundle" | cut -d' ' -f1)" = "$sha" ] \
+        || die "the release bundle came back damaged; '$0 wait NAME' reads the console again"
+    repo="$HERE/../.."
+    git -C "$repo" fetch --quiet origin main  # the bundle's base
+    git -C "$repo" fetch --quiet "$bundle" "refs/heads/$branch"
+    git -C "$repo" push --quiet origin "FETCH_HEAD:refs/heads/$branch"
+    gh pr view "$branch" --repo eDNA-Explorer/tronko --json url --jq .url 2> /dev/null \
+        || gh pr create --repo eDNA-Explorer/tronko --base main --head "$branch" \
+            --title "$(git -C "$repo" log -1 --format=%s FETCH_HEAD)" \
+            --body "$(git -C "$repo" log -1 --format=%b FETCH_HEAD)"
+    rm -f "$bundle"
+}
+
 wait_for() {
     openstack server show "$1" > /dev/null  # no such VM stops here; a later lost connection only retries
     echo "waiting for $1 (Ctrl-C is safe; '$0 wait $1' picks it up again)"
     until [ "$(openstack server show "$1" -f value -c status)" = SHUTOFF ]; do sleep 60; done
-    local result
-    result="$(openstack console log show "$1" | tr -d '\r' | grep -o 'TRONKO_RELEASE .*' | tail -1 || true)"
+    local console result
+    console="$(openstack console log show "$1" | tr -d '\r')"
+    result="$(grep -o 'TRONKO_RELEASE .*' <<< "$console" | tail -1 || true)"
     case "$result" in
         "TRONKO_RELEASE ok "*)
-            echo "${result#TRONKO_RELEASE ok }"
+            publish "$console"
             delete "$1"
             ;;
         *)
@@ -76,7 +99,7 @@ case "$1" in
     delete) delete "${2:?NAME}"; exit ;;
 esac
 
-REF=main DRY_RUN=0 MARKER="" ARGS=()
+REF=main DRY_RUN=0 MARKER="" RCRUX_TAG="" ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --ref) REF="$2"; shift 2 ;;
@@ -84,6 +107,7 @@ while [ $# -gt 0 ]; do
         --volume) VOLUME="$2"; shift 2 ;;
         --dry-run) DRY_RUN=1; shift ;;
         --marker) MARKER="$2"; ARGS+=("$1" "$2"); shift 2 ;;
+        --rcrux-tag) RCRUX_TAG="$2"; ARGS+=("$1" "$2"); shift 2 ;;
         # release_tronko.sh checks these two only when it publishes, after the build.
         --bump)
             case "$2" in major | minor | patch) ;; *) die "--bump must be major, minor or patch" ;; esac
@@ -94,7 +118,7 @@ while [ $# -gt 0 ]; do
             ARGS+=("$1" "$2"); shift 2
             ;;
         # The VM cannot read a local file, always runs every step, and sets its own paths.
-        --config | --steps | --work | --tronko-checkout | --print-config)
+        --config | --steps | --work | --tronko-checkout | --print-config | --rcrux-repo | --rcrux-pointer | --push)
             die "$1 does not work here; settings go in --set KEY=VALUE"
             ;;
         -h | --help) usage ;;
@@ -102,7 +126,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$MARKER" ] || die "--marker is required"
-case " ${ARGS[*]} " in *" --rcrux-tag "*) ;; *) die "--rcrux-tag is required" ;; esac
+[ -n "$RCRUX_TAG" ] || die "--rcrux-tag is required"
 "$HERE/../../scripts/release_tronko.sh" "${ARGS[@]}" --print-config > /dev/null
 # Publish refuses a marker main already has without --replace; say so before the build, not after.
 case " ${ARGS[*]} " in
@@ -111,11 +135,18 @@ case " ${ARGS[*]} " in
         || die "main already has a tronko release of $MARKER; pass --replace to publish the next version" ;;
 esac
 
+# The rcrux tag, read here with your GitHub access so the VM needs none: its
+# commit, the marker's curated.dvc (the hash of the inputs) and the remote's settings.
+RCRUX_COMMIT="$(gh api "repos/eDNA-Explorer/rcrux-py/commits/$RCRUX_TAG" --jq .sha 2> /dev/null)" \
+    || die "no rcrux-py tag $RCRUX_TAG"
+rcrux_file() { gh api "repos/eDNA-Explorer/rcrux-py/contents/$1?ref=$RCRUX_COMMIT" -H "Accept: application/vnd.github.raw"; }
+RCRUX_CURATED_DVC="$(rcrux_file "databases/$MARKER/curated.dvc")" || die "$RCRUX_TAG has no databases/$MARKER/curated.dvc"
+RCRUX_DVC_CONFIG="$(rcrux_file .dvc/config)"
+
 # The commit behind a branch, a tag or a short SHA; the image is tagged with it.
 SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)" || die "no tronko commit $REF"
 
 : "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
-GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
 IMAGE="$REGISTRY/tronko-release:$SHA"
 REGISTRY_TOKEN="$(gcloud auth print-access-token)"  # js2-worker's, to pull the image; lasts an hour
 curl -fsS -o /dev/null -H "Authorization: Bearer $REGISTRY_TOKEN" \
@@ -128,7 +159,8 @@ USER_DATA="$(mktemp)"
 trap 'rm -f "$USER_DATA"' EXIT
 {
     echo '#!/bin/bash'
-    for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
+    for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GIT_NAME GIT_EMAIL \
+            RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DVC_CONFIG; do
         printf '%s=%q\n' "$key" "${!key}"
     done
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"
