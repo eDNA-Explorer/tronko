@@ -31,11 +31,14 @@ docker run --rm -v /work:/work -v /root/.gitconfig:/root/.gitconfig:ro -v /root/
     -e GIT_COMMITTER_NAME="$GIT_NAME" -e GIT_COMMITTER_EMAIL="$GIT_EMAIL" \
     "$IMAGE" --work /work/build --tronko-checkout /work/release --push "${ARGS[@]}"
 
-# publish left the checkout on the branch it pushed; its one commit is the title.
-branch="$(git -C /work/release branch --show-current)"
-title="$(git -C /work/release log -1 --format=%s)"
-pr="$(curl -fsS https://api.github.com/repos/$GITHUB_REPO/pulls \
-    -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-    -d "{\"title\": \"$title\", \"head\": \"$branch\", \"base\": \"main\"}" \
-    | sed -n 's|.*"html_url": "\(.*/pull/[0-9]*\)".*|\1|p' | head -1)"
+# publish left the checkout on the branch it pushed; its one commit is the PR's
+# title and, below it, the QC report.
+pr="$(git -C /work/release log -1 --format='%s%n%b' \
+    | python3 -c 'import json, sys
+title, _, body = sys.stdin.read().partition("\n")
+print(json.dumps({"title": title, "body": body, "head": sys.argv[1], "base": "main"}))' \
+        "$(git -C /work/release branch --show-current)" \
+    | curl -fsS "https://api.github.com/repos/$GITHUB_REPO/pulls" \
+        -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -d @- \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["html_url"])')"
 echo "TRONKO_RELEASE ok $pr"

@@ -402,3 +402,57 @@ def test_tag_changed_tags_a_merged_release_once(tmp_path, rcrux_repo):
         checkout, "rev-parse", "main"
     )
     assert tr.tag_changed(checkout, before, "main", push=False) == [], "a rerun tags nothing"
+
+
+def _report_metadata(tmp_path, taxonomy_rows=2):
+    return {
+        "marker": MARKER,
+        "tronko_version": "v1.1.0",
+        "tronko_sha": "a" * 40,
+        "rcrux_tag": f"{MARKER}_v1.0.0",
+        "rcrux_commit": "b" * 40,
+        "input_tier": "lca",
+        "files": {f"{MARKER}.fasta": "c" * 64},
+        "row_counts": {"fasta_records": 2, "taxonomy_rows": taxonomy_rows},
+        "build_params": {
+            "overrides": ["set:CLUSTER_JOBS=8"],
+            "settings": {"SP_THRESHOLD": "0.1"},
+            "build": {"input_sequences": 2, "ac_clusters": 1, "n_trees": 1},
+        },
+    }
+
+
+def test_release_report_passes_a_consistent_build_and_describes_it(tmp_path):
+    build = write_build(tmp_path / "build")
+    (build / "final_partitions.txt").write_text("0\n")
+    (build / "partition0_taxonomy.txt").write_text("a\tx\nb\ty\n")
+    log = tmp_path / "build.log"
+    log.write_text("  Launched cluster 0 (PID 1, 2 seqs)\nSPscore: 0.05\nSPscore: 0.4\n")
+    report = tr.release_report(_report_metadata(tmp_path), build, log, None)
+    assert report.startswith("All checks passed")
+    assert "settings changed from the recipe: CLUSTER_JOBS=8" in report
+    assert "sequences per cluster: 2 / 2 / 2; 1 clusters" in report
+    assert "sequences per tree: 2 / 2 / 2; 1 trees" in report
+    assert "1 of 2 above the 0.1 threshold" in report
+    assert "2 species" in report and "sequences with no species name: 0 of 2" in report
+
+
+def test_release_report_leads_with_failed_checks(tmp_path):
+    build = write_build(tmp_path / "build")
+    log = tmp_path / "build.log"
+    log.write_text("ERROR: 1 cluster(s) failed during Step 2\n")
+    previous = _report_metadata(tmp_path) | {"tronko_version": "v1.0.0"}
+    previous["row_counts"] = {"fasta_records": 10, "taxonomy_rows": 10}
+    report = tr.release_report(_report_metadata(tmp_path, taxonomy_rows=3), build, log, previous)
+    assert report.startswith("**Checks failed:**")
+    assert "2 FASTA records but 3 taxonomy rows" in report
+    assert "the build log has 1 error lines" in report
+    assert "more than 10% fewer sequences than v1.0.0" in report
+    assert "| sequences | 2 | 10 | -8 |" in report
+
+
+def test_publish_puts_the_report_in_the_commit_the_pr_is_made_from(tmp_path, rcrux_repo):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert git(checkout, "log", "-1", "--format=%s").startswith(f"Publish {MARKER} tronko v1.0.0")
+    assert "## Taxonomy" in git(checkout, "log", "-1", "--format=%b")

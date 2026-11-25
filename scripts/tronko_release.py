@@ -40,6 +40,7 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 from pathlib import Path
@@ -369,6 +370,129 @@ def build_metadata(
     }
 
 
+TAXONOMY_RANKS = ("domain", "phylum", "class", "order", "family", "genus", "species")
+# A release this much smaller than the one before it is flagged for the reviewer.
+SHRINK_WARNING = 0.10
+
+
+def _spread(values: list[float]) -> str:
+    if not values:
+        return "none"
+    return f"{min(values):,g} / {statistics.median(values):,g} / {max(values):,g}"
+
+
+def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: dict | None) -> str:
+    """The release PR's description: what a reviewer checks before merging.
+
+    Everything comes from files the build already wrote. Checks that fail are
+    listed first; they do not stop the publish.
+    """
+    marker = metadata["marker"]
+    build = metadata["build_params"].get("build", {})
+    settings = metadata["build_params"].get("settings", {})
+    counts = metadata["row_counts"]
+    log = build_log.read_text(errors="replace").splitlines()
+
+    cluster_sizes = [
+        int(m.group(1)) for line in log if (m := re.search(r"Launched cluster \d+ \(.* (\d+) seqs\)", line))
+    ]
+    sp_scores = [float(line.split()[1]) for line in log if line.startswith("SPscore: ")]
+    # tronko-build's list of the partitions that became trees; absent from a build made elsewhere.
+    final = build_dir / "final_partitions.txt"
+    partition_sizes = [
+        count_lines(build_dir / f"partition{number}_taxonomy.txt")
+        for number in (final.read_text().split() if final.is_file() else [])
+    ]
+    problems = [line.strip() for line in log if re.search(r"\bERROR\b|Traceback", line)]
+    notices = [line.strip() for line in log if re.search(r"\bWARNING\b", line, re.IGNORECASE)]
+    with open(build_dir / f"{marker}_taxonomy.txt") as handle:
+        lineages = [line.rstrip("\n").split("\t")[1].split(";") for line in handle if line.strip()]
+    named = [
+        {lineage[i] for lineage in lineages if i < len(lineage) and lineage[i] not in ("", "NA")}
+        for i in range(len(TAXONOMY_RANKS))
+    ]
+    no_species = sum(1 for lineage in lineages if len(lineage) < 7 or lineage[6] in ("", "NA"))
+
+    warnings = []
+    n_in = build.get("input_sequences")
+    if n_in is not None and n_in != counts["fasta_records"]:
+        warnings.append(f"{n_in:,} sequences went in but {counts['fasta_records']:,} came out")
+    if counts["fasta_records"] != counts["taxonomy_rows"]:
+        warnings.append(
+            f"{counts['fasta_records']:,} FASTA records but {counts['taxonomy_rows']:,} taxonomy rows"
+        )
+    if problems:
+        warnings.append(f"the build log has {len(problems)} error lines, the first: `{problems[0][:200]}`")
+    if previous and counts["fasta_records"] < previous["row_counts"]["fasta_records"] * (1 - SHRINK_WARNING):
+        warnings.append(
+            f"more than {SHRINK_WARNING:.0%} fewer sequences than {previous['tronko_version']}"
+        )
+
+    def change(now, before):
+        return "" if before is None else f" | {before:,} | {now - before:+,}"
+
+    old = previous or {}
+    old_build = old.get("build_params", {}).get("build", {})
+    was = f" | {old['tronko_version']} | change" if previous else ""
+    lines = [
+        *(
+            ["**Checks failed:**", *(f"- {w}" for w in warnings)]
+            if warnings
+            else ["All checks passed: sequence counts agree and the build log has no errors."]
+        ),
+        "",
+        "## Build",
+        f"- rcrux release: `{metadata['rcrux_tag']}` ({metadata['input_tier']} tier, "
+        f"commit `{metadata['rcrux_commit'][:12]}`)",
+        f"- tronko commit: `{metadata['tronko_sha'][:12]}`",
+        f"- settings changed from the recipe: "
+        f"{', '.join(o.removeprefix('set:') for o in metadata['build_params'].get('overrides', [])) or 'none'}",
+        f"- {build.get('threads', '?')} threads, {build.get('total_build_time_seconds', '?')} s "
+        f"({build.get('tronko_build_time_seconds', '?')} s in tronko-build)",
+        "",
+        "## Size",
+        f"| | this release{was} |",
+        "|---|---|" + ("---|---|" if previous else ""),
+        f"| sequences | {counts['fasta_records']:,}"
+        f"{change(counts['fasta_records'], old.get('row_counts', {}).get('fasta_records'))} |",
+        *(
+            f"| {label} | {build[key]:,}{change(build[key], old_build.get(key) if previous else None)} |"
+            for key, label in (("ac_clusters", "clusters"), ("n_trees", "trees"))
+            if isinstance(build.get(key), int)
+        ),
+        "",
+        "## Shape (smallest / median / largest)",
+        f"- sequences per cluster: {_spread(cluster_sizes)}; {len(cluster_sizes)} clusters",
+        f"- sequences per tree: {_spread(partition_sizes)}; {len(partition_sizes):,} trees",
+        f"- sum-of-pairs scores: {_spread(sp_scores)}; "
+        f"{sum(1 for score in sp_scores if score > float(settings.get('SP_THRESHOLD', 'inf'))):,} of "
+        f"{len(sp_scores):,} above the {settings.get('SP_THRESHOLD', '?')} threshold",
+        "",
+        "## Taxonomy",
+        "- distinct names: " + ", ".join(f"{len(names):,} {rank}" for rank, names in zip(TAXONOMY_RANKS, named)),
+        f"- sequences with no species name: {no_species:,} of {len(lineages):,}",
+        "",
+        f"## Build log warnings: {len(notices)}",
+        *(f"- `{line[:200]}`" for line in sorted(set(notices))[:10]),
+        "",
+        "<details><summary>Every setting</summary>",
+        "",
+        *(f"- `{key}={value}`" for key, value in settings.items()),
+        "",
+        "</details>",
+        "",
+        "<details><summary>Files (sha256)</summary>",
+        "",
+        *(
+            f"- `{name}` {(build_dir / name).stat().st_size:,} bytes `{digest}`"
+            for name, digest in metadata["files"].items()
+        ),
+        "",
+        "</details>",
+    ]
+    return "\n".join(lines)
+
+
 def _branch_exists(repo: Path, branch: str) -> bool:
     return (
         subprocess.run(
@@ -460,6 +584,12 @@ def publish(
             f"{base} already has a tronko release of {marker}; pass --replace to publish "
             "the next version"
         )
+    previous = None
+    if already_released:
+        from dvc.api import DVCFileSystem
+
+        with DVCFileSystem(str(repo), rev=base).open(f"{marker_path}/tronko/{METADATA_FILENAME}") as handle:
+            previous = json.load(handle)
     version = choose_version(repo, marker, version, bump, base)
     metadata = build_metadata(
         marker,
@@ -475,8 +605,10 @@ def publish(
     if _branch_exists(repo, branch):
         raise ValueError(f"Branch {branch} already exists in {repo}; delete it or publish again")
     dest = repo / marker_path / "tronko"
+    report = release_report(metadata, build_dir, build_log, previous)
     if dry_run:
         print(json.dumps(metadata, indent=2))
+        print(report)
         print(
             f"would track {dest} with DVC, push to {TRONKO_REMOTE}, commit on {branch} from {base}"
         )
@@ -506,6 +638,8 @@ def publish(
                 "commit",
                 "-m",
                 f"Publish {marker} tronko {version} built from {inputs['rcrux_tag']}",
+                "-m",
+                report,
             ],
             cwd=repo,
         )
