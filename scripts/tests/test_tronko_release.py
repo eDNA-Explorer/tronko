@@ -425,7 +425,8 @@ def _report_metadata(tmp_path, taxonomy_rows=2):
 def test_release_report_passes_a_consistent_build_and_describes_it(tmp_path):
     build = write_build(tmp_path / "build")
     (build / "final_partitions.txt").write_text("0\n")
-    (build / "partition0_taxonomy.txt").write_text("a\tx\nb\ty\n")
+    (build / "partition0_taxonomy.txt").write_text("a\tE;P;C;O;F;G;S\nb\tE;P;C;O;F;G;T\n")
+    (build / "RAxML_bestTree.partition0.reroot").write_text("(a:0.1,b:0.2);\n")
     log = tmp_path / "build.log"
     # As tronko-build writes it: score lines cut by its other output, a 0.05 parent
     # split into three, one of them under the threshold but too small to split, and
@@ -442,7 +443,8 @@ def test_release_report_passes_a_consistent_build_and_describes_it(tmp_path):
     assert report.startswith("All checks passed")
     assert "settings changed from the recipe: CLUSTER_JOBS=8" in report
     assert "sequences per cluster: 2 / 2 / 2; 1 clusters" in report
-    assert "sequences per tree: 2 / 2 / 2; 1 trees" in report
+    assert "1 trees; sequences per tree: 2 / 2 / 2" in report
+    assert "| 1 to 9 | 1 | 2 |" in report
     assert "trees under the 0.1 sum-of-pairs threshold, too small to split further: 1 of 3" in report
     assert "2 species" in report and "sequences with no species name: 0 of 2" in report
 
@@ -522,3 +524,31 @@ def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_rep
     stored.write_text(">x\nAAAA\n")
     with pytest.raises(ValueError, match="is not md5"):
         tr.fetch(MARKER, tag, tmp_path / "bad", rcrux_repo=str(origin), pointer_dir=pointer)
+
+
+def test_tree_report_counts_clades_against_the_taxonomy(tmp_path):
+    # Tree 0: S is one clade, T is split by U, and genus G is the whole tree.
+    # Tree 1: S again, alone. Family F is in both trees.
+    trees = {
+        "0": ("(((s1:0.1,s2:0.1)90:0.2,(t1:0.1,u1:0.3):0.1):0.05,t2:0.4);\n",
+              {"s1": "S", "s2": "S", "t1": "T", "u1": "U", "t2": "T"}),
+        "1": ("(s3:0.1,s4:0.5);\n", {"s3": "S", "s4": "S"}),
+    }
+    for number, (newick, species) in trees.items():
+        (tmp_path / f"RAxML_bestTree.partition{number}.reroot").write_text(newick)
+        (tmp_path / f"partition{number}_taxonomy.txt").write_text(
+            "".join(f"{leaf}\tE;P;C;O;F;G;{name}\n" for leaf, name in species.items())
+        )
+    (tmp_path / "final_partitions.txt").write_text("0\n1\n")
+    report = "\n".join(tr.tree_report(tmp_path))
+    assert "2 trees; sequences per tree: 2 / 3.5 / 5" in report
+    assert "| species | 2 of 3 (67%) | 1 of 3 (33%) | 1 of 2 (50%) |" in report
+    assert "| genus | 2 of 2 (100%) | 1 of 1 (100%) | 2 of 2 (100%) |" in report
+    assert "- T: 2 sequences in tree 0, whose smallest clade holding them has 5" in report
+
+
+def test_clades_reads_inner_labels_and_trailing_newlines():
+    leaves, spans, lengths = tr._clades("((a:1,b:2)90:0.5,c:1);\n")
+    assert leaves == ["a", "b", "c"]
+    assert spans == {(0, 0), (1, 1), (2, 2), (0, 1), (0, 2)}
+    assert lengths == [1, 2, 0.5, 1]
