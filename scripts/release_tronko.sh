@@ -141,6 +141,8 @@ done
 for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
     [ "${!key}" -ge 1 ] || die "$key must be at least 1"
 done
+[ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || [ "$ASSIGNMENT_CHECK_SPECIES" -ge 1 ] \
+    || die "ASSIGNMENT_CHECK_SPECIES must be at least 1; ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips the check"
 [[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "SP_THRESHOLD must be a number like 0.1, got '$SP_THRESHOLD'"
 case "$PARTITION" in sum_of_pairs | min_leaf) ;; *) die "PARTITION must be sum_of_pairs or min_leaf" ;; esac
 case "$TREE_TOOL" in veryfasttree | fasttree | raxml) ;;
@@ -199,8 +201,11 @@ if has_step build; then
     say "Preflight"
     [ -s "$INPUT/inputs.json" ] || die "no fetched inputs in $INPUT; run the fetch step"
     TRONKO_SHA="$(git -C "$REPO" rev-parse HEAD)"
-    [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" = 0 ] || "${PY[@]}" -c 'import synthetic_fastq' 2> /dev/null \
-        || die "the assignment check needs synthetic-fastq-toolkit (the release image has it); ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips it"
+    # Scores go through polars, which crashes under amd64 emulation (an arm64 Mac): a
+    # DataFrame here makes that stop now, not after the build.
+    [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || "${PY[@]}" -c \
+        'import polars, synthetic_fastq.scoring.reads; polars.DataFrame({"a": [1]})' > /dev/null 2>&1 \
+        || die "the assignment check needs synthetic-fastq-toolkit and a working polars (the release image on amd64 has both); ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips it"
     # BUILD_TRONKO_DB names a build script to run in place of this checkout's.
     BUILD_SCRIPT="${BUILD_TRONKO_DB:-}"
     if [ -z "$BUILD_SCRIPT" ]; then
@@ -301,7 +306,7 @@ json.dump(
 )
 PY
 
-    if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" != 0 ]; then
+    if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -ne 0 ]; then
         say "Assignment check"
         run "${PY[@]}" "$REPO/scripts/assignment_check.py" --build-dir "$OUT" --marker "$MARKER" \
             --threads "$THREADS" --species "$ASSIGNMENT_CHECK_SPECIES" \

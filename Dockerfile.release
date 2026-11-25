@@ -6,7 +6,8 @@
 #
 # linux/amd64 only, on purpose: the alignment and tree tools give different
 # results on arm64, so releases come from one platform. An arm64 host (Apple
-# Silicon) runs it under emulation, which is fine for a small test and far too
+# Silicon) runs it under emulation, which is fine for a small test (with
+# --set ASSIGNMENT_CHECK_READS_PER_QUERY=0: polars crashes under emulation) and far too
 # slow for a real marker.
 #
 #   docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .

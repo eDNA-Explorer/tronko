@@ -49,7 +49,7 @@ What each step does:
 | publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
 | tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
 
-The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test.
+The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test, and only with `--set ASSIGNMENT_CHECK_READS_PER_QUERY=0`: the assignment check's scoring (polars) crashes under emulation.
 
 ### Build settings
 
