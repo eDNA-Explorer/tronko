@@ -1,141 +1,140 @@
 #!/usr/bin/env python3
 """
-Check that a finished build assigns reads correctly, with a synthetic community.
+Check how a finished build assigns reads, with synthetic holdout communities.
 
-Built from synthetic-fastq-toolkit (edna-explorer-data-pipelines,
-libraries/synthetic-fastq-toolkit), with the read profile of the velocitaxa
-classifier benchmark's read arm: species drawn from the build's own reference,
-up to two query sequences per species (the first distinct ones by accession),
-and the same number of read pairs from every query, MiSeq, 300 bp, with
-sequencing errors. Every query weighs the same, so no few species decide the
-score. The reads are what QC hands to assignment: no primers, no adapters.
-tronko-assign assigns them the way production does (paired, -z -w -6, LCA
-cut-off 10), and they are scored with the benchmark's per-rank metrics.
+The design, reads, holdout references and scoring are community-lib's
+(edna-explorer-data-pipelines, libraries/community-lib), the corpus design the
+classifier benchmarks use:
 
-The reads come from sequences in the database, so this shows the database and
-tronko-assign work together, not how well it does on species it has not seen.
+- species-disjoint communities drawn from the build's own reference, each split
+  into four tiers: normal, haplotype (the query's own record removed), species
+  holdout and genus holdout;
+- per community, a Tronko reference ablated from this build: the build less
+  that community's three holdout tiers, rebuilding only the partitions that
+  lose records;
+- per community and error profile (illumina_typical, edna_damage), read pairs
+  from every query, assigned with tronko-assign the way production does
+  (paired, -z -w -6, LCA cut-off 10) against that community's reference;
+- each read scored at the rank its truth can be resolved to, per tier.
+
+The build is never modified; everything is written under --work.
 
 Usage:
-    python assignment_check.py --build-dir OUT --marker MARKER --threads N \
-        [--species 100] [--queries-per-species 2] [--reads-per-query 20] \
-        [--read-length 300] [--seed 1] --out result.json
+    python assignment_check.py --build-dir OUT --marker MARKER --inputs inputs.json \
+        --threads N --work DIR [--communities 6] [--richness 150] \
+        [--reads-per-query 20] --out result.json
 """
 
 import argparse
 import json
-import random
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
-from synthetic_fastq.reference import CruxV2Database, load_cruxv2_database, subsample_species
-from synthetic_fastq.scoring.reads import score_reads
-from synthetic_fastq.simulate_reads import simulate_amplicon_paired_reads_with_sources
+from community_lib import check
+from taxonomy_classifier_harness.tronko.database import TronkoBuildConfig
 
 # production's tronko-assign settings (qc-tools-lib LCA_CUTOFF)
 LCA_CUTOFF = 10
-INSTRUMENT = "MiSeq"
 
 
-def queries(db: CruxV2Database, species: int, per_species: int, seed: int) -> list[str]:
-    """Accessions to read from: up to per_species distinct sequences of each drawn species."""
-    sequence = dict(db.sequences)
-    named = {a: r for a, r in db.taxonomy.items() if a in sequence and r.species not in ("", "NA")}
-    drawable = CruxV2Database(
-        marker=db.marker,
-        sequences=[(a, s) for a, s in db.sequences if a in named],
-        taxonomy=named,
-        source_dir=db.source_dir,
-    )
-    community = subsample_species(drawable, species, random.Random(seed))
-    chosen = []
-    for _, accessions in sorted(community.species_to_accessions.items()):
-        seen = set()
-        for accession in sorted(accessions):
-            if sequence[accession] not in seen and len(seen) < per_species:
-                seen.add(sequence[accession])
-                chosen.append(accession)
-    return chosen
+def assign(reference: Path, marker: str, reads: check.MemberReads, threads: int, out: Path) -> dict:
+    """tronko-assign's call for every read, keyed by the read's truth id."""
+    command = [
+        "tronko-assign", "-r", "-f", str(reference / "reference_tree.trkb"),
+        "-a", str(reference / f"{marker}.fasta"), "-q",
+        "-p", "-z", "-w", "-1", str(reads.r1), "-2", str(reads.r2),
+        "-6", "--number-of-cores", str(threads), "--Cinterval", str(LCA_CUTOFF),
+        "-o", str(out),
+    ]  # fmt: skip
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise RuntimeError(f"tronko-assign failed: {completed.stderr.strip()[-2000:]}")
+    ids = {row["read_id"] for row in check.load_read_truth(reads.truth)}
+    predictions = {}
+    with open(out) as handle:
+        next(handle)  # header
+        for line in handle:
+            name, path = line.rstrip("\n").split("\t")[:2]
+            # tronko-assign keeps the whole FASTQ header, words joined with "_";
+            # the truth has its first word, which itself holds "_".
+            while name not in ids and "_" in name:
+                name = name.rsplit("_", 1)[0]
+            predictions[name] = path
+    return predictions
 
 
 def run(
     build_dir: Path,
     marker: str,
+    inputs: dict,
     threads: int,
-    species: int,
-    queries_per_species: int,
+    work: Path,
+    communities: int,
+    richness: int,
     reads_per_query: int,
-    read_length: int,
-    seed: int,
 ) -> dict:
-    db = load_cruxv2_database(build_dir, marker)
-    sequence = dict(db.sequences)
-    chosen = queries(db, species, queries_per_species, seed)
-    rng = random.Random(seed)
-    truth, r1_all, r2_all = {}, [], []
-    for accession in chosen:
-        r1, r2, _ = simulate_amplicon_paired_reads_with_sources(
-            [(accession, sequence[accession])],
-            read_length=read_length,
-            num_reads=reads_per_query,
-            instrument=INSTRUMENT,
-            clean=False,
-            rng=rng,
-            r1_adapter_seq="",
-            r2_adapter_seq="",
-            pad_to_read_length=False,
+    primers = {"forward_primer": inputs["forward_primer"], "reverse_primer": inputs["reverse_primer"]}
+    design = check.design_communities(
+        build_dir / f"{marker}.fasta",
+        build_dir / f"{marker}_taxonomy.txt",
+        work / "design",
+        marker=marker,
+        richness=richness,
+        n_communities=communities,
+        **primers,
+    )
+    config = TronkoBuildConfig(primer_name=marker, threads=threads, famsa_threads=threads)
+    members, scores = [], {profile: {} for profile in design.profiles}
+    for member in design.members:
+        holdout = check.build_holdout_tronko_reference(
+            member, build_dir, work / "reference" / member.name, marker=marker, build_config=config
         )
-        for (_, s1, q1), (_, s2, q2) in zip(r1, r2, strict=True):
-            # A one-word name: tronko-assign keeps it as is.
-            name = f"q{len(truth)}"
-            truth[name] = db.taxonomy[accession].taxonomic_path
-            r1_all.append(f"@{name}\n{s1}\n+\n{q1}\n")
-            r2_all.append(f"@{name}\n{s2}\n+\n{q2}\n")
+        members.append(
+            {
+                "name": member.name,
+                "seed": member.seed,
+                "species_per_tier": {tier: len(species) for tier, species in member.tiers.items()},
+                "removed_records": holdout["removed_records"],
+            }
+        )
+        for profile in design.profiles:
+            reads = check.write_member_reads(
+                member, profile, work / "reads" / member.name / profile,
+                reads_per_query=reads_per_query, **primers,
+            )  # fmt: skip
+            predictions = assign(
+                Path(holdout["dir"]), marker, reads, threads,
+                work / "reads" / member.name / profile / "assigned.txt",
+            )  # fmt: skip
+            scores[profile][member.name] = check.score_reads(reads.truth, predictions)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        work = Path(tmp)
-        (work / "R1.fastq").write_text("".join(r1_all))
-        (work / "R2.fastq").write_text("".join(r2_all))
-        output = work / "assigned.txt"
-        command = [
-            "tronko-assign", "-r", "-f", str(build_dir / "reference_tree.trkb"),
-            "-a", str(build_dir / f"{marker}.fasta"), "-q",
-            "-p", "-z", "-w", "-1", str(work / "R1.fastq"), "-2", str(work / "R2.fastq"),
-            "-6", "--number-of-cores", str(threads), "--Cinterval", str(LCA_CUTOFF),
-            "-o", str(output),
-        ]  # fmt: skip
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        if completed.returncode != 0:
-            raise RuntimeError(f"tronko-assign failed: {completed.stderr.strip()[-2000:]}")
-        with open(output) as handle:
-            next(handle)  # header
-            predictions = dict(line.rstrip("\n").split("\t")[:2] for line in handle)
-
-    scores = score_reads(truth, predictions)
+    summary = {}
+    for profile, by_member in scores.items():
+        tiers = next(iter(by_member.values()))["by_tier"]
+        summary[profile] = {
+            tier: {
+                key: sum(s["by_tier"][tier][key] for s in by_member.values()) / len(by_member)
+                for key in ("precision", "recall", "f1")
+            }
+            | {
+                "reads": sum(s["by_tier"][tier]["reads"] for s in by_member.values()),
+                "fp": sum(s["by_tier"][tier]["fp"] for s in by_member.values()),
+            }
+            for tier in tiers
+        }
     return {
         "settings": {
-            "species": len({db.taxonomy[a].species for a in chosen}),
-            "queries": len(chosen),
+            "communities": len(design.members),
+            "richness": richness,
             "reads_per_query": reads_per_query,
-            "reads": len(truth),
-            "read_length": read_length,
-            "instrument": INSTRUMENT,
-            "seed": seed,
+            "profiles": list(design.profiles),
             "lca_cutoff": LCA_CUTOFF,
+            **primers,
         },
-        "by_rank": {
-            rank: {
-                "correct": score.correct,
-                "unresolved": score.unresolved,
-                "wrong": score.wrong,
-                "precision": score.metrics.precision,
-                "recall": score.metrics.recall,
-                "f1": score.metrics.f1,
-                "mcc": score.metrics.mcc,
-            }
-            for rank, score in scores.items()
-        },
+        "communities": members,
+        "summary": summary,
+        "scores": scores,
     }
 
 
@@ -143,20 +142,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--marker", required=True)
+    parser.add_argument("--inputs", type=Path, required=True, help="fetch's inputs.json (the primers)")
     parser.add_argument("--threads", type=int, required=True)
-    parser.add_argument("--species", type=int, default=100)
-    parser.add_argument("--queries-per-species", type=int, default=2)
+    parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--communities", type=int, default=6)
+    parser.add_argument("--richness", type=int, default=150)
     parser.add_argument("--reads-per-query", type=int, default=20)
-    parser.add_argument("--read-length", type=int, default=300)
-    parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    inputs = json.loads(args.inputs.read_text())
+    if not (inputs.get("forward_primer") and inputs.get("reverse_primer")):
+        raise SystemExit(f"{args.inputs} records no primers; fetch with --forward-primer and --reverse-primer")
     result = run(
-        args.build_dir, args.marker, args.threads, args.species, args.queries_per_species,
-        args.reads_per_query, args.read_length, args.seed,
+        args.build_dir, args.marker, inputs, args.threads, args.work, args.communities,
+        args.richness, args.reads_per_query,
     )  # fmt: skip
     args.out.write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps(result["by_rank"]))
+    print(json.dumps(result["summary"]))
     return 0
 
 

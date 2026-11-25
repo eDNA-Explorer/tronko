@@ -51,8 +51,8 @@ die() { echo "error: $*" >&2; exit 1; }
 # Every setting a config file or --set may change; anything else is a typo.
 SETTINGS="THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
 ANCESTRALCLUST_ARGS CLUSTER_JOBS FAMSA_ARGS TREE_TOOL TREE_ARGS PARTITION SP_THRESHOLD MIN_LEAF \
-SP_FORMULA TRONKO_BUILD_JOBS TRONKO_BUILD_ARGS BWA_INDEX_ARGS ASSIGNMENT_CHECK_SPECIES \
-ASSIGNMENT_CHECK_READS_PER_QUERY"
+SP_FORMULA TRONKO_BUILD_JOBS TRONKO_BUILD_ARGS BWA_INDEX_ARGS ASSIGNMENT_CHECK_COMMUNITIES \
+ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY"
 for key in $SETTINGS; do printf -v "$key" '%s' ""; done
 CONFIG_FILES=()
 
@@ -82,7 +82,7 @@ load_config() {
 }
 
 # --- Options (overrides applied in order, after the config files) -----------
-MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" RCRUX_POINTER="" WORK="" STEPS="fetch,build,publish"
+MARKER="" RCRUX_TAG="" TRONKO_CHECKOUT="" RCRUX_REPO="" RCRUX_POINTER="" FETCH_PRIMERS=() WORK="" STEPS="fetch,build,publish"
 PRINT_CONFIG=0
 OVERRIDES=()  # "config:FILE" or "set:KEY=VALUE"
 PUBLISH_OPTS=()
@@ -93,6 +93,8 @@ while [ $# -gt 0 ]; do
         --tronko-checkout) TRONKO_CHECKOUT="$2"; shift 2 ;;
         --rcrux-repo) RCRUX_REPO="$2"; shift 2 ;;
         --rcrux-pointer) RCRUX_POINTER="$2"; shift 2 ;;
+        --forward-primer) FETCH_PRIMERS+=(--forward-primer "$2"); shift 2 ;;
+        --reverse-primer) FETCH_PRIMERS+=(--reverse-primer "$2"); shift 2 ;;
         --work) WORK="$2"; shift 2 ;;
         --steps) STEPS="$2"; shift 2 ;;
         --config) OVERRIDES+=("config:$2"); shift 2 ;;
@@ -135,14 +137,16 @@ OVERRIDES_TEXT=""
 
 # --- Check the settings ---------------------------------------------------------
 for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
-        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY; do
+        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_COMMUNITIES ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY; do
     case "${!key}" in '' | *[!0-9]*) die "$key must be a whole number, got '${!key}'" ;; esac
 done
 for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
     [ "${!key}" -ge 1 ] || die "$key must be at least 1"
 done
-[ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || [ "$ASSIGNMENT_CHECK_SPECIES" -ge 1 ] \
-    || die "ASSIGNMENT_CHECK_SPECIES must be at least 1; ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips the check"
+for key in ASSIGNMENT_CHECK_COMMUNITIES ASSIGNMENT_CHECK_SPECIES; do
+    [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || [ "${!key}" -ge 1 ] \
+        || die "$key must be at least 1; ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips the check"
+done
 [[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "SP_THRESHOLD must be a number like 0.1, got '$SP_THRESHOLD'"
 case "$PARTITION" in sum_of_pairs | min_leaf) ;; *) die "PARTITION must be sum_of_pairs or min_leaf" ;; esac
 case "$TREE_TOOL" in veryfasttree | fasttree | raxml) ;;
@@ -193,6 +197,7 @@ if has_step fetch; then
     FETCH_ARGS=(--marker "$MARKER" --rcrux-tag "$RCRUX_TAG" --out "$INPUT")
     [ -z "$RCRUX_REPO" ] || FETCH_ARGS+=(--rcrux-repo "$RCRUX_REPO")
     [ -z "$RCRUX_POINTER" ] || FETCH_ARGS+=(--rcrux-pointer "$RCRUX_POINTER")
+    FETCH_ARGS+=(${FETCH_PRIMERS[@]+"${FETCH_PRIMERS[@]}"})
     run "${TOOL[@]}" fetch "${FETCH_ARGS[@]}"
 fi
 
@@ -201,11 +206,17 @@ if has_step build; then
     say "Preflight"
     [ -s "$INPUT/inputs.json" ] || die "no fetched inputs in $INPUT; run the fetch step"
     TRONKO_SHA="$(git -C "$REPO" rev-parse HEAD)"
-    # Scores go through polars, which crashes under amd64 emulation (an arm64 Mac): a
-    # DataFrame here makes that stop now, not after the build.
-    [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || "${PY[@]}" -c \
-        'import polars, synthetic_fastq.scoring.reads; polars.DataFrame({"a": [1]})' > /dev/null 2>&1 \
-        || die "the assignment check needs synthetic-fastq-toolkit and a working polars (the release image on amd64 has both); ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips it"
+    # The check needs community-lib, vsearch 2.22.1 and tronko-assign. Its scoring goes
+    # through polars, which crashes under amd64 emulation (an arm64 Mac): a DataFrame
+    # here makes that stop now, not after the build.
+    if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -ne 0 ]; then
+        skip="ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips the assignment check"
+        "${PY[@]}" -c 'import polars, community_lib.check; polars.DataFrame({"a": [1]})' > /dev/null 2>&1 \
+            || die "the assignment check needs community-lib and a working polars (the release image on amd64 has both); $skip"
+        case "$(vsearch --version 2>&1 | head -1)" in vsearch\ v2.22.1_*) ;;
+            *) die "the assignment check needs vsearch 2.22.1 on PATH (the release image has it); $skip" ;; esac
+        command -v tronko-assign > /dev/null || die "the assignment check needs tronko-assign on PATH; $skip"
+    fi
     # BUILD_TRONKO_DB names a build script to run in place of this checkout's.
     BUILD_SCRIPT="${BUILD_TRONKO_DB:-}"
     if [ -z "$BUILD_SCRIPT" ]; then
@@ -308,8 +319,10 @@ PY
 
     if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -ne 0 ]; then
         say "Assignment check"
+        rm -rf "$WORK/assignment_check"
         run "${PY[@]}" "$REPO/scripts/assignment_check.py" --build-dir "$OUT" --marker "$MARKER" \
-            --threads "$THREADS" --species "$ASSIGNMENT_CHECK_SPECIES" \
+            --inputs "$INPUT/inputs.json" --threads "$THREADS" --work "$WORK/assignment_check" \
+            --communities "$ASSIGNMENT_CHECK_COMMUNITIES" --richness "$ASSIGNMENT_CHECK_SPECIES" \
             --reads-per-query "$ASSIGNMENT_CHECK_READS_PER_QUERY" --out "$OUT/assignment_check.json" 2>&1 | tee -a "$LOG"
     fi
 fi

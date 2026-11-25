@@ -26,8 +26,11 @@ ARG TRONKO_REPO_URL=https://github.com/eDNA-Explorer/tronko.git
 # 24.04's packages: FastTree 2.1.11, VeryFastTree 4.0.3, RAxML 8.2.12, bwa 0.7.17.
 ARG FAMSA_VERSION=v1.6.1
 ARG NEWICK_UTILS_COMMIT=da121155a977197cab9fbb15953ca1b40b11eb87
-# synthetic-fastq-toolkit, for the assignment check (scripts/assignment_check.py)
-ARG DATA_PIPELINES_COMMIT=8df0200e39e63bbfc527cbb23926e2d3758ade08
+# community-lib and the libraries it needs, for the assignment check
+# (scripts/assignment_check.py); edna-explorer-data-pipelines PR 1915.
+ARG DATA_PIPELINES_COMMIT=f25c66e93f642109aaab935e009981677facedb8
+# The assignment check's community design needs exactly this vsearch.
+ARG VSEARCH_VERSION=v2.22.1
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential git ca-certificates openssh-client perl python3 zlib1g-dev libzstd-dev \
@@ -43,6 +46,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 RUN git clone --quiet --depth 1 --branch "$FAMSA_VERSION" https://github.com/refresh-bio/FAMSA /tmp/famsa \
     && make -C /tmp/famsa -j"$(nproc)" \
     && cp /tmp/famsa/famsa /usr/local/bin/ && rm -rf /tmp/famsa
+
+# vsearch
+RUN git clone --quiet --depth 1 --branch "$VSEARCH_VERSION" https://github.com/torognes/vsearch /tmp/vsearch \
+    && cd /tmp/vsearch && ./autogen.sh > /dev/null && ./configure --quiet CFLAGS="-O3" CXXFLAGS="-O3" \
+    && make -j"$(nproc)" > /dev/null && cp bin/vsearch /usr/local/bin/ && cd / && rm -rf /tmp/vsearch
 
 # nw_reroot (newick-utils)
 RUN git clone --quiet https://github.com/tjunier/newick_utils /tmp/nw && cd /tmp/nw \
@@ -62,16 +70,19 @@ RUN [ -n "$TRONKO_REF" ] || { echo "pass --build-arg TRONKO_REF=<commit or tag>"
     && uv sync --quiet --frozen --no-dev --project scripts \
     && git config --system --add safe.directory '*'
 
-# Only the toolkit's folder at DATA_PIPELINES_COMMIT. The host key is GitHub's
-# published one (api.github.com/meta).
+# Only the three libraries' folders at DATA_PIPELINES_COMMIT, installed together
+# (community-lib names the other two as dependencies) and without their uv
+# workspace sources. The host key is GitHub's published one (api.github.com/meta).
 RUN --mount=type=ssh mkdir -p /root/.ssh \
     && echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > /root/.ssh/known_hosts \
     && git init --quiet /tmp/dp && cd /tmp/dp \
     && git remote add origin git@github.com:eDNA-Explorer/edna-explorer-data-pipelines.git \
     && git sparse-checkout set libraries/synthetic-fastq-toolkit/src \
+        libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
     && git fetch --quiet --depth 1 --filter=blob:none origin "$DATA_PIPELINES_COMMIT" \
     && git checkout --quiet FETCH_HEAD \
-    && uv pip install --quiet --python /opt/tronko/scripts/.venv/bin/python libraries/synthetic-fastq-toolkit/src \
+    && uv pip install --quiet --no-sources --python /opt/tronko/scripts/.venv/bin/python \
+        libraries/synthetic-fastq-toolkit/src libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
     && cd / && rm -rf /tmp/dp /root/.ssh
 
 ENV PATH=/opt/tronko/scripts/.venv/bin:/opt/tronko/tronko-build:/opt/tronko/tronko-convert:/opt/tronko/ancestralclust:/opt/tronko/tronko-assign:$PATH \

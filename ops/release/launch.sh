@@ -9,14 +9,17 @@
 # opens its PR with your git and gh, and deletes the VM. Merging the PR tags the
 # release. Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
 #
-#   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run] OPTIONS
+#   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run]
+#             [--forward-primer SEQ --reverse-primer SEQ] OPTIONS
 #   launch.sh list           the release VMs and their states
 #   launch.sh logs NAME      a VM's console: the build's output so far
 #   launch.sh wait NAME      wait for a VM; open its PR and delete it, or show why it failed
 #   launch.sh delete NAME    delete a VM and its disk
 #
 # OPTIONS are scripts/release_tronko.sh's (--set KEY=VALUE, --sp-threshold,
-# --bump, ...) and are checked here before anything is created. --config,
+# --bump, ...) and are checked here before anything is created. The primers
+# (for the assignment check) are read from the rcrux release; the two primer
+# options give them for a release that records none, or replace them. --config,
 # --steps, --work and --tronko-checkout do not apply to a VM.
 #
 # Needs gcloud, openstack, gh, git and jq; the js2-worker service account key at
@@ -99,7 +102,7 @@ case "$1" in
     delete) delete "${2:?NAME}"; exit ;;
 esac
 
-REF=main DRY_RUN=0 MARKER="" RCRUX_TAG="" ARGS=()
+REF=main DRY_RUN=0 MARKER="" RCRUX_TAG="" FORWARD_PRIMER="" REVERSE_PRIMER="" ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --ref) REF="$2"; shift 2 ;;
@@ -108,6 +111,8 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY_RUN=1; shift ;;
         --marker) MARKER="$2"; ARGS+=("$1" "$2"); shift 2 ;;
         --rcrux-tag) RCRUX_TAG="$2"; ARGS+=("$1" "$2"); shift 2 ;;
+        --forward-primer) FORWARD_PRIMER="$2"; shift 2 ;;
+        --reverse-primer) REVERSE_PRIMER="$2"; shift 2 ;;
         # release_tronko.sh checks these two only when it publishes, after the build.
         --bump)
             case "$2" in major | minor | patch) ;; *) die "--bump must be major, minor or patch" ;; esac
@@ -142,6 +147,13 @@ RCRUX_COMMIT="$(gh api "repos/eDNA-Explorer/rcrux-py/commits/$RCRUX_TAG" --jq .s
 rcrux_file() { gh api "repos/eDNA-Explorer/rcrux-py/contents/$1?ref=$RCRUX_COMMIT" -H "Accept: application/vnd.github.raw"; }
 RCRUX_CURATED_DVC="$(rcrux_file "databases/$MARKER/curated.dvc")" || die "$RCRUX_TAG has no databases/$MARKER/curated.dvc"
 RCRUX_DVC_CONFIG="$(rcrux_file .dvc/config)"
+if [ -z "$FORWARD_PRIMER" ] || [ -z "$REVERSE_PRIMER" ]; then
+    recorded="$(python3 "$HERE/../../scripts/rcrux_primers.py" "$MARKER" \
+        <(rcrux_file "databases/$MARKER/build.log" 2> /dev/null || true) \
+        <(rcrux_file src/rcrux/config.py 2> /dev/null || true))" \
+        || die "$RCRUX_TAG records no primers; give --forward-primer and --reverse-primer"
+    FORWARD_PRIMER="${FORWARD_PRIMER:-${recorded% *}}" REVERSE_PRIMER="${REVERSE_PRIMER:-${recorded#* }}"
+fi
 
 # The commit behind a branch, a tag or a short SHA; the image is tagged with it.
 SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)" || die "no tronko commit $REF"
@@ -160,7 +172,7 @@ trap 'rm -f "$USER_DATA"' EXIT
 {
     echo '#!/bin/bash'
     for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GIT_NAME GIT_EMAIL \
-            RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DVC_CONFIG; do
+            RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DVC_CONFIG FORWARD_PRIMER REVERSE_PRIMER; do
         printf '%s=%q\n' "$key" "${!key}"
     done
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"

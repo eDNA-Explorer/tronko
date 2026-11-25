@@ -468,30 +468,33 @@ def test_publish_puts_the_report_in_the_commit_the_pr_is_made_from(tmp_path, rcr
     assert "## Taxonomy" in git(checkout, "log", "-1", "--format=%b")
 
 
-def test_release_report_shows_the_assignment_check_and_flags_wrong_names(tmp_path):
+def test_release_report_shows_the_assignment_check_and_flags_false_calls(tmp_path):
     build = write_build(tmp_path / "build")
     log = tmp_path / "build.log"
     log.write_text("")
+
+    def tier(reads, fp, f1):
+        return {"reads": reads, "fp": fp, "precision": f1, "recall": f1, "f1": f1}
+
     check = {
-        "settings": {"species": 30, "queries": 50, "reads_per_query": 20, "reads": 1000,
-                     "read_length": 300, "lca_cutoff": 10},
-        "by_rank": {
-            "species": {"correct": 700, "unresolved": 280, "wrong": 20,
-                        "precision": 0.972, "recall": 0.7, "f1": 0.814},
-            "genus": {"correct": 900, "unresolved": 95, "wrong": 5,
-                      "precision": 0.994, "recall": 0.9, "f1": 0.945},
-            "family": {"correct": 990, "unresolved": 10, "wrong": 0,
-                       "precision": 1.0, "recall": 0.99, "f1": 0.995},
+        "settings": {"communities": 6, "richness": 150, "reads_per_query": 20, "lca_cutoff": 10},
+        "communities": [{"removed_records": n} for n in (30, 45)],
+        "summary": {
+            "illumina_typical": {"normal": tier(1000, 20, 0.9), "species_holdout": tier(500, 100, 0.4)},
+            "edna_damage": {"normal": tier(1000, 50, 0.7), "species_holdout": tier(500, 120, 0.3)},
         },
     }
     (build / tr.ASSIGNMENT_CHECK_FILENAME).write_text(json.dumps(check))
     assert tr.ASSIGNMENT_CHECK_FILENAME in tr.published_files(build, MARKER)
     report = tr.release_report(_report_metadata(tmp_path), build, log, None)
     assert report.startswith("**Checks failed:**")
-    assert "the assignment check put 20 of 1,000 reads in the wrong species" in report
-    assert "wrong genus" not in report
-    assert "| species | 700 (70.0%) | 280 (28.0%) | 20 (2.0%) | 0.972 | 0.700 | 0.814 |" in report
-
+    # only the normal tier of illumina_typical decides: held-out tiers expect false calls
+    assert "20 false calls on 1,000 reads of species the database holds" in report
+    assert report.count("false calls on") == 1
+    assert "| normal | 1,000 | 20 | 0.900 | 0.900 | 0.900 |" in report
+    assert "| species held out | 500 | 100 | 0.400 | 0.400 | 0.400 |" in report
+    assert "**edna_damage**" in report
+    assert "Held-out records removed per community: 30 to 45." in report
 
 def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_repo):
     """What the release VM does: the tag's commit, curated.dvc and remote settings

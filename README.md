@@ -65,7 +65,7 @@ The defaults are our standard recipe, in `scripts/tronko_build.conf`:
 | `SP_FORMULA` | `legacy` (or `corrected`) |
 | `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | one per 8 threads each (8 on 64 CPUs) |
 | `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
-| `ASSIGNMENT_CHECK_SPECIES`, `ASSIGNMENT_CHECK_READS_PER_QUERY` | 100, 20 (a synthetic community assigned after the build, up to two sequences per species; 0 reads skips it) |
+| `ASSIGNMENT_CHECK_COMMUNITIES`, `ASSIGNMENT_CHECK_SPECIES`, `ASSIGNMENT_CHECK_READS_PER_QUERY` | 6, 150 (200 for 12S MiFish), 20: the holdout communities assigned after the build; 0 reads skips it |
 
 Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
 

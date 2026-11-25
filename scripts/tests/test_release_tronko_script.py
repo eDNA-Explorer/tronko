@@ -59,7 +59,7 @@ def env(tmp_path, monkeypatch):
     # A tronko checkout holding the scripts, committed, so its HEAD is the sha.
     tronko = tmp_path / "tronko"
     (tronko / "scripts").mkdir(parents=True)
-    for name in ("release_tronko.sh", "tronko_release.py", "tronko_build.conf"):
+    for name in ("release_tronko.sh", "tronko_release.py", "rcrux_primers.py", "tronko_build.conf"):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
     (tronko / "lib").mkdir()
     shutil.copy2(REPO / "lib" / "tronko-db.sh", tronko / "lib" / "tronko-db.sh")
@@ -441,5 +441,5 @@ def test_the_build_stops_at_preflight_when_the_check_cannot_score(env, tmp_path,
         capture_output=True, text=True, check=False,
     )  # fmt: skip
     assert result.returncode != 0
-    assert "the assignment check needs synthetic-fastq-toolkit and a working polars" in result.stderr
+    assert "the assignment check needs community-lib and a working polars" in result.stderr
     assert "==> Build" not in result.stdout

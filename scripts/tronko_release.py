@@ -65,7 +65,7 @@ INPUTS_FILENAME = "inputs.json"
 BUILD_LOG_FILENAME = "build.log"
 BUILD_PARAMS_FILENAME = "build_params.json"
 ASSIGNMENT_CHECK_FILENAME = "assignment_check.json"
-# Reads drawn from the database itself should not be assigned a wrong name.
+# Reads of species the database holds (the normal tier) should not get a false call.
 ASSIGNMENT_WRONG_WARNING = 0.01
 
 
@@ -278,6 +278,8 @@ def fetch(
     out_dir: Path,
     rcrux_repo: str = DEFAULT_RCRUX_REPO,
     pointer_dir: Path | None = None,
+    forward_primer: str | None = None,
+    reverse_primer: str | None = None,
 ) -> dict:
     """Download the curated inputs at an rcrux tag and write inputs.json.
 
@@ -285,7 +287,13 @@ def fetch(
     settings come from files there (the release launcher reads them with the
     user's GitHub access), and the files from the remote by hash alone, so
     this needs storage keys and no access to rcrux-py.
+
+    The primers the release was built with are recorded too (the assignment
+    check needs them): from the pointer's ``primers`` file, else from the
+    release's build.log or config.py preset; forward_primer and
+    reverse_primer replace them.
     """
+    from rcrux_primers import primers
     out_dir.mkdir(parents=True, exist_ok=True)
     input_files = {}
     if pointer_dir is None:
@@ -301,8 +309,15 @@ def fetch(
         fasta_name, taxonomy_name = curated_input_names(listing, marker)
         for name in (fasta_name, taxonomy_name):
             fs.get_file(f"{marker_dir}/curated/{name}", str(out_dir / name))
+
+        def text(path: str) -> str:
+            return fs.read_text(path) if fs.exists(path) else ""
+
+        recorded = primers(marker, text(f"{marker_dir}/build.log"), text("src/rcrux/config.py"))
     else:
         commit, curated_dvc, remote = read_pointer(pointer_dir)
+        pair = (pointer_dir / "primers").read_text().split() if (pointer_dir / "primers").is_file() else []
+        recorded = (pair[0], pair[1]) if len(pair) == 2 else None
         curated_md5 = dvc_out_md5(curated_dvc)
         fs, path = remote_object(remote, curated_md5)
         md5s = {entry["relpath"]: entry["md5"] for entry in json.loads(fs.cat_file(path))}
@@ -329,6 +344,8 @@ def fetch(
         "input_files": input_files,
         "fasta": fasta_name,
         "taxonomy": taxonomy_name,
+        "forward_primer": forward_primer or (recorded[0] if recorded else None),
+        "reverse_primer": reverse_primer or (recorded[1] if recorded else None),
     }
     (out_dir / INPUTS_FILENAME).write_text(json.dumps(inputs, indent=2) + "\n")
     return inputs
@@ -423,30 +440,44 @@ def _spread(values: list[float]) -> str:
     return f"{min(values):,g} / {statistics.median(values):,g} / {max(values):,g}"
 
 
+TIER_NAMES = {
+    "normal": "normal",
+    "haplotype": "haplotype held out",
+    "species_holdout": "species held out",
+    "genus_holdout": "genus held out",
+}
+
+
 def assignment_section(check: dict) -> list[str]:
-    settings, reads = check["settings"], check["settings"]["reads"]
-    return [
+    settings = check["settings"]
+    lines = [
         "## Assignment check",
-        f"{reads:,} read pairs of up to {settings['read_length']} bp, {settings['reads_per_query']} from each "
-        f"of {settings['queries']} sequences of {settings['species']} species drawn from this database, "
-        f"assigned with tronko-assign "
-        f"(LCA cut-off {settings['lca_cutoff']}) and scored as the assignment benchmark scores:",
-        "",
-        "| | correct | unresolved | wrong | precision | recall | F1 |",
-        "|---|---|---|---|---|---|---|",
-        *(
-            f"| {rank} | "
-            + " | ".join(f"{s[k]:,} ({s[k] / reads:.1%})" for k in ("correct", "unresolved", "wrong"))
-            + " | "
-            + " | ".join(f"{s[k]:.3f}" for k in ("precision", "recall", "f1"))
-            + " |"
-            for rank, s in check["by_rank"].items()
-        ),
-        "",
-        "Unresolved: assigned no further than a higher rank. The reads come from sequences "
-        "in the database, so this does not measure accuracy on unseen species.",
+        f"{settings['communities']} synthetic communities of {settings['richness']} species drawn from "
+        f"this database, {settings['reads_per_query']} read pairs per query, each community assigned "
+        f"with tronko-assign (LCA cut-off {settings['lca_cutoff']}) against this database less its "
+        "held-out records. Each read is scored at the deepest rank this database can resolve for it; "
+        "precision, recall and F1 are means over the communities.",
         "",
     ]
+    for profile, tiers in check["summary"].items():
+        lines += [
+            f"**{profile}**",
+            "",
+            "| tier | reads | false calls | precision | recall | F1 |",
+            "|---|---|---|---|---|---|",
+            *(
+                f"| {TIER_NAMES.get(tier, tier)} | {t['reads']:,} | {t['fp']:,} | "
+                f"{t['precision']:.3f} | {t['recall']:.3f} | {t['f1']:.3f} |"
+                for tier, t in tiers.items()
+            ),
+            "",
+        ]
+    removed = [c["removed_records"] for c in check["communities"]]
+    lines += [
+        f"Held-out records removed per community: {min(removed):,} to {max(removed):,}.",
+        "",
+    ]
+    return lines
 
 
 def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: dict | None) -> str:
@@ -499,12 +530,12 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         warnings.append(f"the build log has {len(problems)} error lines, the first: `{problems[0][:200]}`")
     check_path = build_dir / ASSIGNMENT_CHECK_FILENAME
     check = json.loads(check_path.read_text()) if check_path.is_file() else None
-    for rank, result in (check or {}).get("by_rank", {}).items():
-        if result["wrong"] > check["settings"]["reads"] * ASSIGNMENT_WRONG_WARNING:
-            warnings.append(
-                f"the assignment check put {result['wrong']:,} of {check['settings']['reads']:,} "
-                f"reads in the wrong {rank}"
-            )
+    normal = (check or {}).get("summary", {}).get("illumina_typical", {}).get("normal")
+    if normal and normal["fp"] > normal["reads"] * ASSIGNMENT_WRONG_WARNING:
+        warnings.append(
+            f"the assignment check made {normal['fp']:,} false calls on {normal['reads']:,} reads of "
+            "species the database holds (normal tier, illumina_typical)"
+        )
     if previous and counts["fasta_records"] < previous["row_counts"]["fasta_records"] * (1 - SHRINK_WARNING):
         warnings.append(
             f"more than {SHRINK_WARNING:.0%} fewer sequences than {previous['tronko_version']}"
@@ -816,6 +847,8 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument(
         "--rcrux-pointer", type=Path, help="Directory with the tag's commit, curated.dvc and dvc_config"
     )
+    p_fetch.add_argument("--forward-primer", help="Replaces the primer the release records")
+    p_fetch.add_argument("--reverse-primer", help="Replaces the primer the release records")
 
     p_pub = sub.add_parser("publish", help="Track a finished build in the tronko repo's DVC")
     p_pub.add_argument("--marker", required=True)
@@ -860,7 +893,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "fetch":
-            inputs = fetch(args.marker, args.rcrux_tag, args.out, args.rcrux_repo, args.rcrux_pointer)
+            inputs = fetch(
+                args.marker, args.rcrux_tag, args.out, args.rcrux_repo, args.rcrux_pointer,
+                args.forward_primer, args.reverse_primer,
+            )  # fmt: skip
             print(f"Wrote {args.out / INPUTS_FILENAME} (input_md5 {inputs['input_md5']})")
         elif args.command == "publish":
             metadata = publish(
