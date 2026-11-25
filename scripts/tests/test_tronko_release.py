@@ -473,7 +473,8 @@ def test_release_report_shows_the_assignment_check_and_flags_wrong_names(tmp_pat
     log = tmp_path / "build.log"
     log.write_text("")
     check = {
-        "settings": {"species": 100, "reads": 1000, "read_length": 150, "lca_cutoff": 10},
+        "settings": {"species": 30, "queries": 50, "reads_per_query": 20, "reads": 1000,
+                     "read_length": 300, "lca_cutoff": 10},
         "by_rank": {
             "species": {"correct": 700, "unresolved": 280, "wrong": 20,
                         "precision": 0.972, "recall": 0.7, "f1": 0.814},

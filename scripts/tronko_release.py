@@ -388,8 +388,9 @@ def assignment_section(check: dict) -> list[str]:
     settings, reads = check["settings"], check["settings"]["reads"]
     return [
         "## Assignment check",
-        f"{reads:,} read pairs of {settings['read_length']} bp from a synthetic community of "
-        f"{settings['species']} species drawn from this database, assigned with tronko-assign "
+        f"{reads:,} read pairs of up to {settings['read_length']} bp, {settings['reads_per_query']} from each "
+        f"of {settings['queries']} sequences of {settings['species']} species drawn from this database, "
+        f"assigned with tronko-assign "
         f"(LCA cut-off {settings['lca_cutoff']}) and scored as the assignment benchmark scores:",
         "",
         "| | correct | unresolved | wrong | precision | recall | F1 |",

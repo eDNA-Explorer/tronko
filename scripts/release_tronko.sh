@@ -52,7 +52,7 @@ die() { echo "error: $*" >&2; exit 1; }
 SETTINGS="THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
 ANCESTRALCLUST_ARGS CLUSTER_JOBS FAMSA_ARGS TREE_TOOL TREE_ARGS PARTITION SP_THRESHOLD MIN_LEAF \
 SP_FORMULA TRONKO_BUILD_JOBS TRONKO_BUILD_ARGS BWA_INDEX_ARGS ASSIGNMENT_CHECK_SPECIES \
-ASSIGNMENT_CHECK_READS"
+ASSIGNMENT_CHECK_READS_PER_QUERY"
 for key in $SETTINGS; do printf -v "$key" '%s' ""; done
 CONFIG_FILES=()
 
@@ -134,7 +134,7 @@ OVERRIDES_TEXT=""
 
 # --- Check the settings ---------------------------------------------------------
 for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
-        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS; do
+        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY; do
     case "${!key}" in '' | *[!0-9]*) die "$key must be a whole number, got '${!key}'" ;; esac
 done
 for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
@@ -197,8 +197,8 @@ if has_step build; then
     say "Preflight"
     [ -s "$INPUT/inputs.json" ] || die "no fetched inputs in $INPUT; run the fetch step"
     TRONKO_SHA="$(git -C "$REPO" rev-parse HEAD)"
-    [ "$ASSIGNMENT_CHECK_READS" = 0 ] || "${PY[@]}" -c 'import synthetic_fastq' 2> /dev/null \
-        || die "the assignment check needs synthetic-fastq-toolkit (the release image has it); ASSIGNMENT_CHECK_READS=0 skips it"
+    [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" = 0 ] || "${PY[@]}" -c 'import synthetic_fastq' 2> /dev/null \
+        || die "the assignment check needs synthetic-fastq-toolkit (the release image has it); ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips it"
     # BUILD_TRONKO_DB names a build script to run in place of this checkout's.
     BUILD_SCRIPT="${BUILD_TRONKO_DB:-}"
     if [ -z "$BUILD_SCRIPT" ]; then
@@ -299,11 +299,11 @@ json.dump(
 )
 PY
 
-    if [ "$ASSIGNMENT_CHECK_READS" != 0 ]; then
+    if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" != 0 ]; then
         say "Assignment check"
         run "${PY[@]}" "$REPO/scripts/assignment_check.py" --build-dir "$OUT" --marker "$MARKER" \
             --threads "$THREADS" --species "$ASSIGNMENT_CHECK_SPECIES" \
-            --reads "$ASSIGNMENT_CHECK_READS" --out "$OUT/assignment_check.json" 2>&1 | tee -a "$LOG"
+            --reads-per-query "$ASSIGNMENT_CHECK_READS_PER_QUERY" --out "$OUT/assignment_check.json" 2>&1 | tee -a "$LOG"
     fi
 fi
 
