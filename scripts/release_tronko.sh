@@ -124,6 +124,10 @@ for override in ${OVERRIDES[@]+"${OVERRIDES[@]}"}; do
     esac
 done
 [ -n "$THREADS" ] || THREADS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+# One job per 8 threads; a THREADS that is not a number is reported below.
+for key in CLUSTER_JOBS TRONKO_BUILD_JOBS; do
+    [ -n "${!key}" ] || [[ ! "$THREADS" =~ ^[0-9]+$ ]] || printf -v "$key" %s "$(( THREADS >= 16 ? THREADS / 8 : 1 ))"
+done
 OVERRIDES_TEXT=""
 [ "${#OVERRIDES[@]}" -eq 0 ] || OVERRIDES_TEXT="${OVERRIDES[*]}"
 
