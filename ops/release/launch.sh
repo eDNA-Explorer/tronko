@@ -53,8 +53,9 @@ wait_for() {
             delete "$1"
             ;;
         *)
-            # This script's output, without the shutdown that follows it.
-            openstack console log show "$1" | tr -d '\r' | sed -n '/TRONKO_RELEASE start/,/TRONKO_RELEASE failed/p' | tail -40 || true
+            # The end of the boot script's output, without the shutdown that follows it.
+            # (OpenStack keeps only the console's last 100 KiB, so its start may be gone.)
+            openstack console log show "$1" | tr -d '\r' | sed '/TRONKO_RELEASE failed/q' | tail -40 || true
             die "$1 failed and is kept, powered off; '$0 delete $1' removes it"
             ;;
     esac
