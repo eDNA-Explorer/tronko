@@ -1,6 +1,6 @@
 # The release VM's boot script. launch.sh puts "#!/bin/bash" and these settings
 # above it and passes the result as the server's user data:
-#   SHA (the tronko commit) AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN
+#   SHA (the tronko commit) REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN
 #   GIT_NAME GIT_EMAIL ARGS (release_tronko.sh options)
 #
 # Everything it prints goes to the server's console log, which is what
@@ -21,16 +21,18 @@ git config --global credential.helper store
 (umask 077 && echo "https://x-access-token:$GH_TOKEN@github.com" > /root/.git-credentials)
 mkdir -p /work
 git clone --quiet "https://github.com/$GITHUB_REPO.git" /work/release
-# The image is built here, not pulled: Dockerfile.release fetches tronko at SHA
-# itself, so it needs no build context.
-git -C /work/release show "$SHA:Dockerfile.release" \
-    | docker build --quiet --build-arg TRONKO_REF="$SHA" -t tronko-release -
+# CI pushes an image for every commit on main. Any other commit is built here:
+# Dockerfile.release fetches tronko at SHA itself, so it needs no build context.
+IMAGE="northamerica-northeast2-docker.pkg.dev/edna-explorer-shared/jetstream2-images/tronko-release:$SHA"
+{ echo "$REGISTRY_TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${IMAGE%%/*}" \
+    && docker pull --quiet "$IMAGE"; } || git -C /work/release show "$SHA:Dockerfile.release" \
+    | docker build --quiet --build-arg TRONKO_REF="$SHA" -t "$IMAGE" -
 
 docker run --rm -v /work:/work -v /root/.gitconfig:/root/.gitconfig:ro -v /root/.git-credentials:/root/.git-credentials:ro \
     -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
     -e GIT_AUTHOR_NAME="$GIT_NAME" -e GIT_AUTHOR_EMAIL="$GIT_EMAIL" \
     -e GIT_COMMITTER_NAME="$GIT_NAME" -e GIT_COMMITTER_EMAIL="$GIT_EMAIL" \
-    tronko-release --work /work/build --tronko-checkout /work/release --push "${ARGS[@]}"
+    "$IMAGE" --work /work/build --tronko-checkout /work/release --push "${ARGS[@]}"
 
 # publish left the checkout on the branch it pushed; its one commit is the title.
 branch="$(git -C /work/release branch --show-current)"

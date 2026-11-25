@@ -3,9 +3,10 @@
 #
 #   ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
 #
-# It creates a VM that builds the release image (Dockerfile.release) at --ref,
-# runs it, pushes the publish branch and opens its PR, then powers off. This script
-# waits, prints the PR and deletes the VM. Merging the PR tags the release.
+# It creates a VM that runs the release image (Dockerfile.release) at --ref: the
+# one CI pushed for a commit on main, else one the VM builds. The VM pushes the
+# publish branch and opens its PR, then powers off. This script waits, prints the
+# PR and deletes the VM. Merging the PR tags the release.
 # Closing the laptop is fine: "launch.sh wait NAME" picks the VM up again.
 #
 #   launch.sh [--ref main] [--flavor m3.2xl] [--volume GB] [--dry-run] OPTIONS
@@ -114,6 +115,7 @@ SHA="$(gh api "repos/eDNA-Explorer/tronko/commits/$REF" --jq .sha 2> /dev/null)"
 
 : "${AWS_ACCESS_KEY_ID:?set the Jetstream S3 keys}" "${AWS_SECRET_ACCESS_KEY:?set the Jetstream S3 keys}"
 GH_TOKEN="${GH_TOKEN:-$(gh auth token)}"
+REGISTRY_TOKEN="$(gcloud auth print-access-token)"  # js2-worker's, to pull the image; lasts an hour
 # The release commit is made as you.
 GIT_NAME="$(git config user.name)" && GIT_EMAIL="$(git config user.email)" || die "set git user.name and user.email"
 
@@ -121,7 +123,7 @@ USER_DATA="$(mktemp)"
 trap 'rm -f "$USER_DATA"' EXIT
 {
     echo '#!/bin/bash'
-    for key in SHA AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
+    for key in SHA REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GH_TOKEN GIT_NAME GIT_EMAIL; do
         printf '%s=%q\n' "$key" "${!key}"
     done
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"
