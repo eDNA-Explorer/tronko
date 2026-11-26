@@ -3367,6 +3367,7 @@ void maketransitionmatrixnc(int n, double t, int whichRoot){
 		}
 	}
 }
+static unsigned long small_max_count = 0, zero_max_count = 0;
 void makeconnc(int node, double lambda, int whichRoot, int numbase, int numspec, int** seqArr, int root){
 	int i, j, child, seqn, site;
 	double L, max;
@@ -3418,7 +3419,12 @@ void makeconnc(int node, double lambda, int whichRoot, int numbase, int numspec,
 					max = treeArr[whichRoot][node].likenc[site][i];
 				}
 			}
-			if (max<0.00000000001) printf("Warning, max = %lf\n",max);
+			// counted, not printed: on a large marker this fires for every site of
+			// every big cluster and floods the output; main prints the totals
+			if (max<0.00000000001){
+				__atomic_add_fetch(&small_max_count, 1, __ATOMIC_RELAXED);
+				if (max==0.0) __atomic_add_fetch(&zero_max_count, 1, __ATOMIC_RELAXED);
+			}
 			for (i=0; i<4; i++){
 				treeArr[whichRoot][node].likenc[site][i]=treeArr[whichRoot][node].likenc[site][i]/max;
 			}
@@ -5783,4 +5789,5 @@ int main(int argc, char **argv){
 	free(fasta_specs);
 	free(chooseK);
 	//hashmap_destroy(&map);
+	if (small_max_count>0) printf("Warning, max < 1e-11 at %lu sites (%lu of them exactly 0)\n", small_max_count, zero_max_count);
 }
