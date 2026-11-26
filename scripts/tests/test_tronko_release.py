@@ -292,6 +292,7 @@ def test_a_failed_publish_rolls_back_and_retries_at_the_same_version(
         return real_run(command, cwd)
 
     monkeypatch.setattr(tr, "run", failing_push)
+    monkeypatch.setattr(tr, "PUSH_RETRY_SECONDS", 0)
     with pytest.raises(RuntimeError, match="no credentials"):
         tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
     monkeypatch.setattr(tr, "run", real_run)
@@ -300,6 +301,25 @@ def test_a_failed_publish_rolls_back_and_retries_at_the_same_version(
     assert [line for line in leftovers if not line.startswith("!! .dvc/")] == []
     assert git(checkout, "branch", "--list", f"publish/{MARKER}-tronko-*") == ""
     meta = tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert meta["tronko_version"] == "v1.0.0"
+
+
+def test_publish_pushes_again_after_a_failed_upload(tmp_path, rcrux_repo, monkeypatch):
+    inputs, checkout, log, build = _publish_ready(tmp_path, rcrux_repo)
+    real_run = tr.run
+    pushes = []
+
+    def flaky_push(command, cwd=None):
+        if command[:2] == ["dvc", "push"]:
+            pushes.append(command)
+            if len(pushes) == 1:
+                raise RuntimeError("An error occurred () when calling the CompleteMultipartUpload operation")
+        return real_run(command, cwd)
+
+    monkeypatch.setattr(tr, "run", flaky_push)
+    monkeypatch.setattr(tr, "PUSH_RETRY_SECONDS", 0)
+    meta = tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
+    assert len(pushes) == 2
     assert meta["tronko_version"] == "v1.0.0"
 
 
