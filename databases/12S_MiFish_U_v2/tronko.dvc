@@ -5,5 +5,5 @@ outs:
   hash: md5
   path: tronko
 meta:
-  release_version: v1.0.0
+  tronko_release_version: v1.0.0
   rcrux_tag: 12S_MiFish_U_v2_v2.0.0
