@@ -1,7 +1,7 @@
 name: Tag tronko releases
 
 # A merged publish PR carries the release version in its pointer,
-# databases/<marker>/tronko.dvc (meta.release_version, stamped by
+# databases/<marker>/tronko.dvc (meta.tronko_release_version, stamped by
 # scripts/tronko_release.py publish). This tags the merge commit
 # <marker>_tronko_<version>. Tags pushed with GITHUB_TOKEN start no other
 # workflow.
