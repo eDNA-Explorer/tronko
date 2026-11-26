@@ -534,9 +534,21 @@ done
 # largest first, each with a share of THREADS in proportion to n^1.5 (FastTree's
 # time grows about as N^1.5 log N), and a job starts once its threads are free.
 # The shares add up to THREADS, so they set how many run at once; -J can cap it.
-# With -J 1 each cluster gets every thread.
-mapfile -t CLUSTER_PLAN < <(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done \
-    | sort -k1,1nr -k2 \
+# With -J 1 each cluster gets every thread. Skipped and cached clusters are left
+# out first, so a resumed run shares THREADS among the clusters it still builds.
+TO_BUILD=()
+while read -r n_seqs cluster_fasta; do
+    cluster_id=$(basename "$cluster_fasta" .fasta)
+    if [[ "$n_seqs" -lt 3 ]]; then
+        echo "  Cluster $cluster_id: only $n_seqs seqs, skipping (need >=3 for tree)"
+    elif [[ -s "$NEWICK_DIR/RAxML_bestTree.${cluster_id}.reroot" ]]; then
+        echo "  Cluster $cluster_id ($n_seqs seqs): CACHED, skipping"
+    else
+        TO_BUILD+=("$n_seqs $cluster_fasta")
+    fi
+done < <(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done | sort -k1,1nr -k2)
+CLUSTER_PLAN=()
+[[ "${#TO_BUILD[@]}" -eq 0 ]] || mapfile -t CLUSTER_PLAN < <(printf '%s\n' "${TO_BUILD[@]}" \
     | awk -v T="$THREADS" -v one="$([[ "$PARALLEL_JOBS" == 1 ]] && echo 1 || echo 0)" '
         { n[NR] = $1; f[NR] = substr($0, index($0, " ") + 1); W += $1 ^ 1.5 }
         END { for (i = 1; i <= NR; i++) {
@@ -568,19 +580,7 @@ for planned in "${CLUSTER_PLAN[@]}"; do
     job_threads=${planned%% *}
     cluster_fasta=${planned#* }
     cluster_id=$(basename "$cluster_fasta" .fasta)
-
-    # Skip empty or single-sequence clusters
     n_seqs=$(grep -c '^>' "$cluster_fasta")
-    if [[ "$n_seqs" -lt 3 ]]; then
-        echo "  Cluster $cluster_id: only $n_seqs seqs, skipping (need >=3 for tree)"
-        continue
-    fi
-
-    # Skip if already cached
-    if [[ -f "$NEWICK_DIR/RAxML_bestTree.${cluster_id}.reroot" ]] && [[ -s "$NEWICK_DIR/RAxML_bestTree.${cluster_id}.reroot" ]]; then
-        echo "  Cluster $cluster_id ($n_seqs seqs): CACHED, skipping"
-        continue
-    fi
 
     # Wait for enough free threads, and a job slot under -J
     while [[ -n "$PARALLEL_JOBS" && "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]] \
