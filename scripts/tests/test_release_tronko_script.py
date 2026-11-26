@@ -159,6 +159,7 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert args[args.index("-T") + 1] == "2"
     assert args[args.index("-s") + 1] == "0.1" and "-L" in args and "--min-leaf" not in args
     assert args[args.index("--tree-tool") + 1] == "veryfasttree"
+    assert "-J" not in args  # no cap: Step 2's thread shares decide
 
     # The taxonomy is accession and lineage, built and published; rCRUX's taxids
     # are published beside it.
@@ -183,6 +184,7 @@ def test_settings_become_build_arguments(env):
     result = run(
         env, "--cluster-cutoff", "3", "--min-leaf", "500",
         "--set", "SP_FORMULA=corrected", "--set", "TREE_ARGS=-gamma -fastexp 2",
+        "--set", "CLUSTER_JOBS=4",
     )  # fmt: skip
     assert result.returncode == 0, result.stdout + result.stderr
     params = published(env)["build_params"]
@@ -198,6 +200,7 @@ def test_settings_become_build_arguments(env):
     assert args[args.index("-C") + 1] == "3"
     assert args[args.index("--min-leaf") + 1] == "500" and "-s" not in args and "-L" not in args
     assert args[args.index("--tree-args") + 1] == "-gamma -fastexp 2"
+    assert args[args.index("-J") + 1] == "4"
 
 
 def test_a_build_that_loses_sequences_is_not_published(env, monkeypatch):

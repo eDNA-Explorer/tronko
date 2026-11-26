@@ -128,21 +128,23 @@ for override in ${OVERRIDES[@]+"${OVERRIDES[@]}"}; do
     esac
 done
 [ -n "$THREADS" ] || THREADS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
-# One job per 8 threads; a THREADS that is not a number is reported below.
-for key in CLUSTER_JOBS TRONKO_BUILD_JOBS; do
-    [ -n "${!key}" ] || [[ ! "$THREADS" =~ ^[0-9]+$ ]] || printf -v "$key" %s "$(( THREADS >= 16 ? THREADS / 8 : 1 ))"
-done
+# One tronko-build job per 8 threads; a THREADS that is not a number is reported below.
+# An empty CLUSTER_JOBS stays empty: Step 2's thread shares set how many clusters run.
+[ -n "$TRONKO_BUILD_JOBS" ] || [[ ! "$THREADS" =~ ^[0-9]+$ ]] \
+    || TRONKO_BUILD_JOBS=$(( THREADS >= 16 ? THREADS / 8 : 1 ))
 OVERRIDES_TEXT=""
 [ "${#OVERRIDES[@]}" -eq 0 ] || OVERRIDES_TEXT="${OVERRIDES[*]}"
 
 # --- Check the settings ---------------------------------------------------------
 for key in THREADS CLUSTER_CUTOFF ANCESTRALCLUST_BIN_SIZE ANCESTRALCLUST_MIN_DESCENDANTS \
-        CLUSTER_JOBS MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_COMMUNITIES ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY; do
+        MIN_LEAF TRONKO_BUILD_JOBS ASSIGNMENT_CHECK_COMMUNITIES ASSIGNMENT_CHECK_SPECIES ASSIGNMENT_CHECK_READS_PER_QUERY; do
     case "${!key}" in '' | *[!0-9]*) die "$key must be a whole number, got '${!key}'" ;; esac
 done
-for key in THREADS ANCESTRALCLUST_BIN_SIZE CLUSTER_JOBS TRONKO_BUILD_JOBS; do
+case "$CLUSTER_JOBS" in *[!0-9]*) die "CLUSTER_JOBS must be a whole number, got '$CLUSTER_JOBS'" ;; esac
+for key in THREADS ANCESTRALCLUST_BIN_SIZE TRONKO_BUILD_JOBS; do
     [ "${!key}" -ge 1 ] || die "$key must be at least 1"
 done
+[ -z "$CLUSTER_JOBS" ] || [ "$CLUSTER_JOBS" -ge 1 ] || die "CLUSTER_JOBS must be at least 1"
 for key in ASSIGNMENT_CHECK_COMMUNITIES ASSIGNMENT_CHECK_SPECIES; do
     [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -eq 0 ] || [ "${!key}" -ge 1 ] \
         || die "$key must be at least 1; ASSIGNMENT_CHECK_READS_PER_QUERY=0 skips the check"
@@ -256,7 +258,7 @@ if has_step build; then
     BUILD_ARGS=(-f "$FASTA" -t "$TAXONOMY" -o "$OUT" -p "$MARKER" -T "$THREADS"
         --rcrux-tag "$(input_field rcrux_tag)"
         -C "$CLUSTER_CUTOFF" -B "$ANCESTRALCLUST_BIN_SIZE" -P "$ANCESTRALCLUST_MIN_DESCENDANTS"
-        -J "$CLUSTER_JOBS" --tree-tool "$TREE_TOOL" --tb-jobs "$TRONKO_BUILD_JOBS"
+        ${CLUSTER_JOBS:+-J "$CLUSTER_JOBS"} --tree-tool "$TREE_TOOL" --tb-jobs "$TRONKO_BUILD_JOBS"
         --ancestralclust-args "$ANCESTRALCLUST_ARGS" --famsa-args "$FAMSA_ARGS"
         --tree-args "$TREE_ARGS" --tronko-build-args "$TRONKO_BUILD_ARGS"
         --bwa-args "$BWA_INDEX_ARGS")

@@ -63,7 +63,8 @@ The defaults are our standard recipe, in `scripts/tronko_build.conf`:
 | `TREE_TOOL` | `veryfasttree` (or `fasttree`, `raxml`) |
 | `PARTITION`, `SP_THRESHOLD`, `MIN_LEAF` | `sum_of_pairs`, 0.1, 500 |
 | `SP_FORMULA` | `legacy` (or `corrected`) |
-| `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | one per 8 threads each (8 on 64 CPUs) |
+| `CLUSTER_JOBS` | empty: no cap on clusters aligned at once (threads are shared by cluster size) |
+| `TRONKO_BUILD_JOBS` | one per 8 threads (8 on 64 CPUs) |
 | `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
 | `ASSIGNMENT_CHECK_COMMUNITIES`, `ASSIGNMENT_CHECK_SPECIES`, `ASSIGNMENT_CHECK_READS_PER_QUERY` | 6, 150 (200 for 12S MiFish), 20: the holdout communities assigned after the build; 0 reads skips it |
 
@@ -90,7 +91,7 @@ tronko-build -y -e clusters_dir -n 2 -d outdir -s -u 0.1
 tronko-build -y -e clusters_dir -n 2 -d outdir -v -f 500
 ```
 
-Splitting needs `famsa` on PATH, plus `raxmlHPC-PTHREADS` and `nw_reroot`, or `FastTree` with `-a`. `-J N` splits N clusters at once.
+Splitting needs `famsa` on PATH, plus `raxmlHPC-PTHREADS` and `nw_reroot`, or `FastTree` with `-a`. Clusters run largest first with threads shared by size; `-J N` runs at most N at once.
 
 The database is `outdir/reference_tree.txt`. `tronko-convert -i reference_tree.txt -o reference_tree.trkb` makes the binary form, which loads fastest.
 

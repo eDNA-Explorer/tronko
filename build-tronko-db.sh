@@ -28,7 +28,8 @@
 #   -L  Legacy SP score, as main computes it (default: corrected)
 #   --tree-seed N   seed for VeryFastTree/FastTree (default: the tool's own)
 #   --cache-dir DIR intermediate files (default: <output_dir>/.cache)
-#   -J  Parallel jobs for Step 2 cluster processing (default: 1)
+#   -J  At most this many Step 2 clusters at once (default: no limit; the
+#       thread shares decide, see Step 2). -J 1 runs one at a time on every thread
 #   --tb-jobs N     tronko-build -J in Step 4: input clusters partitioned in
 #                   parallel (default: 1, the sequential path)
 #   --tb-threads N  tronko-build -c per Step 4 worker (default:
@@ -48,7 +49,7 @@ set -euo pipefail
 # Defaults
 PRIMER="marker"
 THREADS=8
-PARALLEL_JOBS=1
+PARALLEL_JOBS=""
 SP_THRESHOLD=0.1
 TREE_TOOL="${TREE_TOOL:-veryfasttree}"
 TREE_SEED="${TREE_SEED:-0}"
@@ -129,7 +130,7 @@ PARTITION_FLAGS=(-s -u "$SP_THRESHOLD")
 
 # These are written into build_metadata.json as JSON numbers, and divide the thread count.
 [[ "$SP_THRESHOLD" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "ERROR: -s needs a number like 0.1, got '$SP_THRESHOLD'" >&2; exit 1; }
-for n in "$THREADS" "$PARALLEL_JOBS" "$TB_JOBS" "${MIN_LEAF:-1}"; do
+for n in "$THREADS" "${PARALLEL_JOBS:-1}" "$TB_JOBS" "${MIN_LEAF:-1}"; do
     [[ "$n" =~ ^[1-9][0-9]*$ ]] || { echo "ERROR: threads, job counts and --min-leaf must be whole numbers of at least 1, got '$n'" >&2; exit 1; }
 done
 
@@ -221,7 +222,7 @@ echo "  Tree tool:  $TREE_TOOL (${TREE_BIN:-$RAXML_BIN})"
 echo "  AC cutoff:  $AC_CUTOFF (cluster if > this many seqs)"
 echo "  AC binsize: $AC_BIN_SIZE (target seqs per cluster)"
 echo "  AC descend: $AC_DESCENDANTS (ancestralclust -p parameter)"
-echo "  Parallel:   $PARALLEL_JOBS jobs (Step 2)"
+echo "  Parallel:   ${PARALLEL_JOBS:-no limit on} jobs (Step 2)"
 echo "================================================================"
 
 # Helper: unwrap multi-line FASTA to single-line
@@ -388,7 +389,7 @@ build_cluster_tree() {
     awk '/^>/{gsub(/:/, "_"); split($0,a," "); h=a[1]; if(seen[h]++){p=0; next} p=1; print; next} p{print}' "$cluster_fasta" > "$dedup_fasta"
     local n_dedup
     n_dedup=$(grep -c '^>' "$dedup_fasta")
-    if [[ "$PARALLEL_JOBS" -gt 1 && "$TREE_TOOL" != "raxml" && "$n_dedup" -lt "$ONE_THREAD_BELOW" ]]; then
+    if [[ "$PARALLEL_JOBS" != 1 && "$TREE_TOOL" != "raxml" && "$n_dedup" -lt "$ONE_THREAD_BELOW" ]]; then
         cluster_threads=1
     fi
     if [[ "$n_dedup" -ne "$n_seqs" ]]; then
@@ -489,7 +490,7 @@ with open(sys.argv[1], 'w') as f: f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):',
     echo "  Cluster $cluster_id: done in $((SECONDS - started))s on $cluster_threads threads"
 }
 
-echo "  Parallelism: up to $PARALLEL_JOBS jobs at once, threads shared by cluster size"
+echo "  Parallelism: ${PARALLEL_JOBS:-no limit on} jobs at once, threads shared by cluster size"
 
 # Create log directory for per-cluster output
 CLUSTER_LOG_DIR="$CACHE_DIR/cluster_logs"
@@ -532,10 +533,11 @@ done
 # A job's thread count is fixed when it starts, so the clusters are launched
 # largest first, each with a share of THREADS in proportion to n^1.5 (FastTree's
 # time grows about as N^1.5 log N), and a job starts once its threads are free.
-# One job at a time gets every thread.
+# The shares add up to THREADS, so they set how many run at once; -J can cap it.
+# With -J 1 each cluster gets every thread.
 mapfile -t CLUSTER_PLAN < <(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done \
     | sort -k1,1nr -k2 \
-    | awk -v T="$THREADS" -v one="$([[ "$PARALLEL_JOBS" -eq 1 ]] && echo 1 || echo 0)" '
+    | awk -v T="$THREADS" -v one="$([[ "$PARALLEL_JOBS" == 1 ]] && echo 1 || echo 0)" '
         { n[NR] = $1; f[NR] = substr($0, index($0, " ") + 1); W += $1 ^ 1.5 }
         END { for (i = 1; i <= NR; i++) {
             t = (one || W == 0) ? T : int(T * n[i] ^ 1.5 / W + 0.5)
@@ -580,8 +582,8 @@ for planned in "${CLUSTER_PLAN[@]}"; do
         continue
     fi
 
-    # Wait for a free job slot and enough free threads
-    while [[ "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]] \
+    # Wait for enough free threads, and a job slot under -J
+    while [[ -n "$PARALLEL_JOBS" && "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]] \
         || [[ "$RUNNING_JOBS" -gt 0 && "$job_threads" -gt "$FREE_THREADS" ]]; do
         wait_for_cluster
     done
@@ -855,7 +857,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "reference_tree_gz_mb": ${REF_SIZE_MB:-0},
   "ablation_ready": $([ "$EXPORT_SUBTREES" -eq 1 ] && echo true || echo false),
   "threads": $THREADS,
-  "parallel_jobs": $PARALLEL_JOBS,
+  "parallel_jobs": ${PARALLEL_JOBS:-null},
   "tronko_build_jobs": $TB_JOBS,
   "tronko_build_flags": "${PARTITION_FLAGS[*]} $TRONKO_FLAGS ${TB_ARGV[*]} -J $TB_JOBS -c $TRONKO_THREADS",
   "build_started_at": "$BUILD_STARTED_AT",
