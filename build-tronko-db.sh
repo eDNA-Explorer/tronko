@@ -377,6 +377,7 @@ build_cluster_tree() {
     local cluster_id=$(basename "$cluster_fasta" .fasta)
     local outdir="$2"
     local cluster_threads="${3:-$THREADS}"
+    local started=$SECONDS
 
     local n_seqs
     n_seqs=$(grep -c '^>' "$cluster_fasta")
@@ -485,15 +486,10 @@ with open(sys.argv[1], 'w') as f: f.write(re.sub(r'\)([0-9][0-9.eE+-]*):', '):',
         return 1
     fi
 
-    echo "  Cluster $cluster_id: done"
+    echo "  Cluster $cluster_id: done in $((SECONDS - started))s on $cluster_threads threads"
 }
 
-# Compute per-cluster thread allocation
-CLUSTER_THREADS=$(( THREADS / PARALLEL_JOBS ))
-if [[ "$CLUSTER_THREADS" -lt 1 ]]; then
-    CLUSTER_THREADS=1
-fi
-echo "  Parallelism: $PARALLEL_JOBS jobs, $CLUSTER_THREADS threads each"
+echo "  Parallelism: up to $PARALLEL_JOBS jobs at once, threads shared by cluster size"
 
 # Create log directory for per-cluster output
 CLUSTER_LOG_DIR="$CACHE_DIR/cluster_logs"
@@ -508,7 +504,7 @@ run_cluster() {
     local cluster_fasta="$1"
     local cluster_id=$(basename "$cluster_fasta" .fasta)
 
-    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR" "$CLUSTER_THREADS"
+    build_cluster_tree "$cluster_fasta" "$NEWICK_DIR" "$2"
     local rc=$?
     if [[ "$rc" -ne 0 ]]; then
         return 1
@@ -533,8 +529,42 @@ for cluster_fasta in "$AC_DIR"/*.fasta; do
     fi
 done
 
+# A job's thread count is fixed when it starts, so the clusters are launched
+# largest first, each with a share of THREADS in proportion to n^1.5 (FastTree's
+# time grows about as N^1.5 log N), and a job starts once its threads are free.
+# One job at a time gets every thread.
+mapfile -t CLUSTER_PLAN < <(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done \
+    | sort -k1,1nr -k2 \
+    | awk -v T="$THREADS" -v one="$([[ "$PARALLEL_JOBS" -eq 1 ]] && echo 1 || echo 0)" '
+        { n[NR] = $1; f[NR] = substr($0, index($0, " ") + 1); W += $1 ^ 1.5 }
+        END { for (i = 1; i <= NR; i++) {
+            t = (one || W == 0) ? T : int(T * n[i] ^ 1.5 / W + 0.5)
+            print (t < 1 ? 1 : t), f[i] } }')
+
+declare -A JOB_THREADS
+FREE_THREADS=$THREADS
 RUNNING_JOBS=0
-for cluster_fasta in "$AC_DIR"/*.fasta; do
+# Wait for any one cluster job to end and give back its threads.
+wait_for_cluster() {
+    FINISHED_PID=""
+    set +e
+    wait -n -p FINISHED_PID "${!CLUSTER_PIDS[@]}" 2>/dev/null
+    local wait_rc=$?
+    set -e
+    if [[ -n "$FINISHED_PID" ]]; then
+        if [[ "$wait_rc" -ne 0 ]]; then
+            echo "  WARNING: Cluster ${CLUSTER_PIDS[$FINISHED_PID]} failed (see log in $CLUSTER_LOG_DIR/)"
+            CLUSTER_FAILURES=$((CLUSTER_FAILURES + 1))
+        fi
+        FREE_THREADS=$((FREE_THREADS + JOB_THREADS[$FINISHED_PID]))
+        unset "CLUSTER_PIDS[$FINISHED_PID]" "JOB_THREADS[$FINISHED_PID]"
+    fi
+    RUNNING_JOBS=$((RUNNING_JOBS - 1))
+}
+
+for planned in "${CLUSTER_PLAN[@]}"; do
+    job_threads=${planned%% *}
+    cluster_fasta=${planned#* }
     cluster_id=$(basename "$cluster_fasta" .fasta)
 
     # Skip empty or single-sequence clusters
@@ -550,28 +580,19 @@ for cluster_fasta in "$AC_DIR"/*.fasta; do
         continue
     fi
 
-    # If we've hit the parallel job limit, wait for one to finish
-    if [[ "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]]; then
-        # Wait for any single background job to finish
-        set +e
-        wait -n -p FINISHED_PID "${!CLUSTER_PIDS[@]}" 2>/dev/null
-        wait_rc=$?
-        set -e
-        if [[ "$wait_rc" -ne 0 ]] && [[ -n "${FINISHED_PID:-}" ]]; then
-            echo "  WARNING: Cluster ${CLUSTER_PIDS[$FINISHED_PID]} failed (see log in $CLUSTER_LOG_DIR/)"
-            CLUSTER_FAILURES=$((CLUSTER_FAILURES + 1))
-        fi
-        if [[ -n "${FINISHED_PID:-}" ]]; then
-            unset "CLUSTER_PIDS[$FINISHED_PID]"
-        fi
-        RUNNING_JOBS=$((RUNNING_JOBS - 1))
-    fi
+    # Wait for a free job slot and enough free threads
+    while [[ "$RUNNING_JOBS" -ge "$PARALLEL_JOBS" ]] \
+        || [[ "$RUNNING_JOBS" -gt 0 && "$job_threads" -gt "$FREE_THREADS" ]]; do
+        wait_for_cluster
+    done
 
     # Launch cluster processing in background
-    run_cluster "$cluster_fasta" > "$CLUSTER_LOG_DIR/${cluster_id}.log" 2>&1 &
+    run_cluster "$cluster_fasta" "$job_threads" > "$CLUSTER_LOG_DIR/${cluster_id}.log" 2>&1 &
     CLUSTER_PIDS[$!]="$cluster_id"
+    JOB_THREADS[$!]=$job_threads
+    FREE_THREADS=$((FREE_THREADS - job_threads))
     RUNNING_JOBS=$((RUNNING_JOBS + 1))
-    echo "  Launched cluster $cluster_id (PID $!, $n_seqs seqs)"
+    echo "  Launched cluster $cluster_id (PID $!, $n_seqs seqs, $job_threads threads)"
 done
 
 # Wait for all remaining background jobs
