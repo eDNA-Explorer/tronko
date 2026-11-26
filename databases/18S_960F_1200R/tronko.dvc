@@ -1,0 +1,9 @@
+outs:
+- md5: 973e3ce7d16cbf5cdc7ca4d170ba1d42.dir
+  size: 197637541
+  nfiles: 14
+  hash: md5
+  path: tronko
+meta:
+  release_version: v1.0.0
+  rcrux_tag: 18S_960F_1200R_v2.0.0
