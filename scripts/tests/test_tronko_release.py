@@ -478,7 +478,9 @@ def test_release_report_shows_the_assignment_check_and_flags_false_calls(tmp_pat
 
     check = {
         "settings": {"communities": 6, "richness": 150, "reads_per_query": 20, "lca_cutoff": 10},
-        "communities": [{"removed_records": n} for n in (30, 45)],
+        "communities": [
+            {"removed_records": n, "audit": {"unplaced_orphans": o}} for n, o in ((30, 0), (45, 2))
+        ],
         "summary": {
             "illumina_typical": {"normal": tier(1000, 20, 0.9), "species_holdout": tier(500, 100, 0.4)},
             "edna_damage": {"normal": tier(1000, 50, 0.7), "species_holdout": tier(500, 120, 0.3)},
@@ -495,6 +497,7 @@ def test_release_report_shows_the_assignment_check_and_flags_false_calls(tmp_pat
     assert "| species held out | 500 | 100 | 0.400 | 0.400 | 0.400 |" in report
     assert "**edna_damage**" in report
     assert "Held-out records removed per community: 30 to 45." in report
+    assert "Kept records not placed back in a tree per community: 0 to 2." in report
 
 def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_repo):
     """What the release VM does: the tag's commit, curated.dvc and remote settings

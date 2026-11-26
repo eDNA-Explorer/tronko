@@ -50,7 +50,7 @@ def test_run_scores_every_community_against_its_own_holdout_reference(tmp_path, 
 
     def build_reference(member, master, out, **kwargs):
         seen["reference"].append((member.name, master, kwargs["build_config"].threads))
-        return {"dir": str(out), "removed_records": 10 + member.seed, "audit": {}}
+        return {"dir": str(out), "removed_records": 10 + member.seed, "audit": {"unplaced_orphans": member.seed}}
 
     def write_reads(member, profile, out, **kwargs):
         seen["reads"].append((member.name, profile, kwargs))
@@ -81,6 +81,7 @@ def test_run_scores_every_community_against_its_own_holdout_reference(tmp_path, 
     assert seen["reads"][0][2]["reads_per_query"] == 20
     assert seen["assign"] == ["unified_0", "unified_0", "unified_1", "unified_1"]
     assert [c["removed_records"] for c in result["communities"]] == [52, 53]
+    assert [c["audit"] for c in result["communities"]] == [{"unplaced_orphans": 42}, {"unplaced_orphans": 43}]
     assert result["summary"]["illumina_typical"]["normal"] == {
         "precision": 0.9, "recall": 0.9, "f1": 0.9, "reads": 20, "fp": 2}  # fmt: skip
     json.dumps(result)

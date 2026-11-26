@@ -473,8 +473,10 @@ def assignment_section(check: dict) -> list[str]:
             "",
         ]
     removed = [c["removed_records"] for c in check["communities"]]
+    orphans = [c["audit"]["unplaced_orphans"] for c in check["communities"]]
     lines += [
         f"Held-out records removed per community: {min(removed):,} to {max(removed):,}.",
+        f"Kept records not placed back in a tree per community: {min(orphans):,} to {max(orphans):,}.",
         "",
     ]
     return lines

@@ -96,6 +96,8 @@ def run(
                 "seed": member.seed,
                 "species_per_tier": {tier: len(species) for tier, species in member.tiers.items()},
                 "removed_records": holdout["removed_records"],
+                # the ablated reference is not kept; this is what remains of its check
+                "audit": holdout["audit"],
             }
         )
         for profile in design.profiles:
