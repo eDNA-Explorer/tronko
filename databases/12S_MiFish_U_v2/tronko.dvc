@@ -1,0 +1,9 @@
+outs:
+- md5: d1b3735b9812feb03e2c06a62d2a62c0.dir
+  size: 641377112
+  nfiles: 14
+  hash: md5
+  path: tronko
+meta:
+  release_version: v1.0.0
+  rcrux_tag: 12S_MiFish_U_v2_v2.0.0
