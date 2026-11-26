@@ -43,6 +43,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -54,6 +55,8 @@ DEFAULT_RCRUX_REPO = "https://github.com/eDNA-Explorer/rcrux-py"
 # "gcs" remote; versioning never touches it.
 RCRUX_REMOTE = "rcrux"
 TRONKO_REMOTE = "tronko"
+PUSH_ATTEMPTS = 3
+PUSH_RETRY_SECONDS = 60
 # tronko builds from rcrux's LCA tier: curated/lca.fasta + lca_taxonomy.txt.
 INPUT_TIER = "lca"
 # bwa's index, then the one file BWA-MEM3 adds (it shares .amb .ann .pac);
@@ -850,7 +853,16 @@ def publish(
         target = f"{marker_path}/tronko"
         run(["dvc", "add", target], cwd=repo)
         stamp_pointer(repo / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
-        run(["dvc", "push", "-r", TRONKO_REMOTE, f"{target}.dvc"], cwd=repo)
+        # Jetstream's S3 sometimes fails the last step of a large file's multipart
+        # upload; push again sends only what the remote is still missing.
+        for attempt in range(PUSH_ATTEMPTS):
+            try:
+                run(["dvc", "push", "-r", TRONKO_REMOTE, f"{target}.dvc"], cwd=repo)
+                break
+            except RuntimeError:
+                if attempt == PUSH_ATTEMPTS - 1:
+                    raise
+                time.sleep(PUSH_RETRY_SECONDS)
         run(["git", "add", f"{target}.dvc", f"{marker_path}/.gitignore"], cwd=repo)
         run(
             [
