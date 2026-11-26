@@ -482,6 +482,110 @@ def assignment_section(check: dict) -> list[str]:
     return lines
 
 
+def _clades(newick: str) -> tuple[list[str], set[tuple[int, int]], list[float]]:
+    """A tree's leaf names in order, each node's (first, last) leaf position, and its branch lengths."""
+    leaves, spans, open_at, lengths, closed = [], set(), [], [], False
+    # Accessions cannot hold spaces (release_tronko.sh checks), so whitespace is never part of a name.
+    for token in re.findall(r"[(),;]|[^(),;\s]+", newick):
+        if token == "(":
+            open_at.append(len(leaves))
+        elif token == ")":
+            spans.add((open_at.pop(), len(leaves) - 1))
+        elif token not in ",;":
+            name, _, length = token.partition(":")
+            if length:
+                lengths.append(float(length))
+            if not closed:  # after ")" the name is the inner node's label, not a leaf
+                spans.add((len(leaves), len(leaves)))
+                leaves.append(name)
+        closed = token == ")"
+    return leaves, spans, lengths
+
+
+SIZE_BINS = ((1, 9), (10, 49), (50, 199), (200, 999), (1000, None))
+CLADE_RANKS = (6, 5, 4)  # species, genus, family
+
+
+def tree_report(build_dir: Path) -> list[str]:
+    """What the release's trees look like: sizes, lengths, and how well they agree with the taxonomy.
+
+    Read from the files tronko-build leaves for each tree it kept: its Newick
+    tree and the lineages of its leaves.
+    """
+    sizes, longest, total = [], [], []
+    # per rank: taxa with 2+ leaves in a tree, how many of those are one clade,
+    # the trees each taxon is in, and the trees holding a single name
+    seen = {rank: 0 for rank in CLADE_RANKS}
+    whole = {rank: 0 for rank in CLADE_RANKS}
+    homes = {rank: {} for rank in CLADE_RANKS}
+    pure = {rank: 0 for rank in CLADE_RANKS}
+    broken = []
+    for number in (build_dir / "final_partitions.txt").read_text().split():
+        with open(build_dir / f"partition{number}_taxonomy.txt") as handle:
+            lineage = dict(line.rstrip("\n").split("\t") for line in handle if line.strip())
+        leaves, spans, lengths = _clades((build_dir / f"RAxML_bestTree.partition{number}.reroot").read_text())
+        sizes.append(len(leaves))
+        longest.append(max(lengths, default=0.0))
+        total.append(sum(lengths))
+        for rank in CLADE_RANKS:
+            positions = {}
+            for position, leaf in enumerate(leaves):
+                name = (lineage[leaf].split(";") + [""] * 7)[rank]
+                if name not in ("", "NA"):
+                    positions.setdefault(name, []).append(position)
+            pure[rank] += len(positions) == 1
+            for name, at in positions.items():
+                homes[rank][name] = homes[rank].get(name, 0) + 1
+                if len(at) > 1:
+                    seen[rank] += 1
+                    if (at[0], at[-1]) in spans and at[-1] - at[0] + 1 == len(at):
+                        whole[rank] += 1
+                    elif rank == 6:
+                        smallest = min(b - a + 1 for a, b in spans if a <= at[0] and b >= at[-1])
+                        broken.append((len(at), name, smallest, number))
+
+    def share(part, of):
+        return f"{part:,} of {of:,}" + (f" ({part / of:.0%})" if of else "")
+
+    return [
+        "## Trees",
+        f"- {len(sizes):,} trees; sequences per tree: {_spread(sizes)}",
+        "",
+        "| sequences in the tree | trees | sequences |",
+        "|---|---|---|",
+        *(
+            f"| {low:,}{f' to {high:,}' if high else ' or more'} | "
+            f"{sum(1 for n in sizes if n >= low and (not high or n <= high)):,} | "
+            f"{sum(n for n in sizes if n >= low and (not high or n <= high)):,} |"
+            for low, high in SIZE_BINS
+        ),
+        "",
+        f"- tree length (substitutions per site, smallest / median / largest): {_spread(total)}",
+        f"- longest branch in a tree: {_spread(longest)}",
+        "",
+        "| | form one clade in their tree | are in more than one tree | trees holding only one |",
+        "|---|---|---|---|",
+        *(
+            f"| {TAXONOMY_RANKS[rank]} | {share(whole[rank], seen[rank])} | "
+            f"{share(sum(1 for n in homes[rank].values() if n > 1), len(homes[rank]))} | "
+            f"{share(pure[rank], len(sizes))} |"
+            for rank in CLADE_RANKS
+        ),
+        "",
+        "One clade is counted for a name with two or more sequences in a rooted tree.",
+        "",
+        "<details><summary>Largest species that are not one clade</summary>",
+        "",
+        *(
+            f"- {name}: {n:,} sequences in tree {number}, whose smallest clade holding them has {smallest:,}"
+            for n, name, smallest, number in sorted(broken, reverse=True)[:10]
+        ),
+        "",
+        "</details>",
+        "",
+    ]
+
+
 def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: dict | None) -> str:
     """The release PR's description: what a reviewer checks before merging.
 
@@ -504,12 +608,6 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
     weak_trees = sum("partition too small" in line for line in log) - sum(
         "materialising unsplit cluster" in line for line in log
     )
-    # tronko-build's list of the partitions that became trees; absent from a build made elsewhere.
-    final = build_dir / "final_partitions.txt"
-    partition_sizes = [
-        count_lines(build_dir / f"partition{number}_taxonomy.txt")
-        for number in (final.read_text().split() if final.is_file() else [])
-    ]
     problems = [line.strip() for line in log if re.search(r"\bERROR\b|Traceback", line)]
     notices = [line.strip() for line in log if re.search(r"\bWARNING\b", line, re.IGNORECASE)]
     with open(build_dir / f"{marker}_taxonomy.txt") as handle:
@@ -578,7 +676,6 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         "",
         "## Shape (smallest / median / largest)",
         f"- sequences per cluster: {_spread(cluster_sizes)}; {len(cluster_sizes)} clusters",
-        f"- sequences per tree: {_spread(partition_sizes)}; {len(partition_sizes):,} trees",
         *(
             [
                 f"- trees under the {settings.get('SP_THRESHOLD')} sum-of-pairs threshold, "
@@ -588,6 +685,8 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
             else []
         ),
         "",
+        # tronko-build's list of the trees it kept; absent from a build made elsewhere.
+        *(tree_report(build_dir) if (build_dir / "final_partitions.txt").is_file() else []),
         *(assignment_section(check) if check else []),
         "## Taxonomy",
         "- distinct names: " + ", ".join(f"{len(names):,} {rank}" for rank, names in zip(TAXONOMY_RANKS, named)),
