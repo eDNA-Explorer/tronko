@@ -389,6 +389,8 @@ def test_publish_picks_the_version_and_stamps_the_pointer(tmp_path, rcrux_repo):
     assert meta["tronko_version"] == "v1.0.0"
     pointer = (checkout / "databases" / MARKER / "tronko.dvc").read_text()
     assert tr.read_pointer_version(pointer) == "v1.0.0"
+    # named for tronko: the rcrux release beside it has its own version
+    assert "tronko_release_version: v1.0.0" in pointer
     assert f"rcrux_tag: {MARKER}_v1.0.0" in pointer
     assert pointer in git(checkout, "show", f"HEAD:databases/{MARKER}/tronko.dvc") + "\n"
 

@@ -18,7 +18,7 @@ storage on both sides:
             dvc add databases/{marker}/tronko, dvc push -r tronko, and commit
             tronko.dvc on a publish branch.
             The version is the next after this marker's tronko tags unless
-            given, and is stamped into tronko.dvc as meta.release_version,
+            given, and is stamped into tronko.dvc as meta.tronko_release_version,
             beside the rcrux tag the build came from.
 4. tag      Automatic: when the branch merges, the tronko repository's "Tag
             tronko releases" workflow tags {marker}_tronko_v{version} there.
@@ -129,11 +129,11 @@ def tronko_tag(marker: str, version: str) -> str:
 
 
 # Versions are chosen the way rcrux-py's `rcrux release` chooses them, and the
-# chosen one is stamped into tronko.dvc as meta.release_version so the merge
+# chosen one is stamped into tronko.dvc as meta.tronko_release_version so the merge
 # can be tagged from git alone.
 BUMPS = ("major", "minor", "patch")
 FIRST_VERSION = "v1.0.0"
-META_KEY = "release_version"
+META_KEY = "tronko_release_version"
 
 
 def tronko_versions(tags: list[str], marker: str) -> list[str]:
