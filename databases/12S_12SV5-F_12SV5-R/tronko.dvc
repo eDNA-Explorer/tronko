@@ -1,0 +1,9 @@
+outs:
+- md5: 1722da6f8654ff079d046f24687ac131.dir
+  size: 57109240
+  nfiles: 14
+  hash: md5
+  path: tronko
+meta:
+  release_version: v1.0.0
+  rcrux_tag: 12S_12SV5-F_12SV5-R_v2.0.0
