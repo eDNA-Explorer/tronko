@@ -20,10 +20,12 @@ make -C tronko-assign && make -C tronko-assign bwa-mem3
 One command builds a database on a Jetstream2 VM and opens its release PR:
 
 ```
-ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0
+ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0
 ```
 
-It creates the VM, runs the release image there, prints the PR and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
+It creates the VM, runs the release image there, then pushes the release's branch and opens its PR with your own `git` and `gh`, and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`.
+
+The VM gets the storage keys and no GitHub credential. Before launching, the launcher reads the rcrux tag with your `gh`: its commit, the marker's `curated.dvc` and the rcrux remote's settings. The VM then downloads the inputs from that remote by hash. It commits the release on the VM and prints it on the console as a git bundle (a few KB, with its checksum), which the launcher pushes. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
 
 It takes every build setting below as an option (`--set KEY=VALUE`; not `--config FILE`, which the VM cannot read), plus `--ref` (the tronko commit, branch or tag to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
 
@@ -32,9 +34,9 @@ The image is `Dockerfile.release`: one tronko commit and every tool the build ne
 To build without a VM (it lands in `./work/out`, nothing is published):
 
 ```
-docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release .
-docker run --rm -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
-    tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.1.0 \
+docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .
+docker run --rm --ipc=host -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -v "$PWD/work:/work" \
+    tronko-release --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0 \
     --work /work --steps fetch,build --threads 32
 ```
 
@@ -47,7 +49,7 @@ What each step does:
 | publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
 | tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
 
-The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test.
+The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test, and only with `--set ASSIGNMENT_CHECK_READS_PER_QUERY=0`: the assignment check's scoring (polars) crashes under emulation.
 
 ### Build settings
 
@@ -63,6 +65,7 @@ The defaults are our standard recipe, in `scripts/tronko_build.conf`:
 | `SP_FORMULA` | `legacy` (or `corrected`) |
 | `CLUSTER_JOBS`, `TRONKO_BUILD_JOBS` | one per 8 threads each (8 on 64 CPUs) |
 | `ANCESTRALCLUST_ARGS`, `FAMSA_ARGS`, `TREE_ARGS`, `TRONKO_BUILD_ARGS`, `BWA_INDEX_ARGS` | empty (extra arguments for that tool) |
+| `ASSIGNMENT_CHECK_COMMUNITIES`, `ASSIGNMENT_CHECK_SPECIES`, `ASSIGNMENT_CHECK_READS_PER_QUERY` | 6, 150 (200 for 12S MiFish), 20: the holdout communities assigned after the build; 0 reads skips it |
 
 Change one for a run with `--set KEY=VALUE`, or several with `--config FILE`. `--print-config` shows what will be used. Every value used is recorded in the database's `metadata.json`.
 

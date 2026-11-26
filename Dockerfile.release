@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # The image that builds and releases tronko reference databases
 # (scripts/release_tronko.sh). It holds one tronko commit, compiled, and every
 # outside tool the build runs, at fixed versions. See "Build a database from an
@@ -5,10 +6,15 @@
 #
 # linux/amd64 only, on purpose: the alignment and tree tools give different
 # results on arm64, so releases come from one platform. An arm64 host (Apple
-# Silicon) runs it under emulation, which is fine for a small test and far too
+# Silicon) runs it under emulation, which is fine for a small test (with
+# --set ASSIGNMENT_CHECK_READS_PER_QUERY=0: polars crashes under emulation) and far too
 # slow for a real marker.
 #
-#   docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> -t tronko-release .
+#   docker build -f Dockerfile.release --build-arg TRONKO_REF=<commit or tag> --ssh default -t tronko-release .
+#
+# --ssh default: the assignment check's synthetic-fastq-toolkit comes from the
+# internal edna-explorer-data-pipelines, read with an SSH key that can read it
+# (CI's is the DATA_PIPELINES_DEPLOY_KEY secret). The key is not kept in the image.
 #
 # The tronko code comes from TRONKO_REF, not from the build context, so the
 # commit recorded in a release's metadata is the code in the image.
@@ -20,9 +26,14 @@ ARG TRONKO_REPO_URL=https://github.com/eDNA-Explorer/tronko.git
 # 24.04's packages: FastTree 2.1.11, VeryFastTree 4.0.3, RAxML 8.2.12, bwa 0.7.17.
 ARG FAMSA_VERSION=v1.6.1
 ARG NEWICK_UTILS_COMMIT=da121155a977197cab9fbb15953ca1b40b11eb87
+# community-lib and the libraries it needs, for the assignment check
+# (scripts/assignment_check.py); edna-explorer-data-pipelines PR 1915.
+ARG DATA_PIPELINES_COMMIT=eca2cdcee5b03e5f027372b0def5231249776c79
+# The assignment check's community design needs exactly this vsearch.
+ARG VSEARCH_VERSION=v2.22.1
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        build-essential git ca-certificates perl python3 zlib1g-dev libzstd-dev \
+        build-essential git ca-certificates openssh-client perl python3 zlib1g-dev libzstd-dev \
         clang-19 libomp-19-dev libdeflate-dev autoconf automake libtool cmake flex bison \
         bwa raxml fasttree veryfasttree \
     && rm -rf /var/lib/apt/lists/* \
@@ -35,6 +46,11 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 RUN git clone --quiet --depth 1 --branch "$FAMSA_VERSION" https://github.com/refresh-bio/FAMSA /tmp/famsa \
     && make -C /tmp/famsa -j"$(nproc)" \
     && cp /tmp/famsa/famsa /usr/local/bin/ && rm -rf /tmp/famsa
+
+# vsearch
+RUN git clone --quiet --depth 1 --branch "$VSEARCH_VERSION" https://github.com/torognes/vsearch /tmp/vsearch \
+    && cd /tmp/vsearch && ./autogen.sh > /dev/null && ./configure --quiet CFLAGS="-O3" CXXFLAGS="-O3" \
+    && make -j"$(nproc)" > /dev/null && cp bin/vsearch /usr/local/bin/ && cd / && rm -rf /tmp/vsearch
 
 # nw_reroot (newick-utils)
 RUN git clone --quiet https://github.com/tjunier/newick_utils /tmp/nw && cd /tmp/nw \
@@ -53,6 +69,21 @@ RUN [ -n "$TRONKO_REF" ] || { echo "pass --build-arg TRONKO_REF=<commit or tag>"
     && make -s -C tronko-assign bwa-mem3 && rm -rf tronko-assign/build \
     && uv sync --quiet --frozen --no-dev --project scripts \
     && git config --system --add safe.directory '*'
+
+# Only the three libraries' folders at DATA_PIPELINES_COMMIT, installed together
+# (community-lib names the other two as dependencies) and without their uv
+# workspace sources. The host key is GitHub's published one (api.github.com/meta).
+RUN --mount=type=ssh mkdir -p /root/.ssh \
+    && echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > /root/.ssh/known_hosts \
+    && git init --quiet /tmp/dp && cd /tmp/dp \
+    && git remote add origin git@github.com:eDNA-Explorer/edna-explorer-data-pipelines.git \
+    && git sparse-checkout set libraries/synthetic-fastq-toolkit/src \
+        libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
+    && git fetch --quiet --depth 1 --filter=blob:none origin "$DATA_PIPELINES_COMMIT" \
+    && git checkout --quiet FETCH_HEAD \
+    && uv pip install --quiet --no-sources --python /opt/tronko/scripts/.venv/bin/python \
+        libraries/synthetic-fastq-toolkit/src libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
+    && cd / && rm -rf /tmp/dp /root/.ssh
 
 ENV PATH=/opt/tronko/scripts/.venv/bin:/opt/tronko/tronko-build:/opt/tronko/tronko-convert:/opt/tronko/ancestralclust:/opt/tronko/tronko-assign:$PATH \
     PYTHON=/opt/tronko/scripts/.venv/bin/python

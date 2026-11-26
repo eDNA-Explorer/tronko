@@ -59,7 +59,7 @@ def env(tmp_path, monkeypatch):
     # A tronko checkout holding the scripts, committed, so its HEAD is the sha.
     tronko = tmp_path / "tronko"
     (tronko / "scripts").mkdir(parents=True)
-    for name in ("release_tronko.sh", "tronko_release.py", "tronko_build.conf"):
+    for name in ("release_tronko.sh", "tronko_release.py", "rcrux_primers.py", "tronko_build.conf"):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
     (tronko / "lib").mkdir()
     shutil.copy2(REPO / "lib" / "tronko-db.sh", tronko / "lib" / "tronko-db.sh")
@@ -122,6 +122,7 @@ def run(env, *extra: str) -> subprocess.CompletedProcess[str]:
             "--marker", MARKER, "--rcrux-tag", RCRUX_TAG,
             "--tronko-checkout", str(env["checkout"]), "--rcrux-repo", str(env["origin"]),
             "--work", str(env["tmp"] / "work"), "--threads", "2", *extra,
+            "--set", "ASSIGNMENT_CHECK_READS_PER_QUERY=0",
         ],
         capture_output=True, text=True, check=False,
     )  # fmt: skip
@@ -378,7 +379,8 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     result = subprocess.run(
         ["bash", str(tronko / "scripts" / "release_tronko.sh"), "--marker", "EXAMPLE",
          "--work", str(work), "--steps", "build", "--threads", "2",
-         "--set", "TREE_TOOL=raxml", "--set", "TRONKO_BUILD_ARGS=--one-thread-below 0"],
+         "--set", "TREE_TOOL=raxml", "--set", "TRONKO_BUILD_ARGS=--one-thread-below 0",
+         "--set", "ASSIGNMENT_CHECK_READS_PER_QUERY=0"],
         capture_output=True, text=True, check=False,
     )  # fmt: skip
     assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
@@ -398,3 +400,46 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     assert build["tree_tool"] == "raxml" and build["reference_sequences"] == len(ids)
     assert build["tronko_build_args"] == "--one-thread-below 0"
     assert build["rcrux_tag"] == "EXAMPLE_v1.0.0"
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    [(["ASSIGNMENT_CHECK_SPECIES=0"], "ASSIGNMENT_CHECK_SPECIES must be at least 1"),
+     (["ASSIGNMENT_CHECK_READS_PER_QUERY=x"], "ASSIGNMENT_CHECK_READS_PER_QUERY must be a whole number")],
+)  # fmt: skip
+def test_bad_assignment_check_settings_are_refused(env, settings, message):
+    # Not through run(), which turns the check off.
+    result = subprocess.run(
+        ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--print-config",
+         "--marker", MARKER, *(a for s in settings for a in ("--set", s))],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode != 0 and message in result.stderr
+
+
+@pytest.mark.parametrize("reads", ["0", "00"])
+def test_zero_reads_skip_the_check_whatever_the_species(env, reads):
+    result = subprocess.run(
+        ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--print-config",
+         "--marker", MARKER, "--set", "ASSIGNMENT_CHECK_SPECIES=0",
+         "--set", f"ASSIGNMENT_CHECK_READS_PER_QUERY={reads}"],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_build_stops_at_preflight_when_the_check_cannot_score(env, tmp_path, monkeypatch):
+    """A Python without the toolkit (or with a crashing polars) stops before the build."""
+    fake = tmp_path / "python"
+    fake.write_text('#!/bin/bash\ncase "$*" in *polars*) exit 139 ;; esac\nexec "' + sys.executable + '" "$@"\n')
+    fake.chmod(0o755)
+    monkeypatch.setenv("PYTHON", str(fake))
+    result = subprocess.run(
+        ["bash", str(env["tronko"] / "scripts" / "release_tronko.sh"), "--marker", MARKER,
+         "--rcrux-tag", RCRUX_TAG, "--tronko-checkout", str(env["checkout"]),
+         "--rcrux-repo", str(env["origin"]), "--work", str(env["tmp"] / "work"), "--threads", "2"],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode != 0
+    assert "the assignment check needs community-lib and a working polars" in result.stderr
+    assert "==> Build" not in result.stdout
