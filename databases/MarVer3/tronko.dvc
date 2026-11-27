@@ -1,0 +1,9 @@
+outs:
+- md5: a85e454e76ca6bc9a894e288a3870e82.dir
+  size: 395569924
+  nfiles: 15
+  hash: md5
+  path: tronko
+meta:
+  tronko_release_version: v1.0.0
+  rcrux_tag: MarVer3_v2.0.0
