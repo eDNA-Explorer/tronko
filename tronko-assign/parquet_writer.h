@@ -18,11 +18,13 @@ struct assignmentResult;
 /*
  * Create a new Parquet writer for assignment results
  *
- * @param filename  Output filename (e.g., "results_0.parquet")
- * @param err       Error message buffer (caller-allocated, min 256 bytes)
- * @return          Writer handle, or NULL on error
+ * @param filename     Output filename (e.g., "results_0.parquet")
+ * @param taxids_path  A release's <marker>_lineage_taxids.txt, which adds a nullable
+ *                     Taxid column looked up by Taxonomic_Path; NULL for none
+ * @param err          Error message buffer (caller-allocated, min 256 bytes)
+ * @return             Writer handle, or NULL on error
  */
-parquet_writer_t* parquet_writer_create(const char *filename, char *err);
+parquet_writer_t* parquet_writer_create(const char *filename, const char *taxids_path, char *err);
 
 /*
  * Write a batch of assignment results

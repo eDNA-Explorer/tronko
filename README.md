@@ -105,6 +105,7 @@ tronko-assign -r -6 -f reference_tree.trkb -a marker.fasta -s -g reads.fasta -o 
 - Reads can be FASTA or FASTQ (`-q`), plain, gzip or zstd.
 - Orientation is not detected: `-z` reverse-complements the second read of a pair, `-v` a single read.
 - `-6` uses the BWA-MEM3 index beside the reference FASTA, and builds it there if it is missing.
+- `--parquet PREFIX` (a build with `ENABLE_PARQUET=1`) writes `PREFIX.parquet` instead of `-o`. `--taxids <marker>_lineage_taxids.txt` adds a nullable `Taxid` column to it: the NCBI taxid of each read's `Taxonomic_Path`, from the release's table, null where the path has none.
 
 The output is tab-separated, one row per read:
 
