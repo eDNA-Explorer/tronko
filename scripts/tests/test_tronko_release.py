@@ -36,6 +36,12 @@ def write_build(build_dir: Path, marker: str = MARKER) -> Path:
         (build_dir / name).write_text(f"{name}\n")
     (build_dir / f"{marker}.fasta").write_text(">a\nACGT\n>b\nACGA\n")
     (build_dir / f"{marker}_taxonomy.txt").write_text("a\tE;P;C;O;F;G;S\nb\tE;P;C;O;F;G;T\n")
+    # two final partitions, and an inner one (partition0) the tree list leaves out
+    (build_dir / "tree_list.txt").write_text(
+        "".join(f"/build/RAxML_bestTree.partition{n}.reroot\n" for n in (1, 2))
+    )
+    for name in ("reference_tree.txt.gz", "build_metadata.json", *(f"partition{n}_taxonomy.txt" for n in range(3))):
+        (build_dir / name).write_text(f"{name}\n")
     return build_dir
 
 
@@ -233,6 +239,20 @@ def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_pa
     assert git(checkout, "rev-parse", "--abbrev-ref", "HEAD") == f"publish/{MARKER}-tronko-v1.0.0"
     assert git(checkout, "status", "--porcelain") == ""
     assert f"databases/{MARKER}/tronko.dvc" in git(checkout, "show", "--name-only", "--format=")
+    # with it, what a holdout rebuild reads: the final partitions' taxonomy, not partition0's
+    assert f"databases/{MARKER}/tronko_holdout.dvc" in git(checkout, "show", "--name-only", "--format=")
+    holdout = checkout / "databases" / MARKER / "tronko_holdout"
+    assert sorted(str(p.relative_to(holdout)) for p in holdout.rglob("*") if p.is_file()) == [
+        "build_metadata.json", "partitions_final/partition1_taxonomy.txt",
+        "partitions_final/partition2_taxonomy.txt", "reference_tree.txt.gz", "tree_list.txt",
+    ]  # fmt: skip
+    assert meta["holdout_files"]["partitions_final"] == 2
+    assert tr.read_pointer_version((checkout / "databases" / MARKER / "tronko_holdout.dvc").read_text()) == "v1.0.0"
+    # the two directories in one are the master a rebuild reads; holdout-master links the same layout
+    tr.holdout_master(build, MARKER, tmp_path / "master")
+    pulled = {str(p.relative_to(d)) for d in (published, holdout) for p in d.rglob("*") if p.is_file()}
+    linked = {str(p.relative_to(tmp_path / "master")) for p in (tmp_path / "master").rglob("*") if p.is_file()}
+    assert linked == pulled - {"build.log", "build_params.json", "metadata.json"}
     assert meta["rcrux_tag"] == f"{MARKER}_v1.0.0"
     assert any(rcrux_repo["tronko_remote"].rglob("*")), "build was not pushed to tronko's remote"
     assert sorted(p for p in remote.rglob("*") if p.is_file()) == rcrux_objects, (
@@ -328,7 +348,7 @@ def test_publish_pushes_again_after_a_failed_upload(tmp_path, rcrux_repo, monkey
     monkeypatch.setattr(tr, "run", flaky_push)
     monkeypatch.setattr(tr, "PUSH_RETRY_SECONDS", 0)
     meta = tr.publish(MARKER, build, inputs, log, write_params(tmp_path), None, checkout)
-    assert len(pushes) == 2
+    assert [command[-1].rsplit("/", 1)[1] for command in pushes] == ["tronko.dvc", "tronko.dvc", "tronko_holdout.dvc"]
     assert meta["tronko_version"] == "v1.0.0"
 
 
@@ -444,6 +464,7 @@ def _report_metadata(tmp_path, taxonomy_rows=2):
         "rcrux_commit": "b" * 40,
         "input_tier": "lca",
         "files": {f"{MARKER}.fasta": "c" * 64},
+        "holdout_files": {**dict.fromkeys(tr.HOLDOUT_FILES, "d" * 64), "partitions_final": 2},
         "row_counts": {"fasta_records": 2, "taxonomy_rows": taxonomy_rows},
         "build_params": {
             "overrides": ["set:CLUSTER_JOBS=8"],
@@ -697,5 +718,6 @@ def test_release_report_counts_lineage_paths_with_a_taxid(tmp_path):
     log.write_text("x\n")
     meta = {"marker": MARKER, "rcrux_tag": "t", "input_tier": "lca", "rcrux_commit": "c" * 12,
             "tronko_sha": "a" * 12, "row_counts": {"fasta_records": 2, "taxonomy_rows": 2},
-            "build_params": {}, "files": {}}  # fmt: skip
+            "build_params": {}, "files": {},
+            "holdout_files": {**dict.fromkeys(tr.HOLDOUT_FILES, "d" * 64), "partitions_final": 2}}  # fmt: skip
     assert "- lineage paths with an NCBI taxid: 2 of 3" in tr.release_report(meta, build, log, None)

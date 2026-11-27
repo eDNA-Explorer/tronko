@@ -46,10 +46,22 @@ What each step does:
 |---|---|
 | fetch | Reads the curated LCA FASTA and taxonomy, and the NCBI taxdump they were named from, from rcrux-py's DVC remote at `--rcrux-tag`. |
 | build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. Given rCRUX's taxonomy with its taxids and the taxdump (`--taxdump`), it also writes `<marker>_taxids.txt` (rCRUX's taxid per sequence) and `<marker>_lineage_taxids.txt` (below). |
-| publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
+| publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. With it goes `tronko_holdout.dvc`: the files a holdout rebuild needs besides the database (below). |
 | tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
 
 The image is `linux/amd64` only, so every release comes from one platform. An arm64 host runs it under emulation, which is only practical for a small test, and only with `--set ASSIGNMENT_CHECK_READS_PER_QUERY=0`: the assignment check's scoring (polars) crashes under emulation.
+
+### Holdout rebuilds from a release
+
+A holdout analysis removes records from a database and rebuilds only the partitions that lose any (`build_holdout_tronko_reference`, community-lib in edna-explorer-data-pipelines). Besides the database it reads `tree_list.txt`, `reference_tree.txt.gz`, `build_metadata.json` and each final partition's `partition<N>_taxonomy.txt`. A release publishes those as `databases/<marker>/tronko_holdout/`, tracked by `tronko_holdout.dvc` in the same commit and under the same tag as `tronko.dvc`. The rebuild's master directory is the two pulled into one:
+
+```
+git checkout <marker>_tronko_<version>
+dvc pull -r tronko databases/<marker>/tronko.dvc databases/<marker>/tronko_holdout.dvc
+mkdir master && cp -Rs "$PWD"/databases/<marker>/tronko/* "$PWD"/databases/<marker>/tronko_holdout/* master/
+```
+
+Each release's own assignment check rebuilds its holdout references from that layout. The partitions' alignments and trees are not published, so the rebuild re-aligns and re-trees (its default) and cannot prune instead.
 
 ### Build settings
 

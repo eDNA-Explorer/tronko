@@ -98,6 +98,36 @@ def published_files(build_dir: Path, marker: str) -> list[str]:
     return required_files(marker) + [name for name in optional if (build_dir / name).is_file()]
 
 
+HOLDOUT_FILES = ("tree_list.txt", "reference_tree.txt.gz", "build_metadata.json")
+# data-pipelines' holdout rebuild looks for partition files in the database
+# directory and in any partitions_*/ under it.
+HOLDOUT_PARTITIONS = "partitions_final"
+
+
+def holdout_files(build_dir: Path) -> dict[str, Path]:
+    """What a holdout rebuild reads besides the database, as {path in the release:
+    file in the build}: the text tree, the list of its trees, the build's flags and
+    each final partition's taxonomy. A rebuild removes records, then re-aligns and
+    re-trees only the partitions that lose any (community-lib, edna-explorer-data-pipelines).
+    """
+    partitions = re.findall(
+        r"RAxML_bestTree\.(partition\d+)\.reroot", (build_dir / "tree_list.txt").read_text()
+    )
+    return {name: build_dir / name for name in HOLDOUT_FILES} | {
+        f"{HOLDOUT_PARTITIONS}/{name}_taxonomy.txt": build_dir / f"{name}_taxonomy.txt"
+        for name in partitions
+    }
+
+
+def holdout_master(build_dir: Path, marker: str, out: Path) -> None:
+    """Links to a build's published files, laid out as a pulled release's tronko/
+    and tronko_holdout/ in one directory: what a holdout rebuild takes as its master."""
+    (out / HOLDOUT_PARTITIONS).mkdir(parents=True)
+    sources = {name: build_dir / name for name in published_files(build_dir, marker)}
+    for name, source in (sources | holdout_files(build_dir)).items():
+        (out / name).symlink_to(source.resolve())
+
+
 def file_digest(path: Path, algorithm: str) -> str:
     digest = hashlib.new(algorithm)
     with open(path, "rb") as handle:
@@ -392,8 +422,9 @@ def fetch(
 
 def validate_build(build_dir: Path, marker: str) -> None:
     problems = []
-    for name in required_files(marker):
-        path = build_dir / name
+    if not (build_dir / "tree_list.txt").is_file():
+        raise ValueError(f"Build in {build_dir} is incomplete: tree_list.txt missing")
+    for name, path in ({n: build_dir / n for n in required_files(marker)} | holdout_files(build_dir)).items():
         if not path.is_file():
             problems.append(f"{name} missing")
         elif path.stat().st_size == 0:
@@ -451,6 +482,10 @@ def build_metadata(
         "input_md5": inputs["input_md5"],
         "input_files": inputs["input_files"],
         "files": files,
+        "holdout_files": {
+            **{name: file_digest(build_dir / name, "sha256") for name in HOLDOUT_FILES},
+            HOLDOUT_PARTITIONS: len(holdout_files(build_dir)) - len(HOLDOUT_FILES),
+        },
         "row_counts": {
             "fasta_records": count_fasta_records(build_dir / f"{marker}.fasta"),
             "taxonomy_rows": count_lines(build_dir / f"{marker}_taxonomy.txt"),
@@ -753,9 +788,21 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
             for name, digest in metadata["files"].items()
         ),
         "",
+        "For holdout rebuilds, in `tronko_holdout/`:",
+        "",
+        *(
+            f"- `{name}` {(build_dir / name).stat().st_size:,} bytes `{metadata['holdout_files'][name]}`"
+            for name in HOLDOUT_FILES
+        ),
+        f"- `{HOLDOUT_PARTITIONS}/` {metadata['holdout_files'][HOLDOUT_PARTITIONS]:,} partition taxonomy files",
+        "",
         "</details>",
     ]
     return "\n".join(lines)
+
+
+# A release's two DVC-tracked directories: the database, and what a holdout rebuild adds to it.
+RELEASE_DIRS = ("tronko", "tronko_holdout")
 
 
 def _branch_exists(repo: Path, branch: str) -> bool:
@@ -779,18 +826,19 @@ def _roll_back(repo: Path, start: str, branch: str, marker: str) -> None:
     run(["git", "checkout", "-f", start], cwd=repo)
     if _branch_exists(repo, branch):
         run(["git", "branch", "-D", branch], cwd=repo)
-    pointer = repo / "databases" / marker / "tronko.dvc"
-    if pointer.is_file() and not run(["git", "ls-files", str(pointer.relative_to(repo))], cwd=repo):
-        pointer.unlink()
-    if pointer.is_file():
-        subprocess.run(
-            ["dvc", "checkout", str(pointer.relative_to(repo))],
-            cwd=repo,
-            capture_output=True,
-            check=False,
-        )
-    elif (repo / "databases" / marker / "tronko").exists():
-        shutil.rmtree(repo / "databases" / marker / "tronko")
+    for name in RELEASE_DIRS:
+        pointer = repo / "databases" / marker / f"{name}.dvc"
+        if pointer.is_file() and not run(["git", "ls-files", str(pointer.relative_to(repo))], cwd=repo):
+            pointer.unlink()
+        if pointer.is_file():
+            subprocess.run(
+                ["dvc", "checkout", str(pointer.relative_to(repo))],
+                cwd=repo,
+                capture_output=True,
+                check=False,
+            )
+        elif (repo / "databases" / marker / name).exists():
+            shutil.rmtree(repo / "databases" / marker / name)
     # A marker's first publish creates its directory and the .gitignore dvc add writes.
     ignore = repo / "databases" / marker / ".gitignore"
     if ignore.is_file() and not run(["git", "ls-files", str(ignore.relative_to(repo))], cwd=repo):
@@ -917,7 +965,8 @@ def publish(
         print(json.dumps(metadata, indent=2))
         print(report)
         print(
-            f"would track {dest} with DVC, push to {TRONKO_REMOTE}, commit on {branch} from {base}"
+            f"would track {dest} and tronko_holdout with DVC, push to {TRONKO_REMOTE}, "
+            f"commit on {branch} from {base}"
         )
         return metadata
 
@@ -933,12 +982,20 @@ def publish(
         shutil.copy2(build_log, dest / BUILD_LOG_FILENAME)
         (dest / BUILD_PARAMS_FILENAME).write_text(json.dumps(params, indent=2) + "\n")
         (dest / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2) + "\n")
+        holdout = repo / marker_path / "tronko_holdout"
+        if holdout.exists():
+            shutil.rmtree(holdout)
+        (holdout / HOLDOUT_PARTITIONS).mkdir(parents=True)
+        for name, source in holdout_files(build_dir).items():
+            shutil.copy2(source, holdout / name)
 
-        target = f"{marker_path}/tronko"
-        run(["dvc", "add", target], cwd=repo)
-        stamp_pointer(repo / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
-        push_release(repo, target)
-        run(["git", "add", f"{target}.dvc", f"{marker_path}/.gitignore"], cwd=repo)
+        for name in RELEASE_DIRS:
+            target = f"{marker_path}/{name}"
+            run(["dvc", "add", target], cwd=repo)
+            stamp_pointer(repo / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
+            push_release(repo, target)
+            run(["git", "add", f"{target}.dvc"], cwd=repo)
+        run(["git", "add", f"{marker_path}/.gitignore"], cwd=repo)
         run(
             [
                 "git",
@@ -1074,6 +1131,13 @@ def main(argv: list[str] | None = None) -> int:
     p_add.add_argument("--work", required=True, type=Path, help="Where the taxdump is downloaded")
     p_add.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
 
+    p_master = sub.add_parser(
+        "holdout-master", help="Link a build's published files into one directory, as a holdout rebuild reads them"
+    )
+    p_master.add_argument("--marker", required=True)
+    p_master.add_argument("--build-dir", required=True, type=Path)
+    p_master.add_argument("--out", required=True, type=Path)
+
     p_tag = sub.add_parser("tag", help="Tag the merged commit carrying tronko.dvc")
     p_tag.add_argument("--marker", help="Tag this marker's release")
     p_tag.add_argument("--tronko-version", help="Must match the version publish stamped")
@@ -1115,6 +1179,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"Committed {args.marker} tronko {metadata['tronko_version']}; open a PR. "
                     f"Merging it tags {metadata['tronko_tag']} (Tag tronko releases workflow)."
                 )
+        elif args.command == "holdout-master":
+            holdout_master(args.build_dir, args.marker, args.out)
         elif args.command == "add-lineage-taxids":
             print("\n".join(add_lineage_taxids(args.marker, args.tronko_checkout, args.work, args.rcrux_repo)))
         elif args.changed_since:
