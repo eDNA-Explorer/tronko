@@ -53,6 +53,7 @@ static struct option long_options[]=
 	{"pruning-factor",required_argument,0,0},
 #ifdef ENABLE_PARQUET
 	{"parquet",required_argument,0,0},
+	{"taxids",required_argument,0,0},
 #endif
 	{0, 0, 0, 0}  // Terminating entry required by getopt_long
 };
@@ -103,6 +104,8 @@ char usage[] = "\ntronko-assign [OPTIONS] -r -f [TRONKO-BUILD DB FILE] -a [REF F
 	\n\
 	Parquet Output (requires ENABLE_PARQUET=1 at compile time):\n\
 	--parquet [PREFIX], Output Parquet file instead of TSV: Creates PREFIX.parquet\n\
+	--taxids [FILE], with --parquet, add a Taxid column: the NCBI taxid of each read's Taxonomic_Path\n\
+	    from the release's <marker>_lineage_taxids.txt (null where the path has none)\n\
 	\n";
 
 /* Copies the first whitespace-delimited word of arg into dst, as sscanf(arg, "%s", dst) did, but
@@ -210,6 +213,13 @@ void parse_options(int argc, char **argv, Options *opt){
 					strncpy(opt->parquet_prefix, optarg, BUFFER_SIZE - 1);
 					opt->parquet_prefix[BUFFER_SIZE - 1] = '\0';
 					opt->parquet_enabled = 1;
+				}
+				else if (strcmp(long_options[option_index].name, "taxids") == 0) {
+					if (strlen(optarg) >= sizeof(opt->taxids_file)) {
+						fprintf(stderr, "Path given to --taxids is too long. Exiting...\n");
+						exit(1);
+					}
+					strcpy(opt->taxids_file, optarg);
 				}
 #endif
 				break;
@@ -373,4 +383,10 @@ void parse_options(int argc, char **argv, Options *opt){
 				break;
 		}
 	}
+#ifdef ENABLE_PARQUET
+	if (opt->taxids_file[0] && !opt->parquet_enabled) {
+		fprintf(stderr, "--taxids adds a column to the Parquet output; it needs --parquet. Exiting...\n");
+		exit(1);
+	}
+#endif
 }

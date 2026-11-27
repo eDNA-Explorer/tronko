@@ -263,6 +263,7 @@ typedef struct Options{
 #ifdef ENABLE_PARQUET
 	char parquet_prefix[BUFFER_SIZE];  // Output prefix for Parquet files (empty = disabled)
 	int parquet_enabled;               // 1 if Parquet output enabled
+	char taxids_file[BUFFER_SIZE];     // --taxids: <marker>_lineage_taxids.txt (empty = no Taxid column)
 #endif
 }Options;
 

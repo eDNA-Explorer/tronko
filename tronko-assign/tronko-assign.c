@@ -1056,6 +1056,10 @@ int main(int argc, char **argv){
 	opt.max_strikes = 6;
 	opt.enable_pruning = 0;
 	opt.pruning_factor = 2.0;
+#ifdef ENABLE_PARQUET
+	opt.parquet_enabled = 0;
+	opt.taxids_file[0] = '\0';
+#endif
 
 	parse_options(argc, argv, &opt);
 	
@@ -1430,7 +1434,8 @@ int main(int argc, char **argv){
 			char parquet_filename[MAXFILENAME];
 			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
 			char parquet_err[256];
-			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			parquet_writer = parquet_writer_create(parquet_filename,
+				opt.taxids_file[0] ? opt.taxids_file : NULL, parquet_err);
 			if (!parquet_writer) {
 				printf("Error creating Parquet writer: %s\n", parquet_err);
 				exit(1);
@@ -1748,7 +1753,8 @@ int main(int argc, char **argv){
 			char parquet_filename[MAXFILENAME];
 			snprintf(parquet_filename, MAXFILENAME, "%s.parquet", opt.parquet_prefix);
 			char parquet_err[256];
-			parquet_writer = parquet_writer_create(parquet_filename, parquet_err);
+			parquet_writer = parquet_writer_create(parquet_filename,
+				opt.taxids_file[0] ? opt.taxids_file : NULL, parquet_err);
 			if (!parquet_writer) {
 				printf("Error creating Parquet writer: %s\n", parquet_err);
 				exit(1);

@@ -7,18 +7,90 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "global.h"
+#include "hashmap.h"
 #include "parquet_writer.h"
 #include <carquet/carquet.h>
+
+/* One row of a release's <marker>_lineage_taxids.txt; the map's key is path, its data &taxid. */
+struct taxid_entry {
+    int64_t taxid;
+    char path[];
+};
 
 struct parquet_writer {
     carquet_writer_t *cw;
     carquet_schema_t *schema;
     char filename[MAXFILENAME];
+    int has_taxids;                 /* a Taxid column, from --taxids */
+    HASHMAP(char, int64_t) taxids;  /* Taxonomic_Path -> NCBI taxid */
 };
 
+/* Read <marker>_lineage_taxids.txt (path, rank, taxid per line, tab-separated; a path
+ * with no taxid has an empty one) into pw->taxids. Returns 0, or -1 with err set. */
+static int load_taxids(parquet_writer_t *pw, const char *path, char *err) {
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        snprintf(err, 256, "Cannot open taxids file %.200s", path);
+        return -1;
+    }
+    hashmap_init(&pw->taxids, hashmap_hash_string, strcmp);
+    pw->has_taxids = 1;
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t len;
+    long lineno = 0;
+    int status = 0;
+    while (status == 0 && (len = getline(&line, &cap, f)) > 0) {
+        lineno++;
+        if (line[len - 1] == '\n') line[--len] = '\0';
+        char *rank = strchr(line, '\t');
+        char *id = rank ? strchr(rank + 1, '\t') : NULL;
+        if (!id || strchr(id + 1, '\t')) {
+            snprintf(err, 256, "%.150s line %ld: expected path, rank and taxid", path, lineno);
+            status = -1;
+            break;
+        }
+        *rank = '\0';
+        if (*++id == '\0') continue;  /* a path with no taxid */
+        char *end;
+        long long taxid = strtoll(id, &end, 10);
+        if (*end != '\0' || taxid <= 0) {
+            snprintf(err, 256, "%.150s line %ld: taxid '%.40s' is not a positive integer", path, lineno, id);
+            status = -1;
+            break;
+        }
+        struct taxid_entry *e = malloc(sizeof *e + strlen(line) + 1);
+        if (!e) {
+            snprintf(err, 256, "Out of memory reading %.200s", path);
+            status = -1;
+            break;
+        }
+        e->taxid = taxid;
+        strcpy(e->path, line);
+        if (hashmap_put(&pw->taxids, e->path, &e->taxid) != 0) {
+            snprintf(err, 256, "%.150s line %ld: path listed twice", path, lineno);
+            free(e);
+            status = -1;
+        }
+    }
+    free(line);
+    fclose(f);
+    return status;
+}
+
+static void free_taxids(parquet_writer_t *pw) {
+    if (!pw->has_taxids) return;
+    int64_t *taxid;
+    hashmap_foreach_data(taxid, &pw->taxids) {
+        free(taxid);  /* taxid is the first member of its entry */
+    }
+    hashmap_cleanup(&pw->taxids);
+}
+
 /* Create schema matching tronko-assign output columns */
-static carquet_schema_t* create_assignment_schema(carquet_error_t *err) {
+static carquet_schema_t* create_assignment_schema(int has_taxids, carquet_error_t *err) {
     carquet_schema_t *schema = carquet_schema_create(err);
     if (!schema) return NULL;
 
@@ -65,10 +137,17 @@ static carquet_schema_t* create_assignment_schema(carquet_error_t *err) {
         return NULL;
     }
 
+    /* Null where the path has no taxid: unassigned reads, or an all-NA path */
+    if (has_taxids && carquet_schema_add_column(schema, "Taxid",
+            CARQUET_PHYSICAL_INT64, NULL, CARQUET_REPETITION_OPTIONAL, 0) != CARQUET_OK) {
+        carquet_schema_free(schema);
+        return NULL;
+    }
+
     return schema;
 }
 
-parquet_writer_t* parquet_writer_create(const char *filename, char *err) {
+parquet_writer_t* parquet_writer_create(const char *filename, const char *taxids_path, char *err) {
     parquet_writer_t *pw = calloc(1, sizeof(parquet_writer_t));
     if (!pw) {
         snprintf(err, 256, "Failed to allocate parquet_writer");
@@ -78,12 +157,19 @@ parquet_writer_t* parquet_writer_create(const char *filename, char *err) {
     strncpy(pw->filename, filename, MAXFILENAME - 1);
     pw->filename[MAXFILENAME - 1] = '\0';
 
+    if (taxids_path && load_taxids(pw, taxids_path, err) != 0) {
+        free_taxids(pw);
+        free(pw);
+        return NULL;
+    }
+
     carquet_error_t cerr = CARQUET_ERROR_INIT;
 
     /* Create schema */
-    pw->schema = create_assignment_schema(&cerr);
+    pw->schema = create_assignment_schema(pw->has_taxids, &cerr);
     if (!pw->schema) {
         snprintf(err, 256, "Failed to create schema: %s", cerr.message);
+        free_taxids(pw);
         free(pw);
         return NULL;
     }
@@ -101,6 +187,7 @@ parquet_writer_t* parquet_writer_create(const char *filename, char *err) {
     if (!pw->cw) {
         snprintf(err, 256, "Failed to create writer: %s", cerr.message);
         carquet_schema_free(pw->schema);
+        free_taxids(pw);
         free(pw);
         return NULL;
     }
@@ -154,6 +241,24 @@ int parquet_writer_write_batch(parquet_writer_t *writer,
     if (carquet_writer_write_batch(writer->cw, 4, rev_mismatches, count, NULL, NULL) != CARQUET_OK) failed = 1;
     if (carquet_writer_write_batch(writer->cw, 5, tree_numbers, count, NULL, NULL) != CARQUET_OK) failed = 1;
     if (carquet_writer_write_batch(writer->cw, 6, node_numbers, count, NULL, NULL) != CARQUET_OK) failed = 1;
+    if (writer->has_taxids) {
+        int64_t *taxids = calloc(count, sizeof(int64_t));
+        int16_t *present = calloc(count, sizeof(int16_t));
+        if (!taxids || !present) {
+            failed = 1;
+        } else {
+            for (int i = 0; i < count; i++) {
+                int64_t *taxid = results[i].taxonomic_path
+                    ? hashmap_get(&writer->taxids, results[i].taxonomic_path) : NULL;
+                if (taxid) {
+                    taxids[i] = *taxid;
+                    present[i] = 1;
+                }
+            }
+            if (carquet_writer_write_batch(writer->cw, 7, taxids, count, present, NULL) != CARQUET_OK) failed = 1;
+        }
+        free(taxids); free(present);
+    }
 
     free(readnames); free(taxon_paths); free(scores);
     free(fwd_mismatches); free(rev_mismatches);
@@ -167,6 +272,7 @@ int parquet_writer_close(parquet_writer_t *writer) {
 
     carquet_status_t status = carquet_writer_close(writer->cw);
     carquet_schema_free(writer->schema);
+    free_taxids(writer);
     free(writer);
 
     return (status == CARQUET_OK) ? 0 : -1;
