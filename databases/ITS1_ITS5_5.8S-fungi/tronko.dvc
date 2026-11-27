@@ -1,0 +1,9 @@
+outs:
+- md5: a4fb11f2b34ae1dd55dd0d8d0a25f002.dir
+  size: 1694599584
+  nfiles: 15
+  hash: md5
+  path: tronko
+meta:
+  tronko_release_version: v1.0.0
+  rcrux_tag: ITS1_ITS5_5.8S-fungi_v2.0.0
