@@ -45,7 +45,7 @@ What each step does:
 | Step | What happens |
 |---|---|
 | fetch | Reads the curated LCA FASTA and taxonomy, and the NCBI taxdump they were named from, from rcrux-py's DVC remote at `--rcrux-tag`. |
-| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. Then writes `<marker>_taxids.txt` (rCRUX's taxid per sequence) and `<marker>_lineage_taxids.txt` (below). |
+| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. Given rCRUX's taxonomy with its taxids and the taxdump (`--taxdump`), it also writes `<marker>_taxids.txt` (rCRUX's taxid per sequence) and `<marker>_lineage_taxids.txt` (below). |
 | publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
 | tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
 
