@@ -1,0 +1,9 @@
+outs:
+- md5: 2fdacf6ddf35c81374bb62051991e865.dir
+  size: 191294546
+  nfiles: 15
+  hash: md5
+  path: tronko
+meta:
+  tronko_release_version: v1.0.0
+  rcrux_tag: Unionida_16S_v2.0.0
