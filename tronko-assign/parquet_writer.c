@@ -53,10 +53,10 @@ static int load_taxids(parquet_writer_t *pw, const char *path, char *err) {
             break;
         }
         *rank = '\0';
-        if (*++id == '\0') continue;  /* a path with no taxid */
-        char *end;
-        long long taxid = strtoll(id, &end, 10);
-        if (*end != '\0' || taxid <= 0) {
+        /* A path with no taxid is kept as 0, read back as null, so a path listed twice is refused. */
+        char *end = ++id;
+        long long taxid = *id ? strtoll(id, &end, 10) : 0;
+        if (*end != '\0' || (*id && taxid <= 0)) {
             snprintf(err, 256, "%.150s line %ld: taxid '%.40s' is not a positive integer", path, lineno, id);
             status = -1;
             break;
@@ -181,6 +181,9 @@ parquet_writer_t* parquet_writer_create(const char *filename, const char *taxids
     opts.compression_level = 3;  /* Balance speed/ratio */
     opts.row_group_size = 64 * 1024 * 1024;  /* 64 MB row groups */
     opts.write_statistics = true;
+    /* Carquet encodes a nullable column's definition levels once per write, and a page may
+     * hold one run of them: with Taxid, every batch must end its page. */
+    if (pw->has_taxids) opts.page_size = 1;
 
     /* Create writer */
     pw->cw = carquet_writer_create(filename, pw->schema, &opts, &cerr);
@@ -250,7 +253,7 @@ int parquet_writer_write_batch(parquet_writer_t *writer,
             for (int i = 0; i < count; i++) {
                 int64_t *taxid = results[i].taxonomic_path
                     ? hashmap_get(&writer->taxids, results[i].taxonomic_path) : NULL;
-                if (taxid) {
+                if (taxid && *taxid) {
                     taxids[i] = *taxid;
                     present[i] = 1;
                 }
