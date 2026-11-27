@@ -489,7 +489,12 @@ def assignment_section(check: dict) -> list[str]:
         f"this database, {settings['reads_per_query']} read pairs per query, each community assigned "
         f"with tronko-assign (LCA cut-off {settings['lca_cutoff']}) against this database less its "
         "held-out records. Each read is scored at the deepest rank this database can resolve for it; "
-        "precision, recall and F1 are means over the communities.",
+        "precision, recall and F1 are means over the communities."
+        + (
+            f" community-lib from edna-explorer-data-pipelines `{settings['data_pipelines_commit'][:12]}`."
+            if "data_pipelines_commit" in settings
+            else ""
+        ),
         "",
     ]
     for profile, tiers in check["summary"].items():
