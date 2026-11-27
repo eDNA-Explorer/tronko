@@ -159,7 +159,7 @@ TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$INPUT_TAXONOMY" | sort -u)"
 case "$TAXONOMY_COLUMNS" in
     2) [[ -z "$TAXDUMP" ]] || { echo "ERROR: --taxdump needs a taxonomy with taxids (accession, taxid, lineage)" >&2; exit 1; } ;;
     3) for f in nodes.dmp names.dmp merged.dmp; do
-           [[ -n "$TAXDUMP" && -s "$TAXDUMP/$f" ]] || { echo "ERROR: a taxonomy with taxids needs --taxdump DIR holding nodes.dmp, names.dmp and merged.dmp" >&2; exit 1; }
+           [[ -n "$TAXDUMP" && -f "$TAXDUMP/$f" ]] || { echo "ERROR: a taxonomy with taxids needs --taxdump DIR holding nodes.dmp, names.dmp and merged.dmp" >&2; exit 1; }
        done ;;
     *) echo "ERROR: $INPUT_TAXONOMY must have 2 or 3 tab-separated columns on every line" >&2; exit 1 ;;
 esac
