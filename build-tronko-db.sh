@@ -14,7 +14,10 @@
 #
 # Options:
 #   -f  Input reference FASTA (unaligned, single-line)
-#   -t  Taxonomy file (accession<TAB>lineage)
+#   -t  Taxonomy file: accession<TAB>lineage, or rCRUX's accession<TAB>taxid<TAB>lineage,
+#       which also writes <primer>_taxids.txt and <primer>_lineage_taxids.txt (the NCBI
+#       taxid of every lineage path tronko-assign can print) and needs --taxdump
+#   --taxdump DIR  NCBI taxdump (nodes.dmp, names.dmp, merged.dmp) the lineages were named from
 #   -o  Output directory (will contain reference_tree.txt, FASTA, BWA index)
 #   -p  Primer/marker name (default: marker)
 #   -T  Threads for FAMSA, the tree tool and tronko-build (default: 8)
@@ -59,6 +62,7 @@ AC_CUTOFF=25000
 AC_BIN_SIZE=20000
 AC_DESCENDANTS=75
 RCRUX_TAG=""
+TAXDUMP=""
 TB_JOBS=1
 TB_THREADS=""
 MIN_LEAF=""
@@ -80,6 +84,7 @@ while [[ $# -gt 0 ]]; do
         --tree-seed=*) TREE_SEED="${1#*=}"; shift ;;
         --cache-dir) SHARED_CACHE_DIR="$2"; shift 2 ;;
         --cache-dir=*) SHARED_CACHE_DIR="${1#*=}"; shift ;;
+        --taxdump) TAXDUMP="$2"; shift 2 ;;
         --rcrux-tag) RCRUX_TAG="$2"; shift 2 ;;
         --rcrux-tag=*) RCRUX_TAG="${1#*=}"; shift ;;
         --tb-jobs) TB_JOBS="$2"; shift 2 ;;
@@ -149,6 +154,15 @@ if [[ ! -f "$INPUT_TAXONOMY" ]]; then
     echo "ERROR: Taxonomy file not found: $INPUT_TAXONOMY" >&2
     exit 1
 fi
+# rCRUX's taxonomy carries a taxid per accession; tronko-build reads accession, lineage.
+TAXONOMY_COLUMNS="$(awk -F '\t' '{ print NF }' "$INPUT_TAXONOMY" | sort -u)"
+case "$TAXONOMY_COLUMNS" in
+    2) [[ -z "$TAXDUMP" ]] || { echo "ERROR: --taxdump needs a taxonomy with taxids (accession, taxid, lineage)" >&2; exit 1; } ;;
+    3) for f in nodes.dmp names.dmp merged.dmp; do
+           [[ -n "$TAXDUMP" && -s "$TAXDUMP/$f" ]] || { echo "ERROR: a taxonomy with taxids needs --taxdump DIR holding nodes.dmp, names.dmp and merged.dmp" >&2; exit 1; }
+       done ;;
+    *) echo "ERROR: $INPUT_TAXONOMY must have 2 or 3 tab-separated columns on every line" >&2; exit 1 ;;
+esac
 
 # Verify tools
 for tool in ancestralclust famsa nw_reroot tronko-build tronko-convert bwa bwa-mem3 fasta2phyml.pl python3; do
@@ -205,6 +219,12 @@ AC_DIR="$CACHE_DIR/ancestralclust"
 NEWICK_DIR="$CACHE_DIR/newick"
 MERGED_DIR="$CACHE_DIR/merged"
 mkdir -p "$AC_DIR" "$NEWICK_DIR" "$MERGED_DIR" "$OUTPUT_DIR"
+TAXID_TAXONOMY=""
+if [[ "$TAXONOMY_COLUMNS" == 3 ]]; then
+    TAXID_TAXONOMY="$INPUT_TAXONOMY"
+    INPUT_TAXONOMY="$CACHE_DIR/taxonomy.2col.txt"
+    cut -f1,3 "$TAXID_TAXONOMY" > "$INPUT_TAXONOMY"
+fi
 
 # No cleanup trap — cache persists for resume on failure
 # To force a clean rebuild, delete $OUTPUT_DIR/.cache/
@@ -742,6 +762,16 @@ while read -r partnum; do
     cat "$OUTPUT_DIR/partition${partnum}.fasta" >> "$OUTPUT_DIR/${PRIMER}.fasta"
     cat "$OUTPUT_DIR/partition${partnum}_taxonomy.txt" >> "$OUTPUT_DIR/${PRIMER}_taxonomy.txt"
 done < "$OUTPUT_DIR/final_partitions.txt"
+# The taxids go beside the taxonomy, in its row order, and the taxid of every lineage
+# path tronko-assign can print (lineage_taxids.py) beside them.
+if [[ -n "$TAXID_TAXONOMY" ]]; then
+    awk -F '\t' -v OFS='\t' 'NR == FNR { taxid[$1] = $2; next }
+        !($1 in taxid) { print "ERROR: no taxid for " $1 > "/dev/stderr"; exit 1 }
+        { print $1, taxid[$1] }' "$TAXID_TAXONOMY" "$OUTPUT_DIR/${PRIMER}_taxonomy.txt" \
+        > "$OUTPUT_DIR/${PRIMER}_taxids.txt"
+    python3 "$(dirname "${BASH_SOURCE[0]}")/scripts/lineage_taxids.py" \
+        --marker "$PRIMER" --build-dir "$OUTPUT_DIR" --taxdump "$TAXDUMP"
+fi
 
 # BWA index
 echo "Building BWA index..."
@@ -834,7 +864,7 @@ cat > "$OUTPUT_DIR/build_metadata.json" << METAEOF
   "pipeline": "build-tronko-db.sh (AncestralClust + $TREE_TOOL + $([ -n "$MIN_LEAF" ] && echo min-leaf || echo SP) partitioning)",
   "input_sequences": $(grep -c '^>' "$INPUT_FASTA"),
   "input_fasta": "$INPUT_FASTA",
-  "input_taxonomy": "$INPUT_TAXONOMY",
+  "input_taxonomy": "${TAXID_TAXONOMY:-$INPUT_TAXONOMY}",
   "rcrux_tag": $(jstr "$RCRUX_TAG"),
   "rcrux_commit": $(jstr "$RCRUX_COMMIT"),
   "rcrux_published_date": $(jstr "$RCRUX_DATE"),

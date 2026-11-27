@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import lineage_taxids as lt
 import tronko_release as tr
 from conftest import lineage_nodes, write_taxdump
 
@@ -208,7 +209,7 @@ def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_pa
     assert inputs["input_tier"] == "lca"
     assert set(inputs["input_files"]) == {
         "curated/lca.fasta", "curated/lca_taxonomy.txt",
-        *(f"data/taxdump/{name}" for name in tr.TAXDUMP_FILES),
+        *(f"data/taxdump/{name}" for name in lt.TAXDUMP_FILES),
     }  # fmt: skip
     assert (work / "taxdump" / "nodes.dmp").is_file()
     assert (work / "lca.fasta").read_text() == ">l1\nACGT\n"
@@ -617,7 +618,7 @@ def test_lineage_taxids_names_every_path_tronko_assign_can_print(tmp_path):
     (tmp_path / "tax.txt").write_text("".join(f"{a}\t{lineage}\n" for a, _, lineage in records))
     (tmp_path / "ids.txt").write_text("".join(f"{a}\t{ids}\n" for a, ids, _ in records))
 
-    rows, conflicts = tr.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", taxdump)
+    rows, conflicts = lt.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", taxdump)
     table = {path: (rank, taxid) for path, rank, taxid in rows}
     assert conflicts == 0
     assert table["Eukaryota"] == ("domain", "10")
@@ -639,7 +640,7 @@ def test_write_lineage_taxids_warns_of_paths_without_a_taxid(tmp_path):
     build.mkdir()
     (build / f"{MARKER}_taxonomy.txt").write_text("r1\tEukaryota;P;C;O;F;Gen;Not here\nr2\tNA;NA;NA;NA;NA;NA;NA\n")
     (build / f"{MARKER}_taxids.txt").write_text("r1\t16\nr2\t16\n")
-    lines = tr.write_lineage_taxids(build, MARKER, taxdump)
+    lines = lt.write_lineage_taxids(build, MARKER, taxdump)
     assert lines[0] == "lineage taxids: 14 paths, 1 without a taxid, 0 with records disagreeing"
     assert lines[1:] == ["WARNING: no NCBI taxid for lineage Eukaryota;P;C;O;F;Gen;Not here"]
     assert "Eukaryota;P;C;O;F;Gen\tgenus\t15\n" in (build / f"{MARKER}_lineage_taxids.txt").read_text()
@@ -649,7 +650,7 @@ def test_lineage_taxids_refuses_taxids_out_of_step_with_the_taxonomy(tmp_path):
     (tmp_path / "tax.txt").write_text("a\tE\nb\tE\n")
     (tmp_path / "ids.txt").write_text("b\t1\na\t1\n")
     with pytest.raises(ValueError, match="disagree at a"):
-        tr.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", _taxid_tree(tmp_path))
+        lt.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", _taxid_tree(tmp_path))
 
 
 def test_add_lineage_taxids_adds_the_table_to_a_published_release(tmp_path, rcrux_repo):
