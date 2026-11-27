@@ -27,8 +27,10 @@ ARG TRONKO_REPO_URL=https://github.com/eDNA-Explorer/tronko.git
 ARG FAMSA_VERSION=v1.6.1
 ARG NEWICK_UTILS_COMMIT=da121155a977197cab9fbb15953ca1b40b11eb87
 # community-lib and the libraries it needs, for the assignment check
-# (scripts/assignment_check.py); edna-explorer-data-pipelines PR 1915.
-ARG DATA_PIPELINES_COMMIT=eca2cdcee5b03e5f027372b0def5231249776c79
+# (scripts/assignment_check.py), from this edna-explorer-data-pipelines ref. CI
+# passes main's commit, so the layer is rebuilt when main moves; the commit
+# fetched is written to /opt/data-pipelines-commit and recorded in each release.
+ARG DATA_PIPELINES_REF=main
 # The assignment check's community design needs exactly this vsearch.
 ARG VSEARCH_VERSION=v2.22.1
 
@@ -70,7 +72,7 @@ RUN [ -n "$TRONKO_REF" ] || { echo "pass --build-arg TRONKO_REF=<commit or tag>"
     && uv sync --quiet --frozen --no-dev --project scripts \
     && git config --system --add safe.directory '*'
 
-# Only the three libraries' folders at DATA_PIPELINES_COMMIT, installed together
+# Only the three libraries' folders at DATA_PIPELINES_REF, installed together
 # (community-lib names the other two as dependencies) and without their uv
 # workspace sources. The host key is GitHub's published one (api.github.com/meta).
 RUN --mount=type=ssh mkdir -p /root/.ssh \
@@ -79,8 +81,9 @@ RUN --mount=type=ssh mkdir -p /root/.ssh \
     && git remote add origin git@github.com:eDNA-Explorer/edna-explorer-data-pipelines.git \
     && git sparse-checkout set libraries/synthetic-fastq-toolkit/src \
         libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
-    && git fetch --quiet --depth 1 --filter=blob:none origin "$DATA_PIPELINES_COMMIT" \
+    && git fetch --quiet --depth 1 --filter=blob:none origin "$DATA_PIPELINES_REF" \
     && git checkout --quiet FETCH_HEAD \
+    && git rev-parse HEAD > /opt/data-pipelines-commit \
     && uv pip install --quiet --no-sources --python /opt/tronko/scripts/.venv/bin/python \
         libraries/synthetic-fastq-toolkit/src libraries/taxonomy-classifier-harness/src libraries/community-lib/src \
     && cd / && rm -rf /tmp/dp /root/.ssh

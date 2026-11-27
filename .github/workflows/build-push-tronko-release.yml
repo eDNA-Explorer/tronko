@@ -44,11 +44,18 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DATA_PIPELINES_DEPLOY_KEY }}
 
+      # main's commit, not the name main, so the build cache refetches when main moves.
+      - id: data-pipelines
+        run: |
+          echo "sha=$(git ls-remote git@github.com:eDNA-Explorer/edna-explorer-data-pipelines.git refs/heads/main | cut -f1)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.release
-          build-args: TRONKO_REF=${{ steps.commit.outputs.sha }}
+          build-args: |
+            TRONKO_REF=${{ steps.commit.outputs.sha }}
+            DATA_PIPELINES_REF=${{ steps.data-pipelines.outputs.sha }}
           ssh: default=${{ env.SSH_AUTH_SOCK }}
           push: true
           tags: ${{ env.IMAGE }}:${{ steps.commit.outputs.sha }}

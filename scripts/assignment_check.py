@@ -36,6 +36,8 @@ from taxonomy_classifier_harness.tronko.database import TronkoBuildConfig
 
 # production's tronko-assign settings (qc-tools-lib LCA_CUTOFF)
 LCA_CUTOFF = 10
+# written by Dockerfile.release: the edna-explorer-data-pipelines commit installed
+DATA_PIPELINES_COMMIT_FILE = Path("/opt/data-pipelines-commit")
 
 
 def assign(reference: Path, marker: str, reads: check.MemberReads, threads: int, out: Path) -> dict:
@@ -133,6 +135,12 @@ def run(
             "profiles": list(design.profiles),
             "lca_cutoff": LCA_CUTOFF,
             **primers,
+            # the release image records the community-lib commit it installed
+            **(
+                {"data_pipelines_commit": DATA_PIPELINES_COMMIT_FILE.read_text().strip()}
+                if DATA_PIPELINES_COMMIT_FILE.exists()
+                else {}
+            ),
         },
         "communities": members,
         "summary": summary,

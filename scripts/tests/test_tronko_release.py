@@ -510,7 +510,10 @@ def test_release_report_shows_the_assignment_check_and_flags_false_calls(tmp_pat
         return {"reads": reads, "fp": fp, "precision": f1, "recall": f1, "f1": f1}
 
     check = {
-        "settings": {"communities": 6, "richness": 150, "reads_per_query": 20, "lca_cutoff": 10},
+        "settings": {
+            "communities": 6, "richness": 150, "reads_per_query": 20, "lca_cutoff": 10,
+            "data_pipelines_commit": "1026bc049" + "0" * 31,
+        },  # fmt: skip
         "communities": [
             {"removed_records": n, "audit": {"unplaced_orphans": o}} for n, o in ((30, 0), (45, 2))
         ],
@@ -529,6 +532,7 @@ def test_release_report_shows_the_assignment_check_and_flags_false_calls(tmp_pat
     assert "| normal | 1,000 | 20 | 0.900 | 0.900 | 0.900 |" in report
     assert "| species held out | 500 | 100 | 0.400 | 0.400 | 0.400 |" in report
     assert "**edna_damage**" in report
+    assert "community-lib from edna-explorer-data-pipelines `1026bc049000`." in report
     assert "Held-out records removed per community: 30 to 45." in report
     assert "Kept records not placed back in a tree per community: 0 to 2." in report
 
