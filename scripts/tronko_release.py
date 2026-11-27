@@ -31,6 +31,13 @@ Usage:
         --tronko-sha <commit that built the tree, or set TRONKO_REF> \
         [--tronko-version v2.0.0 | --bump major|minor|patch]
     python tronko_release.py tag --marker MARKER [--tronko-version v1.0.0] [--tronko-checkout PATH]
+    python tronko_release.py lineage-taxids --marker MARKER --build-dir DIR --taxdump DIR
+    python tronko_release.py add-lineage-taxids --marker MARKER --tronko-checkout PATH --work DIR
+
+<marker>_lineage_taxids.txt (written by release_tronko.sh after the build, from
+the taxdump fetch downloads) gives the NCBI taxid of every lineage path
+tronko-assign can print: path, rank, taxid. add-lineage-taxids adds it to a
+release published before it existed.
 """
 
 import argparse
@@ -84,10 +91,115 @@ def required_files(marker: str) -> list[str]:
 
 
 def published_files(build_dir: Path, marker: str) -> list[str]:
-    """The required files, plus <marker>_taxids.txt when the build wrote one
-    (rCRUX's taxid per accession; a 2-column input has none)."""
-    optional = (f"{marker}_taxids.txt", ASSIGNMENT_CHECK_FILENAME)
+    """The required files, plus <marker>_taxids.txt and <marker>_lineage_taxids.txt
+    when the build wrote them (rCRUX's taxid per accession and per lineage path;
+    a 2-column input has neither)."""
+    optional = (f"{marker}_taxids.txt", lineage_taxids_name(marker), ASSIGNMENT_CHECK_FILENAME)
     return required_files(marker) + [name for name in optional if (build_dir / name).is_file()]
+
+
+TAXDUMP_FILES = ("nodes.dmp", "names.dmp", "merged.dmp")
+# The NCBI ranks each of the seven lineage slots is named from (rCRUX's main ranks);
+# a sub-rank of the same name (subgenus Drosophila) loses to them.
+SLOT_RANKS = (
+    ("superkingdom", "domain"), ("phylum",), ("class",), ("order",), ("family",), ("genus",), ("species",)
+)
+
+
+def lineage_taxids_name(marker: str) -> str:
+    return f"{marker}_lineage_taxids.txt"
+
+
+def read_taxdump(taxdump_dir: Path) -> tuple[dict[int, int], dict[int, str], dict[int, str]]:
+    """Each taxid's parent and rank, and its scientific name. A merged taxid's parent is its new taxid."""
+    parents, ranks, names = {}, {}, {}
+    with open(taxdump_dir / "nodes.dmp") as handle:
+        for line in handle:
+            taxid, parent, rank = line.split("\t|\t", 3)[:3]
+            parents[int(taxid)], ranks[int(taxid)] = int(parent), rank
+    with open(taxdump_dir / "names.dmp") as handle:
+        for line in handle:
+            fields = line.split("\t|\t")
+            if fields[3].startswith("scientific name"):
+                names[int(fields[0])] = fields[1]
+    with open(taxdump_dir / "merged.dmp") as handle:
+        for line in handle:
+            old, new = line.split("\t|\t")[:2]
+            parents[int(old)] = int(new.rstrip("\t|\n"))
+            ranks[int(old)] = "merged"
+    return parents, ranks, names
+
+
+def lineage_taxids(taxonomy: Path, taxids: Path, taxdump_dir: Path) -> tuple[list[tuple[str, str, str]], int]:
+    """Every lineage path tronko-assign can print, with the NCBI taxid of its deepest named rank.
+
+    tronko-assign prints a read's lineage as the first ranks of one reference
+    lineage, so every prefix of every lineage is a key. Each name is found on
+    its record's own NCBI path (from its taxid, or every taxid of a record
+    rCRUX merged), so no name is looked up on its own and a homonym cannot be
+    picked. A path ending in NA takes the taxid of its deepest named rank, and
+    the rank says which. A path no record resolves has an empty taxid. Returns
+    the rows (path, rank, taxid) and how many paths had records disagreeing.
+    """
+    from collections import Counter, defaultdict
+
+    parents, ranks, names = read_taxdump(taxdump_dir)
+
+    def ancestry(taxid: int) -> list[int]:
+        path = []
+        while taxid in parents and taxid != 1:
+            if ranks[taxid] != "merged":
+                path.append(taxid)
+            taxid = parents[taxid]
+        return path
+
+    # rCRUX keeps a merged record's rank when every taxid naming it agrees and
+    # skips those naming none, so a taxid whose path lacks the name is skipped too.
+    def find(paths: list[list[int]], name: str, slot: int) -> int | None:
+        found = set()
+        for path in paths:
+            if hits := [node for node in path if names.get(node) == name]:
+                found.add(next((n for n in hits if ranks[n] in SLOT_RANKS[slot]), hits[0]))
+        return found.pop() if len(found) == 1 else None
+
+    votes: dict[str, Counter] = defaultdict(Counter)
+    with open(taxonomy) as lineages, open(taxids) as ids:
+        for row, id_row in zip(lineages, ids, strict=True):
+            accession, lineage = row.rstrip("\n").split("\t")[:2]
+            id_accession, id_list = id_row.rstrip("\n").split("\t")[:2]
+            if accession != id_accession:
+                raise ValueError(f"{taxonomy.name} and {taxids.name} disagree at {accession}")
+            paths = [ancestry(int(taxid)) for taxid in id_list.split(",") if taxid.isdigit()]
+            names_in = lineage.split(";")
+            deepest = None
+            for slot, name in enumerate(names_in):
+                if name not in ("", "NA"):
+                    taxid = find(paths, name, slot)
+                    deepest = (TAXONOMY_RANKS[slot], taxid) if taxid else None
+                votes[";".join(names_in[: slot + 1])][deepest] += 1
+    rows, conflicts = [], 0
+    for path, counts in sorted(votes.items()):
+        resolved = [(choice, n) for choice, n in counts.most_common() if choice]
+        conflicts += len(resolved) > 1
+        rank, taxid = resolved[0][0] if resolved else ("", "")
+        rows.append((path, rank, str(taxid)))
+    return rows, conflicts
+
+
+def write_lineage_taxids(build_dir: Path, marker: str, taxdump_dir: Path) -> list[str]:
+    """Write <marker>_lineage_taxids.txt beside the taxonomy; the lines to log about it."""
+    rows, conflicts = lineage_taxids(
+        build_dir / f"{marker}_taxonomy.txt", build_dir / f"{marker}_taxids.txt", taxdump_dir
+    )
+    with open(build_dir / lineage_taxids_name(marker), "w") as handle:
+        handle.writelines("\t".join(row) + "\n" for row in rows)
+    # A path of NA only names nothing, so it has no taxid to find.
+    missing = [path for path, _, taxid in rows if not taxid and set(path.split(";")) != {"NA"}]
+    lines = [f"lineage taxids: {len(rows):,} paths, {len(missing):,} without a taxid, {conflicts:,} with records disagreeing"]
+    lines += [f"WARNING: no NCBI taxid for lineage {path}" for path in missing[:20]]
+    if conflicts:
+        lines.append(f"WARNING: {conflicts:,} lineage paths have records naming different taxids; the commonest is kept")
+    return lines
 
 
 def file_digest(path: Path, algorithm: str) -> str:
@@ -263,6 +375,17 @@ def remote_object(remote: dict, md5: str) -> tuple[object, str]:
     return fsspec.filesystem(protocol, **options), f"{root.rstrip('/')}/files/md5/{md5[:2]}/{md5[2:]}"
 
 
+def fetch_taxdump(rcrux_repo: str, commit: str, out_dir: Path) -> dict[str, str]:
+    """The NCBI taxdump rcrux-py tracks in data/ at a commit: nodes, names and merged, by md5."""
+    from dvc.api import DVCFileSystem
+
+    fs = DVCFileSystem(rcrux_repo, rev=commit, remote=RCRUX_REMOTE)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in TAXDUMP_FILES:
+        fs.get_file(f"data/taxdump/{name}", str(out_dir / name))
+    return {f"data/taxdump/{name}": file_digest(out_dir / name, "md5") for name in TAXDUMP_FILES}
+
+
 def read_pointer(pointer_dir: Path) -> tuple[str, str, dict]:
     """The rcrux commit, curated.dvc and the rcrux remote's settings that the launcher saved."""
     from configobj import ConfigObj
@@ -286,7 +409,7 @@ def fetch(
 ) -> dict:
     """Download the curated inputs at an rcrux tag and write inputs.json.
 
-    With pointer_dir, the tag's commit, curated.dvc and the rcrux remote's
+    With pointer_dir, the tag's commit, curated.dvc, data.dvc and the rcrux remote's
     settings come from files there (the release launcher reads them with the
     user's GitHub access), and the files from the remote by hash alone, so
     this needs storage keys and no access to rcrux-py.
@@ -299,6 +422,8 @@ def fetch(
     from rcrux_primers import primers
     out_dir.mkdir(parents=True, exist_ok=True)
     input_files = {}
+    # The taxdump the release's lineages came from, for <marker>_lineage_taxids.txt.
+    taxdump = out_dir / "taxdump"
     if pointer_dir is None:
         from dvc.api import DVCFileSystem
 
@@ -317,6 +442,7 @@ def fetch(
             return fs.read_text(path) if fs.exists(path) else ""
 
         recorded = primers(marker, text(f"{marker_dir}/build.log"), text("src/rcrux/config.py"))
+        input_files |= fetch_taxdump(rcrux_repo, commit, taxdump)
     else:
         commit, curated_dvc, remote = read_pointer(pointer_dir)
         pair = (pointer_dir / "primers").read_text().split() if (pointer_dir / "primers").is_file() else []
@@ -329,6 +455,15 @@ def fetch(
             fs.get_file(remote_object(remote, md5s[name])[1], str(out_dir / name))
             if file_digest(out_dir / name, "md5") != md5s[name]:
                 raise ValueError(f"curated/{name} from the {RCRUX_REMOTE} remote is not md5 {md5s[name]}")
+        data_fs, data_path = remote_object(remote, dvc_out_md5((pointer_dir / "data.dvc").read_text()))
+        data_md5s = {entry["relpath"]: entry["md5"] for entry in json.loads(data_fs.cat_file(data_path))}
+        taxdump.mkdir(exist_ok=True)
+        for name in TAXDUMP_FILES:
+            md5 = data_md5s[f"taxdump/{name}"]
+            data_fs.get_file(remote_object(remote, md5)[1], str(taxdump / name))
+            if file_digest(taxdump / name, "md5") != md5:
+                raise ValueError(f"data/taxdump/{name} from the {RCRUX_REMOTE} remote is not md5 {md5}")
+            input_files[f"data/taxdump/{name}"] = md5
     for name in (fasta_name, taxonomy_name):
         local = out_dir / name
         if local.stat().st_size == 0:
@@ -620,6 +755,8 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         for i in range(len(TAXONOMY_RANKS))
     ]
     no_species = sum(1 for lineage in lineages if len(lineage) < 7 or lineage[6] in ("", "NA"))
+    taxid_table = build_dir / lineage_taxids_name(marker)
+    taxid_rows = [line.rstrip("\n").split("\t") for line in open(taxid_table)] if taxid_table.is_file() else []
 
     warnings = []
     n_in = build.get("input_sequences")
@@ -694,6 +831,11 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
         "## Taxonomy",
         "- distinct names: " + ", ".join(f"{len(names):,} {rank}" for rank, names in zip(TAXONOMY_RANKS, named)),
         f"- sequences with no species name: {no_species:,} of {len(lineages):,}",
+        *(
+            [f"- lineage paths with an NCBI taxid: {sum(1 for row in taxid_rows if row[2]):,} of {len(taxid_rows):,}"]
+            if taxid_rows
+            else []
+        ),
         "",
         f"## Build log warnings: {len(notices)}",
         *(f"- `{line[:200]}`" for line in sorted(set(notices))[:10]),
@@ -756,6 +898,48 @@ def _roll_back(repo: Path, start: str, branch: str, marker: str) -> None:
     for directory in (ignore.parent, ignore.parent.parent):
         if directory.is_dir() and not any(directory.iterdir()):
             directory.rmdir()
+
+
+def push_release(repo: Path, target: str) -> None:
+    # Jetstream's S3 sometimes fails the last step of a large file's multipart
+    # upload; push again sends only what the remote is still missing.
+    for attempt in range(PUSH_ATTEMPTS):
+        try:
+            run(["dvc", "push", "-r", TRONKO_REMOTE, f"{target}.dvc"], cwd=repo)
+            return
+        except RuntimeError:
+            if attempt == PUSH_ATTEMPTS - 1:
+                raise
+            time.sleep(PUSH_RETRY_SECONDS)
+
+
+def add_lineage_taxids(marker: str, tronko_checkout: Path, work: Path, rcrux_repo: str = DEFAULT_RCRUX_REPO) -> list[str]:
+    """Add <marker>_lineage_taxids.txt to a release already committed in tronko_checkout.
+
+    For releases published before the file existed: the checkout has the
+    release's commit checked out (its publish branch). The release is pulled,
+    the table written from its taxonomy, taxids and the taxdump at its rcrux
+    commit, metadata.json updated, and the new tronko/ pushed and committed
+    with the same version and rcrux tag.
+    """
+    repo = tronko_checkout
+    target = f"databases/{marker}/tronko"
+    pointer = repo / f"{target}.dvc"
+    version = read_pointer_version(pointer.read_text())
+    run(["dvc", "pull", "-r", TRONKO_REMOTE, f"{target}.dvc"], cwd=repo)
+    dest = repo / target
+    metadata = json.loads((dest / METADATA_FILENAME).read_text())
+    metadata["input_files"] |= fetch_taxdump(rcrux_repo, metadata["rcrux_commit"], work / "taxdump")
+    lines = write_lineage_taxids(dest, marker, work / "taxdump")
+    name = lineage_taxids_name(marker)
+    metadata["files"][name] = file_digest(dest / name, "sha256")
+    (dest / METADATA_FILENAME).write_text(json.dumps(metadata, indent=2) + "\n")
+    run(["dvc", "add", target], cwd=repo)
+    stamp_pointer(pointer, version, rcrux_tag=metadata["rcrux_tag"])
+    push_release(repo, target)
+    run(["git", "add", f"{target}.dvc"], cwd=repo)
+    run(["git", "commit", "-m", f"Release: add {name}", "-m", "\n".join(lines)], cwd=repo)
+    return lines
 
 
 def publish(
@@ -853,16 +1037,7 @@ def publish(
         target = f"{marker_path}/tronko"
         run(["dvc", "add", target], cwd=repo)
         stamp_pointer(repo / f"{target}.dvc", version, rcrux_tag=inputs["rcrux_tag"])
-        # Jetstream's S3 sometimes fails the last step of a large file's multipart
-        # upload; push again sends only what the remote is still missing.
-        for attempt in range(PUSH_ATTEMPTS):
-            try:
-                run(["dvc", "push", "-r", TRONKO_REMOTE, f"{target}.dvc"], cwd=repo)
-                break
-            except RuntimeError:
-                if attempt == PUSH_ATTEMPTS - 1:
-                    raise
-                time.sleep(PUSH_RETRY_SECONDS)
+        push_release(repo, target)
         run(["git", "add", f"{target}.dvc", f"{marker_path}/.gitignore"], cwd=repo)
         run(
             [
@@ -958,7 +1133,7 @@ def main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument("--out", required=True, type=Path)
     p_fetch.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
     p_fetch.add_argument(
-        "--rcrux-pointer", type=Path, help="Directory with the tag's commit, curated.dvc and dvc_config"
+        "--rcrux-pointer", type=Path, help="Directory with the tag's commit, curated.dvc, data.dvc and dvc_config"
     )
     p_fetch.add_argument("--forward-primer", help="Replaces the primer the release records")
     p_fetch.add_argument("--reverse-primer", help="Replaces the primer the release records")
@@ -990,6 +1165,19 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--replace", action="store_true", help="Replace an earlier tronko/")
     p_pub.add_argument("--push-branch", action="store_true")
     p_pub.add_argument("--dry-run", action="store_true")
+
+    p_lt = sub.add_parser("lineage-taxids", help="Write <marker>_lineage_taxids.txt in a build")
+    p_lt.add_argument("--marker", required=True)
+    p_lt.add_argument("--build-dir", required=True, type=Path)
+    p_lt.add_argument("--taxdump", required=True, type=Path, help="Directory with nodes.dmp, names.dmp, merged.dmp")
+
+    p_add = sub.add_parser(
+        "add-lineage-taxids", help="Add <marker>_lineage_taxids.txt to a release on its checked-out branch"
+    )
+    p_add.add_argument("--marker", required=True)
+    p_add.add_argument("--tronko-checkout", required=True, type=Path)
+    p_add.add_argument("--work", required=True, type=Path, help="Where the taxdump is downloaded")
+    p_add.add_argument("--rcrux-repo", default=DEFAULT_RCRUX_REPO)
 
     p_tag = sub.add_parser("tag", help="Tag the merged commit carrying tronko.dvc")
     p_tag.add_argument("--marker", help="Tag this marker's release")
@@ -1032,6 +1220,10 @@ def main(argv: list[str] | None = None) -> int:
                     f"Committed {args.marker} tronko {metadata['tronko_version']}; open a PR. "
                     f"Merging it tags {metadata['tronko_tag']} (Tag tronko releases workflow)."
                 )
+        elif args.command == "lineage-taxids":
+            print("\n".join(write_lineage_taxids(args.build_dir, args.marker, args.taxdump)))
+        elif args.command == "add-lineage-taxids":
+            print("\n".join(add_lineage_taxids(args.marker, args.tronko_checkout, args.work, args.rcrux_repo)))
         elif args.changed_since:
             names = tag_changed(
                 args.tronko_checkout, args.changed_since, args.ref, not args.no_push

@@ -25,7 +25,7 @@ ops/release/launch.sh --marker CO1_BF3_BR2 --rcrux-tag CO1_BF3_BR2_v1.0.0
 
 It creates the VM, runs the release image there, then pushes the release's branch and opens its PR with your own `git` and `gh`, and deletes the VM. Merging the PR tags the release `<marker>_tronko_<version>`.
 
-The VM gets the storage keys and no GitHub credential. Before launching, the launcher reads the rcrux tag with your `gh`: its commit, the marker's `curated.dvc` and the rcrux remote's settings. The VM then downloads the inputs from that remote by hash. It commits the release on the VM and prints it on the console as a git bundle (a few KB, with its checksum), which the launcher pushes. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
+The VM gets the storage keys and no GitHub credential. Before launching, the launcher reads the rcrux tag with your `gh`: its commit, the marker's `curated.dvc`, `data.dvc` (its NCBI taxdump) and the rcrux remote's settings. The VM then downloads the inputs from that remote by hash. It commits the release on the VM and prints it on the console as a git bundle (a few KB, with its checksum), which the launcher pushes. You can close your laptop while it runs: `launch.sh list` shows the VMs, `launch.sh logs NAME` the build output, and `launch.sh wait NAME` picks one up again. A VM whose build failed is kept, powered off, until `launch.sh delete NAME`.
 
 It takes every build setting below as an option (`--set KEY=VALUE`; not `--config FILE`, which the VM cannot read), plus `--ref` (the tronko commit, branch or tag to build with, default `main`), `--flavor`, `--volume` and `--dry-run`. `launch.sh --help` lists what it needs on your machine.
 
@@ -44,8 +44,8 @@ What each step does:
 
 | Step | What happens |
 |---|---|
-| fetch | Reads the curated LCA FASTA and taxonomy from rcrux-py's DVC remote at `--rcrux-tag`. |
-| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. |
+| fetch | Reads the curated LCA FASTA and taxonomy, and the NCBI taxdump they were named from, from rcrux-py's DVC remote at `--rcrux-tag`. |
+| build | Runs `build-tronko-db.sh`: clustering, alignment, trees, `tronko-build`, `tronko-convert`, bwa and BWA-MEM3 indexes. Then writes `<marker>_taxids.txt` (rCRUX's taxid per sequence) and `<marker>_lineage_taxids.txt` (below). |
 | publish | Pushes the database to this repository's `tronko` DVC remote and commits `databases/<marker>/tronko.dvc` on a `publish/...` branch. |
 | tag | On merge, the "Tag tronko releases" workflow tags the commit. The version is the next after the marker's existing tags, or `--tronko-version`. |
 
@@ -111,6 +111,8 @@ The output is tab-separated, one row per read:
 ```
 Readname	Taxonomic_Path	Score	Forward_Mismatch	Reverse_Mismatch	Tree_Number	Node_Number
 ```
+
+A database built from an rCRUX release has `<marker>_lineage_taxids.txt`: every `Taxonomic_Path` tronko-assign can print, at any rank, with the NCBI taxid of its deepest named rank (`path`, `rank`, `taxid`, tab-separated). Join on `Taxonomic_Path` to give each read a taxid. A path of only `NA` has none. `scripts/tronko_release.py add-lineage-taxids` adds the file to a release published before it existed.
 
 ## Try it on the example data
 

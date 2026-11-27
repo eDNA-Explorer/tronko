@@ -2,7 +2,7 @@
 # above it and passes the result as the server's user data:
 #   IMAGE (the release image, tagged with its tronko commit) REGISTRY_TOKEN
 #   AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GIT_NAME GIT_EMAIL
-#   RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DVC_CONFIG FORWARD_PRIMER REVERSE_PRIMER
+#   RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DATA_DVC RCRUX_DVC_CONFIG FORWARD_PRIMER REVERSE_PRIMER
 #   (the rcrux tag and its primers, read by launch.sh)
 #   ARGS (release_tronko.sh options)
 #
@@ -37,6 +37,7 @@ mkdir -p /work/pointer
 git clone --quiet https://github.com/eDNA-Explorer/tronko.git /work/release
 printf '%s\n' "$RCRUX_COMMIT" > /work/pointer/commit
 printf '%s\n' "$RCRUX_CURATED_DVC" > /work/pointer/curated.dvc
+printf '%s\n' "$RCRUX_DATA_DVC" > /work/pointer/data.dvc
 printf '%s\n' "$RCRUX_DVC_CONFIG" > /work/pointer/dvc_config
 printf '%s %s\n' "$FORWARD_PRIMER" "$REVERSE_PRIMER" > /work/pointer/primers
 echo "$REGISTRY_TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${IMAGE%%/*}"

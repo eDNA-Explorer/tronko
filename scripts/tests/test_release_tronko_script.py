@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import lineage_nodes, write_taxdump
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 REPO = SCRIPTS.parent
@@ -99,6 +100,10 @@ def env(tmp_path, monkeypatch):
         )
     )
     subprocess.run(["dvc", "add", "-q", f"databases/{MARKER}/curated"], cwd=dev, check=True)
+    # The taxdump: S0..S5 are taxids 7000..7005 under genus G (6995).
+    nodes = lineage_nodes(6990, "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S0")[:-1]
+    write_taxdump(dev / "data" / "taxdump", nodes + [(7000 + i, 6995, "species", f"S{i}") for i in range(N_SEQS)])
+    subprocess.run(["dvc", "add", "-q", "data"], cwd=dev, check=True)
     git(dev, "add", "-A")
     git(dev, "commit", "-q", "-m", "rcrux release")
     subprocess.run(["dvc", "push", "-q", "-r", "rcrux"], cwd=dev, check=True)
@@ -144,7 +149,7 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert git(checkout, "ls-remote", "--heads", "origin", branch)
     # The release is stored in tronko's DVC remote; rcrux's holds only its own tier.
     rcrux_objects = sum(1 for p in env["rcrux_remote"].rglob("*") if p.is_file())
-    assert any(env["tronko_remote"].rglob("*")) and rcrux_objects == 3
+    assert any(env["tronko_remote"].rglob("*")) and rcrux_objects == 7  # curated/ and data/taxdump
     meta = published(env)
     assert meta["tronko_sha"] == git(env["tronko"], "rev-parse", "HEAD")
     assert meta["rcrux_tag"] == RCRUX_TAG
@@ -172,6 +177,11 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     taxids = (released / f"{MARKER}_taxids.txt").read_text().splitlines()
     assert taxids[0] == "seq_000\t7000" and len(taxids) == N_SEQS
     assert f"{MARKER}_taxids.txt" in meta["files"]
+    # and the taxid of every lineage path tronko-assign can print
+    table = (released / f"{MARKER}_lineage_taxids.txt").read_text().splitlines()
+    assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G\tgenus\t6995" in table
+    assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S3\tspecies\t7003" in table
+    assert len(table) == 6 + N_SEQS and f"{MARKER}_lineage_taxids.txt" in meta["files"]
     assert (work / "out" / f"{MARKER}.fasta").read_text().count(">") == N_SEQS
     assert "stand-in build" in (work / "build.log").read_text()
 
@@ -368,6 +378,7 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     (work / "input" / "lca_taxonomy.txt").write_text(
         "".join(f"{i}\t1\t{lineage[i]}\n" for i in ids)
     )
+    write_taxdump(work / "input" / "taxdump", [])  # taxid 1 is the root, which names no rank
     (work / "input" / "inputs.json").write_text(
         json.dumps(
             {"rcrux_tag": "EXAMPLE_v1.0.0", "fasta": "lca.fasta", "taxonomy": "lca_taxonomy.txt"},
