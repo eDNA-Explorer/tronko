@@ -100,9 +100,9 @@ def env(tmp_path, monkeypatch):
         )
     )
     subprocess.run(["dvc", "add", "-q", f"databases/{MARKER}/curated"], cwd=dev, check=True)
-    # The taxdump: S0..S5 are taxids 7000..7005 under genus G (6995).
+    # The taxdump: S0..S4 are taxids 7000..7004 under genus G (6995); it lacks S5 (7005).
     nodes = lineage_nodes(6990, "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S0")[:-1]
-    write_taxdump(dev / "data" / "taxdump", nodes + [(7000 + i, 6995, "species", f"S{i}") for i in range(N_SEQS)])
+    write_taxdump(dev / "data" / "taxdump", nodes + [(7000 + i, 6995, "species", f"S{i}") for i in range(N_SEQS - 1)])
     subprocess.run(["dvc", "add", "-q", "data"], cwd=dev, check=True)
     git(dev, "add", "-A")
     git(dev, "commit", "-q", "-m", "rcrux release")
@@ -182,6 +182,10 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G\tgenus\t6995" in table
     assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S3\tspecies\t7003" in table
     assert len(table) == 6 + N_SEQS and f"{MARKER}_lineage_taxids.txt" in meta["files"]
+    # A path without a taxid is logged, so the published build.log and the QC report show it.
+    missing = f"WARNING: no NCBI taxid for lineage Eukaryota;Arthropoda;Insecta;Diptera;F;G;S{N_SEQS - 1}"
+    assert missing in (released / "build.log").read_text()
+    assert missing in git(checkout, "log", "-1", "--format=%b")
     assert (work / "out" / f"{MARKER}.fasta").read_text().count(">") == N_SEQS
     assert "stand-in build" in (work / "build.log").read_text()
 

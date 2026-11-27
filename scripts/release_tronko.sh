@@ -285,7 +285,7 @@ if has_step build; then
             !($1 in taxid) { print "no taxid for " $1 > "/dev/stderr"; exit 1 }
             { print $1, taxid[$1] }' "$SOURCE_TAXONOMY" "$OUT/${MARKER}_taxonomy.txt" \
             > "$OUT/${MARKER}_taxids.txt" || die "could not write ${MARKER}_taxids.txt"
-        run "${TOOL[@]}" lineage-taxids --marker "$MARKER" --build-dir "$OUT" --taxdump "$INPUT/taxdump"
+        run "${TOOL[@]}" lineage-taxids --marker "$MARKER" --build-dir "$OUT" --taxdump "$INPUT/taxdump" 2>&1 | tee -a "$LOG"
     fi
 
     # Every effective setting, and what the build recorded about itself, so
