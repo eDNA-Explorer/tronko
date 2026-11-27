@@ -49,6 +49,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 
@@ -98,34 +99,41 @@ def published_files(build_dir: Path, marker: str) -> list[str]:
     return required_files(marker) + [name for name in optional if (build_dir / name).is_file()]
 
 
-HOLDOUT_FILES = ("tree_list.txt", "reference_tree.txt.gz", "build_metadata.json")
+# What a holdout rebuild reads besides the database: three files the build leaves,
+# and the final partitions' taxonomy, packed by write_partition_archive.
+HOLDOUT_BUILD_FILES = ("tree_list.txt", "reference_tree.txt.gz", "build_metadata.json")
+HOLDOUT_ARCHIVE = "partition_taxonomy.tar.gz"
+HOLDOUT_FILES = (*HOLDOUT_BUILD_FILES, HOLDOUT_ARCHIVE)
 # data-pipelines' holdout rebuild looks for partition files in the database
 # directory and in any partitions_*/ under it.
 HOLDOUT_PARTITIONS = "partitions_final"
 
 
-def holdout_files(build_dir: Path) -> dict[str, Path]:
-    """What a holdout rebuild reads besides the database, as {path in the release:
-    file in the build}: the text tree, the list of its trees, the build's flags and
-    each final partition's taxonomy. A rebuild removes records, then re-aligns and
-    re-trees only the partitions that lose any (community-lib, edna-explorer-data-pipelines).
+def write_partition_archive(build_dir: Path) -> int:
+    """Pack each final partition's taxonomy into one file and return how many.
+
+    They are what a holdout rebuild reads to find the partitions that lose
+    records. One file, because a release has thousands of them and the storage
+    refuses that many small uploads (429 Too Many Requests).
     """
     partitions = re.findall(
         r"RAxML_bestTree\.(partition\d+)\.reroot", (build_dir / "tree_list.txt").read_text()
     )
-    return {name: build_dir / name for name in HOLDOUT_FILES} | {
-        f"{HOLDOUT_PARTITIONS}/{name}_taxonomy.txt": build_dir / f"{name}_taxonomy.txt"
-        for name in partitions
-    }
+    with tarfile.open(build_dir / HOLDOUT_ARCHIVE, "w:gz") as archive:
+        for name in partitions:
+            archive.add(build_dir / f"{name}_taxonomy.txt", f"{HOLDOUT_PARTITIONS}/{name}_taxonomy.txt")
+    return len(partitions)
 
 
 def holdout_master(build_dir: Path, marker: str, out: Path) -> None:
-    """Links to a build's published files, laid out as a pulled release's tronko/
-    and tronko_holdout/ in one directory: what a holdout rebuild takes as its master."""
-    (out / HOLDOUT_PARTITIONS).mkdir(parents=True)
-    sources = {name: build_dir / name for name in published_files(build_dir, marker)}
-    for name, source in (sources | holdout_files(build_dir)).items():
-        (out / name).symlink_to(source.resolve())
+    """A build's published files as a holdout rebuild takes them: links laid out as a
+    pulled release's tronko/ and tronko_holdout/ in one directory, the archive unpacked."""
+    out.mkdir(parents=True)
+    write_partition_archive(build_dir)
+    for name in (*published_files(build_dir, marker), *HOLDOUT_FILES):
+        (out / name).symlink_to((build_dir / name).resolve())
+    with tarfile.open(out / HOLDOUT_ARCHIVE) as archive:
+        archive.extractall(out)
 
 
 def file_digest(path: Path, algorithm: str) -> str:
@@ -422,9 +430,8 @@ def fetch(
 
 def validate_build(build_dir: Path, marker: str) -> None:
     problems = []
-    if not (build_dir / "tree_list.txt").is_file():
-        raise ValueError(f"Build in {build_dir} is incomplete: tree_list.txt missing")
-    for name, path in ({n: build_dir / n for n in required_files(marker)} | holdout_files(build_dir)).items():
+    for name in (*required_files(marker), *HOLDOUT_BUILD_FILES):
+        path = build_dir / name
         if not path.is_file():
             problems.append(f"{name} missing")
         elif path.stat().st_size == 0:
@@ -469,6 +476,7 @@ def build_metadata(
     files = {
         name: file_digest(build_dir / name, "sha256") for name in published_files(build_dir, marker)
     }
+    partitions = write_partition_archive(build_dir)
     tree = build_dir / "reference_tree.trkb"
     return {
         "schema_version": SCHEMA_VERSION,
@@ -484,7 +492,7 @@ def build_metadata(
         "files": files,
         "holdout_files": {
             **{name: file_digest(build_dir / name, "sha256") for name in HOLDOUT_FILES},
-            HOLDOUT_PARTITIONS: len(holdout_files(build_dir)) - len(HOLDOUT_FILES),
+            HOLDOUT_PARTITIONS: partitions,
         },
         "row_counts": {
             "fasta_records": count_fasta_records(build_dir / f"{marker}.fasta"),
@@ -794,7 +802,7 @@ def release_report(metadata: dict, build_dir: Path, build_log: Path, previous: d
             f"- `{name}` {(build_dir / name).stat().st_size:,} bytes `{metadata['holdout_files'][name]}`"
             for name in HOLDOUT_FILES
         ),
-        f"- `{HOLDOUT_PARTITIONS}/` {metadata['holdout_files'][HOLDOUT_PARTITIONS]:,} partition taxonomy files",
+        f"- {metadata['holdout_files'][HOLDOUT_PARTITIONS]:,} partition taxonomy files in `{HOLDOUT_ARCHIVE}`",
         "",
         "</details>",
     ]
@@ -985,9 +993,9 @@ def publish(
         holdout = repo / marker_path / "tronko_holdout"
         if holdout.exists():
             shutil.rmtree(holdout)
-        (holdout / HOLDOUT_PARTITIONS).mkdir(parents=True)
-        for name, source in holdout_files(build_dir).items():
-            shutil.copy2(source, holdout / name)
+        holdout.mkdir(parents=True)
+        for name in HOLDOUT_FILES:
+            shutil.copy2(build_dir / name, holdout / name)
 
         for name in RELEASE_DIRS:
             target = f"{marker_path}/{name}"

@@ -1,6 +1,7 @@
 import datetime
 import json
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ def write_build(build_dir: Path, marker: str = MARKER) -> Path:
     )
     for name in ("reference_tree.txt.gz", "build_metadata.json", *(f"partition{n}_taxonomy.txt" for n in range(3))):
         (build_dir / name).write_text(f"{name}\n")
+    tr.write_partition_archive(build_dir)
     return build_dir
 
 
@@ -259,17 +261,18 @@ def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_pa
     # with it, what a holdout rebuild reads: the final partitions' taxonomy, not partition0's
     assert f"databases/{MARKER}/tronko_holdout.dvc" in git(checkout, "show", "--name-only", "--format=")
     holdout = checkout / "databases" / MARKER / "tronko_holdout"
-    assert sorted(str(p.relative_to(holdout)) for p in holdout.rglob("*") if p.is_file()) == [
-        "build_metadata.json", "partitions_final/partition1_taxonomy.txt",
-        "partitions_final/partition2_taxonomy.txt", "reference_tree.txt.gz", "tree_list.txt",
-    ]  # fmt: skip
+    assert sorted(p.name for p in holdout.iterdir()) == sorted(tr.HOLDOUT_FILES)
+    with tarfile.open(holdout / tr.HOLDOUT_ARCHIVE) as archive:
+        assert archive.getnames() == [f"partitions_final/partition{n}_taxonomy.txt" for n in (1, 2)]
     assert meta["holdout_files"]["partitions_final"] == 2
     assert tr.read_pointer_version((checkout / "databases" / MARKER / "tronko_holdout.dvc").read_text()) == "v1.0.0"
-    # the two directories in one are the master a rebuild reads; holdout-master links the same layout
-    tr.holdout_master(build, MARKER, tmp_path / "master")
-    pulled = {str(p.relative_to(d)) for d in (published, holdout) for p in d.rglob("*") if p.is_file()}
-    linked = {str(p.relative_to(tmp_path / "master")) for p in (tmp_path / "master").rglob("*") if p.is_file()}
-    assert linked == pulled - {"build.log", "build_params.json", "metadata.json"}
+    # the two directories in one, the archive unpacked, are the master a rebuild reads;
+    # holdout-master makes the same layout from the build
+    master = tmp_path / "master"
+    tr.holdout_master(build, MARKER, master)
+    pulled = {p.name for d in (published, holdout) for p in d.iterdir()}
+    assert {p.name for p in master.iterdir()} == pulled - {"build.log", "build_params.json", "metadata.json"} | {"partitions_final"}
+    assert sorted(p.name for p in (master / "partitions_final").iterdir()) == ["partition1_taxonomy.txt", "partition2_taxonomy.txt"]
     assert meta["rcrux_tag"] == f"{MARKER}_v1.0.0"
     assert any(rcrux_repo["tronko_remote"].rglob("*")), "build was not pushed to tronko's remote"
     assert sorted(p for p in remote.rglob("*") if p.is_file()) == rcrux_objects, (

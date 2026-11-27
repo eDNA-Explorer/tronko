@@ -53,12 +53,13 @@ The image is `linux/amd64` only, so every release comes from one platform. An ar
 
 ### Holdout rebuilds from a release
 
-A holdout analysis removes records from a database and rebuilds only the partitions that lose any (`build_holdout_tronko_reference`, community-lib in edna-explorer-data-pipelines). Besides the database it reads `tree_list.txt`, `reference_tree.txt.gz`, `build_metadata.json` and each final partition's `partition<N>_taxonomy.txt`. A release publishes those as `databases/<marker>/tronko_holdout/`, tracked by `tronko_holdout.dvc` in the same commit and under the same tag as `tronko.dvc`. The rebuild's master directory is the two pulled into one:
+A holdout analysis removes records from a database and rebuilds only the partitions that lose any (`build_holdout_tronko_reference`, community-lib in edna-explorer-data-pipelines). Besides the database it reads `tree_list.txt`, `reference_tree.txt.gz`, `build_metadata.json` and each final partition's `partition<N>_taxonomy.txt`. A release publishes those as `databases/<marker>/tronko_holdout/`, tracked by `tronko_holdout.dvc` in the same commit and under the same tag as `tronko.dvc`. The partition taxonomies are in one file, `partition_taxonomy.tar.gz`: there are thousands, and the storage refuses that many small uploads. The rebuild's master directory is the two pulled into one, with the archive unpacked:
 
 ```
 git checkout <marker>_tronko_<version>
 dvc pull -r tronko databases/<marker>/tronko.dvc databases/<marker>/tronko_holdout.dvc
 mkdir master && cp -Rs "$PWD"/databases/<marker>/tronko/* "$PWD"/databases/<marker>/tronko_holdout/* master/
+tar -xzf master/partition_taxonomy.tar.gz -C master
 ```
 
 Each release's own assignment check rebuilds its holdout references from that layout. The partitions' alignments and trees are not published, so the rebuild re-aligns and re-trees (its default) and cannot prune instead.
