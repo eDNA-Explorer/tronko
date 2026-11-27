@@ -145,11 +145,13 @@ case " ${ARGS[*]} " in
 esac
 
 # The rcrux tag, read here with your GitHub access so the VM needs none: its
-# commit, the marker's curated.dvc (the hash of the inputs) and the remote's settings.
+# commit, the marker's curated.dvc (the hash of the inputs), data.dvc (the
+# taxdump's) and the remote's settings.
 RCRUX_COMMIT="$(gh api "repos/eDNA-Explorer/rcrux-py/commits/$RCRUX_TAG" --jq .sha 2> /dev/null)" \
     || die "no rcrux-py tag $RCRUX_TAG"
 rcrux_file() { gh api "repos/eDNA-Explorer/rcrux-py/contents/$1?ref=$RCRUX_COMMIT" -H "Accept: application/vnd.github.raw"; }
 RCRUX_CURATED_DVC="$(rcrux_file "databases/$MARKER/curated.dvc")" || die "$RCRUX_TAG has no databases/$MARKER/curated.dvc"
+RCRUX_DATA_DVC="$(rcrux_file data.dvc)" || die "$RCRUX_TAG has no data.dvc (its taxdump)"
 RCRUX_DVC_CONFIG="$(rcrux_file .dvc/config)"
 if [ -z "$FORWARD_PRIMER" ] || [ -z "$REVERSE_PRIMER" ]; then
     recorded="$(python3 "$HERE/../../scripts/rcrux_primers.py" "$MARKER" \
@@ -176,7 +178,7 @@ trap 'rm -f "$USER_DATA"' EXIT
 {
     echo '#!/bin/bash'
     for key in IMAGE REGISTRY_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GIT_NAME GIT_EMAIL \
-            RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DVC_CONFIG FORWARD_PRIMER REVERSE_PRIMER; do
+            RCRUX_COMMIT RCRUX_CURATED_DVC RCRUX_DATA_DVC RCRUX_DVC_CONFIG FORWARD_PRIMER REVERSE_PRIMER; do
         printf '%s=%q\n' "$key" "${!key}"
     done
     printf 'ARGS=(%s)\n' "$(printf '%q ' "${ARGS[@]}")"

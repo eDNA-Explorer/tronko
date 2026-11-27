@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+import lineage_taxids as lt
 import tronko_release as tr
+from conftest import lineage_nodes, write_taxdump
 
 MARKER = "CO1_Test"
 
@@ -167,6 +169,9 @@ def rcrux_repo(tmp_path):
     (curated / "lca.fasta").write_text(">l1\nACGT\n")
     (curated / "lca_taxonomy.txt").write_text("l1\tE;P;C;O;F;G;NA\n")
     dvc(origin, "add", f"databases/{MARKER}/curated")
+    # rcrux-py tracks the NCBI taxdump its lineages came from in data/.
+    write_taxdump(origin / "data" / "taxdump", lineage_nodes(100, "E;P;C;O;F;G;S"))
+    dvc(origin, "add", "data")
     git(origin, "add", "-A")
     git(origin, "commit", "-q", "-m", "rcrux build")
     dvc(origin, "push", "-r", "rcrux")
@@ -202,7 +207,11 @@ def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_pa
     assert inputs["rcrux_commit"] == git(origin, "rev-parse", f"{MARKER}_v1.0.0")
     assert inputs["input_md5"].endswith(".dir")
     assert inputs["input_tier"] == "lca"
-    assert set(inputs["input_files"]) == {"curated/lca.fasta", "curated/lca_taxonomy.txt"}
+    assert set(inputs["input_files"]) == {
+        "curated/lca.fasta", "curated/lca_taxonomy.txt",
+        *(f"data/taxdump/{name}" for name in lt.TAXDUMP_FILES),
+    }  # fmt: skip
+    assert (work / "taxdump" / "nodes.dmp").is_file()
     assert (work / "lca.fasta").read_text() == ">l1\nACGT\n"
     assert json.loads((work / "inputs.json").read_text()) == inputs
 
@@ -531,15 +540,18 @@ def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_rep
     pointer.mkdir()
     (pointer / "commit").write_text(git(origin, "rev-parse", f"{tag}^{{commit}}") + "\n")
     (pointer / "curated.dvc").write_text(git(origin, "show", f"{tag}:databases/{MARKER}/curated.dvc"))
+    (pointer / "data.dvc").write_text(git(origin, "show", f"{tag}:data.dvc"))
     (pointer / "dvc_config").write_text(git(origin, "show", f"{tag}:.dvc/config"))
 
     by_git = tr.fetch(MARKER, tag, tmp_path / "git", rcrux_repo=str(origin))
     by_pointer = tr.fetch(MARKER, tag, tmp_path / "pointer-out", rcrux_repo=str(origin), pointer_dir=pointer)
     assert by_pointer == by_git
-    assert (tmp_path / "pointer-out" / "lca.fasta").read_bytes() == (tmp_path / "git" / "lca.fasta").read_bytes()
+    for name in ("lca.fasta", "taxdump/nodes.dmp"):
+        assert (tmp_path / "pointer-out" / name).read_bytes() == (tmp_path / "git" / name).read_bytes()
 
     # A file that is not the one the listing names is refused.
-    listing = json.loads(next(rcrux_repo["remote"].rglob("*.dir")).read_text())
+    listings = [json.loads(p.read_text()) for p in rcrux_repo["remote"].rglob("*.dir")]
+    listing = next(entries for entries in listings if any(e["relpath"] == "lca.fasta" for e in entries))
     lca = next(e for e in listing if e["relpath"] == "lca.fasta")
     stored = rcrux_repo["remote"] / "files" / "md5" / lca["md5"][:2] / lca["md5"][2:]
     stored.chmod(0o644)  # DVC stores objects read-only
@@ -574,3 +586,112 @@ def test_clades_reads_inner_labels_and_trailing_newlines():
     assert leaves == ["a", "b", "c"]
     assert spans == {(0, 0), (1, 1), (2, 2), (0, 1), (0, 2)}
     assert lengths == [1, 2, 0.5, 1]
+
+
+def _taxid_tree(tmp_path: Path) -> Path:
+    """Eukaryota..Gen with species a and b, a subspecies of a, subgenus Gen holding
+    species c, a species of order O with no family or genus, and a homonym genus
+    Gen under Bacteria; taxid 99 was merged into b."""
+    nodes = [
+        *lineage_nodes(10, "Eukaryota;P;C;O;F;Gen;Gen a"),
+        (17, 15, "species", "Gen b"),
+        (18, 16, "subspecies", "Gen a subsp. x"),
+        (19, 15, "subgenus", "Gen"),
+        (20, 19, "species", "Gen c"),
+        (21, 13, "species", "O sp. 1"),
+        *lineage_nodes(30, "Bacteria;Q;D;R;H;Gen;Gen z"),
+    ]
+    return write_taxdump(tmp_path / "taxdump", nodes, merged=[(99, 17)])
+
+
+def test_lineage_taxids_names_every_path_tronko_assign_can_print(tmp_path):
+    taxdump = _taxid_tree(tmp_path)
+    records = [
+        ("r1", "18", "Eukaryota;P;C;O;F;Gen;Gen a"),  # a subspecies taxid: the species is a
+        ("r2", "99", "Eukaryota;P;C;O;F;Gen;Gen b"),  # merged into b
+        ("r3", "20", "Eukaryota;P;C;O;F;Gen;Gen c"),  # under subgenus Gen: the genus is 15
+        ("r4", "16,17,21", "Eukaryota;P;C;O;F;Gen;NA"),  # rCRUX's LCA: 21 names no F or Gen
+        ("r5", "36", "Bacteria;Q;D;R;H;Gen;Gen z"),  # the homonym genus
+        ("r6", "16", "NA;NA;NA;NA;NA;NA;NA"),
+        ("r7", "16", "Eukaryota;P;C;O;F;Gen;Not here"),
+    ]
+    (tmp_path / "tax.txt").write_text("".join(f"{a}\t{lineage}\n" for a, _, lineage in records))
+    (tmp_path / "ids.txt").write_text("".join(f"{a}\t{ids}\n" for a, ids, _ in records))
+
+    rows, conflicts = lt.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", taxdump)
+    table = {path: (rank, taxid) for path, rank, taxid in rows}
+    assert conflicts == 0
+    assert table["Eukaryota"] == ("domain", "10")
+    assert table["Eukaryota;P;C;O;F;Gen"] == ("genus", "15")
+    assert table["Eukaryota;P;C;O;F;Gen;Gen a"] == ("species", "16")
+    assert table["Eukaryota;P;C;O;F;Gen;Gen b"] == ("species", "17")
+    assert table["Eukaryota;P;C;O;F;Gen;Gen c"] == ("species", "20")
+    assert table["Eukaryota;P;C;O;F;Gen;NA"] == ("genus", "15")
+    assert table["Bacteria;Q;D;R;H;Gen"] == ("genus", "35")
+    assert table["NA;NA;NA;NA;NA;NA;NA"] == ("", "")
+    assert table["Eukaryota;P;C;O;F;Gen;Not here"] == ("", "")
+    # every prefix of every lineage, once
+    assert len(rows) == len({";".join(l.split(";")[: i + 1]) for _, _, l in records for i in range(7)})
+
+
+def test_write_lineage_taxids_warns_of_paths_without_a_taxid(tmp_path):
+    taxdump = _taxid_tree(tmp_path)
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / f"{MARKER}_taxonomy.txt").write_text("r1\tEukaryota;P;C;O;F;Gen;Not here\nr2\tNA;NA;NA;NA;NA;NA;NA\n")
+    (build / f"{MARKER}_taxids.txt").write_text("r1\t16\nr2\t16\n")
+    lines = lt.write_lineage_taxids(build, MARKER, taxdump)
+    assert lines[0] == "lineage taxids: 14 paths, 1 without a taxid, 0 with records disagreeing"
+    assert lines[1:] == ["WARNING: no NCBI taxid for lineage Eukaryota;P;C;O;F;Gen;Not here"]
+    assert "Eukaryota;P;C;O;F;Gen\tgenus\t15\n" in (build / f"{MARKER}_lineage_taxids.txt").read_text()
+
+
+def test_lineage_taxids_refuses_taxids_out_of_step_with_the_taxonomy(tmp_path):
+    (tmp_path / "tax.txt").write_text("a\tE\nb\tE\n")
+    (tmp_path / "ids.txt").write_text("b\t1\na\t1\n")
+    with pytest.raises(ValueError, match="disagree at a"):
+        lt.lineage_taxids(tmp_path / "tax.txt", tmp_path / "ids.txt", _taxid_tree(tmp_path))
+
+
+def test_add_lineage_taxids_adds_the_table_to_a_published_release(tmp_path, rcrux_repo):
+    work = tmp_path / "work"
+    tr.fetch(MARKER, f"{MARKER}_v1.0.0", work, rcrux_repo=str(rcrux_repo["origin"]))
+    checkout = tmp_path / "tronko-checkout"
+    git(tmp_path, "clone", "-q", str(rcrux_repo["tronko"]), str(checkout))
+    build = write_build(tmp_path / "build")
+    (build / f"{MARKER}_taxids.txt").write_text("a\t106\nb\t105\n")
+    log = tmp_path / "build.log"
+    log.write_text("tronko-build -y -u 0.1\n")
+    tr.publish(MARKER, build, work / "inputs.json", log, write_params(tmp_path), "v1.0.0", checkout)
+    pointer = checkout / "databases" / MARKER / "tronko.dvc"
+    before = pointer.read_text()
+    subprocess.run(["rm", "-rf", str(checkout / "databases" / MARKER / "tronko"), str(checkout / ".dvc" / "cache")], check=True)
+
+    lines = tr.add_lineage_taxids(MARKER, checkout, tmp_path / "add", rcrux_repo=str(rcrux_repo["origin"]))
+    assert lines == ["lineage taxids: 8 paths, 1 without a taxid, 0 with records disagreeing",
+                     "WARNING: no NCBI taxid for lineage E;P;C;O;F;G;T"]  # fmt: skip
+    after = pointer.read_text()
+    assert after != before
+    assert tr.read_pointer_version(after) == "v1.0.0" and f"rcrux_tag: {MARKER}_v1.0.0" in after
+    assert git(checkout, "status", "--porcelain") == ""
+    assert git(checkout, "log", "-1", "--format=%s") == f"Release: add {MARKER}_lineage_taxids.txt"
+    released = checkout / "databases" / MARKER / "tronko"
+    meta = json.loads((released / "metadata.json").read_text())
+    assert f"{MARKER}_lineage_taxids.txt" in meta["files"]
+    assert "data/taxdump/nodes.dmp" in meta["input_files"]
+    assert "E;P;C;O;F;G;S\tspecies\t106\n" in (released / f"{MARKER}_lineage_taxids.txt").read_text()
+    # what was pushed is what a fresh pull gets
+    subprocess.run(["rm", "-rf", str(released), str(checkout / ".dvc" / "cache")], check=True)
+    dvc(checkout, "pull", "-r", "tronko", f"databases/{MARKER}/tronko.dvc")
+    assert (released / f"{MARKER}_lineage_taxids.txt").is_file()
+
+
+def test_release_report_counts_lineage_paths_with_a_taxid(tmp_path):
+    build = write_build(tmp_path / "build")
+    (build / f"{MARKER}_lineage_taxids.txt").write_text("E\tdomain\t1\nE;P\tphylum\t2\nNA\t\t\n")
+    log = tmp_path / "build.log"
+    log.write_text("x\n")
+    meta = {"marker": MARKER, "rcrux_tag": "t", "input_tier": "lca", "rcrux_commit": "c" * 12,
+            "tronko_sha": "a" * 12, "row_counts": {"fasta_records": 2, "taxonomy_rows": 2},
+            "build_params": {}, "files": {}}  # fmt: skip
+    assert "- lineage paths with an NCBI taxid: 2 of 3" in tr.release_report(meta, build, log, None)

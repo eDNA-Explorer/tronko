@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import lineage_nodes, write_taxdump
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 REPO = SCRIPTS.parent
@@ -22,14 +23,21 @@ MARKER = "CO1_SCRIPT"
 RCRUX_TAG = f"{MARKER}_v1.0.0"
 N_SEQS = 6
 
-# Copies the input through; DROP_LAST=1 leaves the last sequence out.
+# Copies the input through, as the real build's outputs; DROP_LAST=1 leaves the last
+# sequence out. A taxonomy with taxids gets the taxid files, as the real build writes them.
 BUILD_STUB = r"""#!/bin/bash
 printf '%s\n' "$@" > "$CALLS_DIR/build.args"
-while [ $# -gt 0 ]; do case "$1" in -f) f="$2"; shift 2;; -t) t="$2"; shift 2;; -o) o="$2"; shift 2;; -p) p="$2"; shift 2;; *) shift;; esac; done
+while [ $# -gt 0 ]; do case "$1" in -f) f="$2"; shift 2;; -t) t="$2"; shift 2;; -o) o="$2"; shift 2;; -p) p="$2"; shift 2;; --taxdump) d="$2"; shift 2;; *) shift;; esac; done
 mkdir -p "$o"
 echo "stand-in build of $p"
 if [ -n "${DROP_LAST:-}" ]; then sed '$d' "$f" | sed '$d' > "$o/$p.fasta"; else cp "$f" "$o/$p.fasta"; fi
-cp "$t" "$o/${p}_taxonomy.txt"
+if [ -n "${d:-}" ]; then
+    cut -f1,3 "$t" > "$o/${p}_taxonomy.txt"
+    cut -f1,2 "$t" > "$o/${p}_taxids.txt"
+    python3 "$LINEAGE_TAXIDS" --marker "$p" --build-dir "$o" --taxdump "$d"
+else
+    cp "$t" "$o/${p}_taxonomy.txt"
+fi
 for e in amb ann bwt pac sa bwt.2bit.64; do echo index > "$o/$p.fasta.$e"; done
 echo TRKB > "$o/reference_tree.trkb"
 echo '{"pipeline": "stand-in", "tree_tool": "veryfasttree"}' > "$o/build_metadata.json"
@@ -55,11 +63,12 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTHON", sys.executable)
     monkeypatch.setenv("BUILD_TRONKO_DB", str(stub))
     monkeypatch.setenv("CALLS_DIR", str(tmp_path))
+    monkeypatch.setenv("LINEAGE_TAXIDS", str(SCRIPTS / "lineage_taxids.py"))
 
     # A tronko checkout holding the scripts, committed, so its HEAD is the sha.
     tronko = tmp_path / "tronko"
     (tronko / "scripts").mkdir(parents=True)
-    for name in ("release_tronko.sh", "tronko_release.py", "rcrux_primers.py", "tronko_build.conf"):
+    for name in ("release_tronko.sh", "tronko_release.py", "lineage_taxids.py", "rcrux_primers.py", "tronko_build.conf"):
         shutil.copy2(SCRIPTS / name, tronko / "scripts" / name)
     (tronko / "lib").mkdir()
     shutil.copy2(REPO / "lib" / "tronko-db.sh", tronko / "lib" / "tronko-db.sh")
@@ -99,6 +108,10 @@ def env(tmp_path, monkeypatch):
         )
     )
     subprocess.run(["dvc", "add", "-q", f"databases/{MARKER}/curated"], cwd=dev, check=True)
+    # The taxdump: S0..S4 are taxids 7000..7004 under genus G (6995); it lacks S5 (7005).
+    nodes = lineage_nodes(6990, "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S0")[:-1]
+    write_taxdump(dev / "data" / "taxdump", nodes + [(7000 + i, 6995, "species", f"S{i}") for i in range(N_SEQS - 1)])
+    subprocess.run(["dvc", "add", "-q", "data"], cwd=dev, check=True)
     git(dev, "add", "-A")
     git(dev, "commit", "-q", "-m", "rcrux release")
     subprocess.run(["dvc", "push", "-q", "-r", "rcrux"], cwd=dev, check=True)
@@ -144,7 +157,7 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert git(checkout, "ls-remote", "--heads", "origin", branch)
     # The release is stored in tronko's DVC remote; rcrux's holds only its own tier.
     rcrux_objects = sum(1 for p in env["rcrux_remote"].rglob("*") if p.is_file())
-    assert any(env["tronko_remote"].rglob("*")) and rcrux_objects == 3
+    assert any(env["tronko_remote"].rglob("*")) and rcrux_objects == 7  # curated/ and data/taxdump
     meta = published(env)
     assert meta["tronko_sha"] == git(env["tronko"], "rev-parse", "HEAD")
     assert meta["rcrux_tag"] == RCRUX_TAG
@@ -161,10 +174,10 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     assert args[args.index("--tree-tool") + 1] == "veryfasttree"
     assert "-J" not in args  # no cap: Step 2's thread shares decide
 
-    # The taxonomy is accession and lineage, built and published; rCRUX's taxids
-    # are published beside it.
-    taxonomy = (work / "taxonomy.2col.txt").read_text().splitlines()
-    assert len(taxonomy) == N_SEQS and all(line.count("\t") == 1 for line in taxonomy)
+    # The build gets rCRUX's taxonomy as it is, with the taxdump, and publishes the
+    # taxonomy as accession and lineage with the taxids beside it.
+    assert args[args.index("-t") + 1].endswith("lca_taxonomy.txt")
+    assert args[args.index("--taxdump") + 1] == str(work / "input" / "taxdump")
     released = checkout / "databases" / MARKER / "tronko"
     assert (released / f"{MARKER}_taxonomy.txt").read_text().splitlines()[0] == (
         "seq_000\tEukaryota;Arthropoda;Insecta;Diptera;F;G;S0"
@@ -172,6 +185,15 @@ def test_one_cluster_build_is_published_with_its_settings(env):
     taxids = (released / f"{MARKER}_taxids.txt").read_text().splitlines()
     assert taxids[0] == "seq_000\t7000" and len(taxids) == N_SEQS
     assert f"{MARKER}_taxids.txt" in meta["files"]
+    # and the taxid of every lineage path tronko-assign can print
+    table = (released / f"{MARKER}_lineage_taxids.txt").read_text().splitlines()
+    assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G\tgenus\t6995" in table
+    assert "Eukaryota;Arthropoda;Insecta;Diptera;F;G;S3\tspecies\t7003" in table
+    assert len(table) == 6 + N_SEQS and f"{MARKER}_lineage_taxids.txt" in meta["files"]
+    # A path without a taxid is logged, so the published build.log and the QC report show it.
+    missing = f"WARNING: no NCBI taxid for lineage Eukaryota;Arthropoda;Insecta;Diptera;F;G;S{N_SEQS - 1}"
+    assert missing in (released / "build.log").read_text()
+    assert missing in git(checkout, "log", "-1", "--format=%b")
     assert (work / "out" / f"{MARKER}.fasta").read_text().count(">") == N_SEQS
     assert "stand-in build" in (work / "build.log").read_text()
 
@@ -368,6 +390,7 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     (work / "input" / "lca_taxonomy.txt").write_text(
         "".join(f"{i}\t1\t{lineage[i]}\n" for i in ids)
     )
+    write_taxdump(work / "input" / "taxdump", [])  # taxid 1 is the root, which names no rank
     (work / "input" / "inputs.json").write_text(
         json.dumps(
             {"rcrux_tag": "EXAMPLE_v1.0.0", "fasta": "lca.fasta", "taxonomy": "lca_taxonomy.txt"},
@@ -395,10 +418,15 @@ def test_the_real_build_makes_a_database_from_a_small_input(tmp_path, monkeypatc
     taxonomy = (out / "EXAMPLE_taxonomy.txt").read_text().splitlines()
     assert len(taxonomy) == len(ids)
     assert all(line.split("\t")[1:] == [lineage[line.split("\t")[0]]] for line in taxonomy)
-    # one taxid row per taxonomy row, in the same order
+    # one taxid row per taxonomy row, in the same order, and a row per lineage path
     assert (out / "EXAMPLE_taxids.txt").read_text().splitlines() == [
         line.split("\t")[0] + "\t1" for line in taxonomy
     ]
+    paths = {";".join(line.split("\t")[1].split(";")[: i + 1]) for line in taxonomy for i in range(7)}
+    table = (out / "EXAMPLE_lineage_taxids.txt").read_text().splitlines()
+    assert {row.split("\t")[0] for row in table} == paths
+    assert all(row.endswith("\t\t") for row in table)  # taxid 1 is the root, which names no rank
+    assert "lineage taxids:" in (work / "build.log").read_text()
     build = json.loads((work / "params.json").read_text())["build"]
     assert build["tree_tool"] == "raxml" and build["reference_sequences"] == len(ids)
     assert build["tronko_build_args"] == "--one-thread-below 0"
@@ -446,3 +474,22 @@ def test_the_build_stops_at_preflight_when_the_check_cannot_score(env, tmp_path,
     assert result.returncode != 0
     assert "the assignment check needs community-lib and a working polars" in result.stderr
     assert "==> Build" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("taxonomy", "taxdump", "message"),
+    [("a\t5\tE;P;C;O;F;G;S\n", False, "needs --taxdump DIR"),
+     ("a\tE;P;C;O;F;G;S\n", True, "--taxdump needs a taxonomy with taxids"),
+     ("a\tE\nb\t5\tE\n", False, "must have 2 or 3 tab-separated columns")],
+)  # fmt: skip
+def test_build_script_checks_its_taxonomy_and_taxdump_first(tmp_path, taxonomy, taxdump, message):
+    """build-tronko-db.sh stops on these before it looks for its tools."""
+    (tmp_path / "in.fasta").write_text(">a\nACGT\n")
+    (tmp_path / "tax.txt").write_text(taxonomy)
+    extra = ["--taxdump", str(write_taxdump(tmp_path / "taxdump", []))] if taxdump else []
+    result = subprocess.run(
+        ["bash", str(REPO / "build-tronko-db.sh"), "-f", str(tmp_path / "in.fasta"),
+         "-t", str(tmp_path / "tax.txt"), "-o", str(tmp_path / "out"), *extra],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode == 1 and message in result.stderr
