@@ -533,8 +533,9 @@ done
 # A job's thread count is fixed when it starts, so the clusters are launched
 # largest first, each with a share of THREADS in proportion to n^1.5 (FastTree's
 # time grows about as N^1.5 log N), and a job starts once its threads are free.
-# The shares add up to THREADS, so they set how many run at once; -J can cap it.
-# With more clusters than threads every cluster gets 1 and they take turns.
+# A share never shrinks below its size's due: when the one-thread minimum makes
+# them add up to more than THREADS, the small clusters take turns on what the
+# large ones leave free. -J can cap how many run at once.
 # With -J 1 each cluster gets every thread. Skipped and cached clusters are left
 # out first, so a resumed run shares THREADS among the clusters it still builds.
 TO_BUILD=()
@@ -558,17 +559,8 @@ CLUSTER_PLAN=()
                 if (t[i] < 1) t[i] = 1
                 s += t[i]
             }
-            # Shares add up to exactly T (when there are no more clusters than
-            # threads): spare threads go to the largest clusters, one each in
-            # turn, and an excess from the one-thread minimum is taken back the same way.
-            if (!one && W > 0) {
-                for (i = 1; s < T; i = i % NR + 1) { t[i]++; s++ }
-                i = 1; k = 0
-                while (s > T && k < NR) {
-                    if (t[i] > 1) { t[i]--; s--; k = 0 } else k++
-                    i = i % NR + 1
-                }
-            }
+            # Spare threads from rounding down go to the largest clusters, one each in turn.
+            if (!one && W > 0) for (i = 1; s < T; i = i % NR + 1) { t[i]++; s++ }
             for (i = 1; i <= NR; i++) print t[i], f[i]
         }')
 
