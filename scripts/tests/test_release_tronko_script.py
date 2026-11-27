@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from conftest import lineage_nodes, write_taxdump
+from conftest import copy_repos, lineage_nodes, write_taxdump
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 REPO = SCRIPTS.parent
@@ -50,20 +50,49 @@ def git(cwd: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+@pytest.fixture(scope="session")
+def repos_template(tmp_path_factory):
+    """tronko and rcrux-py as git + DVC repositories with their 'GitHub's and remotes,
+    built once; each test works on its own copy (the env fixture)."""
+    tmp_path = tmp_path_factory.mktemp("repos").resolve()
+    with pytest.MonkeyPatch.context() as patch:
+        for key in ("AUTHOR", "COMMITTER"):
+            patch.setenv(f"GIT_{key}_NAME", "test")
+            patch.setenv(f"GIT_{key}_EMAIL", "test@example.com")
+        patch.setenv("PATH", os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]]))
+        _build_repos(tmp_path)
+    return tmp_path
+
+
 @pytest.fixture
-def env(tmp_path, monkeypatch):
+def env(tmp_path, monkeypatch, repos_template):
     for key in ("AUTHOR", "COMMITTER"):
         monkeypatch.setenv(f"GIT_{key}_NAME", "test")
         monkeypatch.setenv(f"GIT_{key}_EMAIL", "test@example.com")
-    stub = tmp_path / "build-stub.sh"
-    stub.write_text(BUILD_STUB)
+    copy_repos(repos_template, tmp_path)
     monkeypatch.setenv(
         "PATH", os.pathsep.join([str(Path(sys.executable).parent), os.environ["PATH"]])
     )
     monkeypatch.setenv("PYTHON", sys.executable)
-    monkeypatch.setenv("BUILD_TRONKO_DB", str(stub))
+    monkeypatch.setenv("BUILD_TRONKO_DB", str(tmp_path / "build-stub.sh"))
     monkeypatch.setenv("CALLS_DIR", str(tmp_path))
     monkeypatch.setenv("LINEAGE_TAXIDS", str(SCRIPTS / "lineage_taxids.py"))
+    return {
+        "tmp": tmp_path,
+        "tronko": tmp_path / "tronko",
+        # rcrux-py, read in place: a clone of it could not follow the relative remote
+        "origin": tmp_path / "rcrux-dev",
+        "checkout": tmp_path / "tronko-release",
+        "tronko_remote": tmp_path / "tronko-remote",
+        "rcrux_remote": tmp_path / "remote",
+    }
+
+
+def _build_repos(tmp_path: Path) -> None:
+    # The DVC remotes are named relative to each repository, so a copy of these
+    # directories reads and writes its own.
+    stub = tmp_path / "build-stub.sh"
+    stub.write_text(BUILD_STUB)
 
     # A tronko checkout holding the scripts, committed, so its HEAD is the sha.
     tronko = tmp_path / "tronko"
@@ -77,7 +106,7 @@ def env(tmp_path, monkeypatch):
     tronko_remote = tmp_path / "tronko-remote"
     tronko_remote.mkdir()
     subprocess.run(
-        ["dvc", "remote", "add", "-d", "tronko", str(tronko_remote)], cwd=tronko, check=True
+        ["dvc", "remote", "add", "-d", "tronko", "../tronko-remote"], cwd=tronko, check=True
     )
     git(tronko, "add", "-A")
     git(tronko, "commit", "-q", "-m", "tronko")
@@ -94,7 +123,7 @@ def env(tmp_path, monkeypatch):
     git(tmp_path, "clone", "-q", str(origin), str(dev))
     git(dev, "checkout", "-q", "-b", "main")
     subprocess.run(["dvc", "init", "-q"], cwd=dev, check=True)
-    subprocess.run(["dvc", "remote", "add", "-d", "rcrux", str(remote)], cwd=dev, check=True)
+    subprocess.run(["dvc", "remote", "add", "-d", "rcrux", "../remote"], cwd=dev, check=True)
     curated = dev / "databases" / MARKER / "curated"
     curated.mkdir(parents=True)
     ids = [f"seq_{i:03d}" for i in range(N_SEQS)]
@@ -118,14 +147,6 @@ def env(tmp_path, monkeypatch):
     git(dev, "tag", RCRUX_TAG)
     git(dev, "push", "-q", "-u", "origin", "main", "--tags")
 
-    return {
-        "tmp": tmp_path,
-        "tronko": tronko,
-        "origin": origin,
-        "checkout": checkout,
-        "tronko_remote": tronko_remote,
-        "rcrux_remote": remote,
-    }
 
 
 def run(env, *extra: str) -> subprocess.CompletedProcess[str]:
