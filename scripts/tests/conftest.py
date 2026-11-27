@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 
@@ -22,3 +23,12 @@ def lineage_nodes(first: int, lineage: str) -> list[tuple[int, int, str, str]]:
         (first + i, first + i - 1 if i else 1, rank, name)
         for i, (rank, name) in enumerate(zip(ranks, lineage.split(";")))
     ]
+
+
+def copy_repos(template: Path, dest: Path) -> None:
+    """A test's own copy of repositories built once for the session: git and DVC
+    setup is seconds per repository, a copy is not. Their configs name each other
+    by absolute path, so those are pointed at the copy."""
+    shutil.copytree(template, dest, dirs_exist_ok=True, symlinks=True)
+    for config in [*dest.glob("*/.git/config"), *dest.glob("*/.dvc/config"), *dest.glob("*.git/config")]:
+        config.write_text(config.read_text().replace(str(template), str(dest)))

@@ -7,7 +7,7 @@ import pytest
 
 import lineage_taxids as lt
 import tronko_release as tr
-from conftest import lineage_nodes, write_taxdump
+from conftest import copy_repos, lineage_nodes, write_taxdump
 
 MARKER = "CO1_Test"
 
@@ -156,9 +156,33 @@ def test_build_metadata_requires_build_settings(tmp_path, params):
         tr.build_metadata(MARKER, "v1.0.0", write_build(tmp_path / "b"), inputs, "s", params, now)
 
 
-@pytest.fixture
-def rcrux_repo(tmp_path):
+@pytest.fixture(scope="session")
+def rcrux_template(tmp_path_factory):
     """An rcrux-py-shaped repo: curated/ tracked by DVC on remote 'rcrux', tagged."""
+    tmp_path = tmp_path_factory.mktemp("rcrux").resolve()
+    with pytest.MonkeyPatch.context() as patch:
+        for key in ("AUTHOR", "COMMITTER"):
+            patch.setenv(f"GIT_{key}_NAME", "test")
+            patch.setenv(f"GIT_{key}_EMAIL", "test@example.com")
+        _build_rcrux_repos(tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def rcrux_repo(tmp_path, rcrux_template):
+    copy_repos(rcrux_template, tmp_path)
+    return {
+        "origin": tmp_path / "rcrux-origin",
+        "remote": tmp_path / "remote-rcrux",
+        "decoy": tmp_path / "remote-gcs",
+        "tronko": tmp_path / "tronko-origin",
+        "tronko_remote": tmp_path / "remote-tronko",
+    }
+
+
+def _build_rcrux_repos(tmp_path: Path) -> None:
+    # The DVC remotes are named relative to each repository, so a copy of these
+    # directories, and a clone beside them, reads and writes its own.
     origin = tmp_path / "rcrux-origin"
     remote = tmp_path / "remote-rcrux"
     decoy = tmp_path / "remote-gcs"
@@ -166,8 +190,8 @@ def rcrux_repo(tmp_path):
         path.mkdir()
     git(origin, "init", "-q", "-b", "main")
     dvc(origin, "init", "-q")
-    dvc(origin, "remote", "add", "-d", "rcrux", str(remote))
-    dvc(origin, "remote", "add", "gcs", str(decoy))
+    dvc(origin, "remote", "add", "-d", "rcrux", "../remote-rcrux")
+    dvc(origin, "remote", "add", "gcs", "../remote-gcs")
     curated = origin / "databases" / MARKER / "curated"
     curated.mkdir(parents=True)
     (curated / "species.fasta").write_text(">s1\nACGTACGT\n")
@@ -191,17 +215,10 @@ def rcrux_repo(tmp_path):
         path.mkdir()
     git(tronko, "init", "-q", "-b", "main")
     dvc(tronko, "init", "-q")
-    dvc(tronko, "remote", "add", "-d", "tronko", str(tronko_remote))
-    dvc(tronko, "remote", "add", "gcs", str(decoy))
+    dvc(tronko, "remote", "add", "-d", "tronko", "../remote-tronko")
+    dvc(tronko, "remote", "add", "gcs", "../remote-gcs")
     git(tronko, "add", "-A")
     git(tronko, "commit", "-q", "-m", "tronko")
-    return {
-        "origin": origin,
-        "remote": remote,
-        "decoy": decoy,
-        "tronko": tronko,
-        "tronko_remote": tronko_remote,
-    }
 
 
 def test_fetch_publish_tag_round_trip_reads_rcrux_and_publishes_to_tronko(tmp_path, rcrux_repo):
@@ -566,7 +583,10 @@ def test_fetch_from_a_pointer_reads_the_remote_by_hash_alone(tmp_path, rcrux_rep
     (pointer / "commit").write_text(git(origin, "rev-parse", f"{tag}^{{commit}}") + "\n")
     (pointer / "curated.dvc").write_text(git(origin, "show", f"{tag}:databases/{MARKER}/curated.dvc"))
     (pointer / "data.dvc").write_text(git(origin, "show", f"{tag}:data.dvc"))
-    (pointer / "dvc_config").write_text(git(origin, "show", f"{tag}:.dvc/config"))
+    # A pointer has no repository to resolve a relative remote against; rcrux-py's is an s3 URL.
+    (pointer / "dvc_config").write_text(
+        git(origin, "show", f"{tag}:.dvc/config").replace("../../remote-rcrux", str(rcrux_repo["remote"]))
+    )
 
     by_git = tr.fetch(MARKER, tag, tmp_path / "git", rcrux_repo=str(origin))
     by_pointer = tr.fetch(MARKER, tag, tmp_path / "pointer-out", rcrux_repo=str(origin), pointer_dir=pointer)
