@@ -14,12 +14,24 @@
 # Everything it prints goes to the server's console log, which is what
 # "launch.sh logs" shows, between "TRONKO_RELEASE start" and "TRONKO_RELEASE ok
 # <branch>" or "TRONKO_RELEASE failed"; then the VM powers off, which is what
-# launch.sh waits for.
+# launch.sh waits for. TRONKO_MEM lines report the VM's memory use.
 set -euo pipefail
 exec > >(tee /var/log/tronko-release.log > /dev/console) 2>&1
 export HOME=/root
-trap '[ "$?" = 0 ] || echo "TRONKO_RELEASE failed"; poweroff' EXIT
+trap 'rc=$?; echo "TRONKO_MEM peak $(cat /run/mem_peak) GiB"; [ "$rc" = 0 ] || echo "TRONKO_RELEASE failed"; poweroff' EXIT
 echo "TRONKO_RELEASE start"
+
+# Memory in use (MemTotal - MemAvailable, GiB), sampled every 10 s: a TRONKO_MEM
+# line every 10 minutes and the peak on exit, to size the flavor for a marker.
+echo 0 > /run/mem_peak
+(
+    i=0
+    while sleep 10; do
+        used="$(awk '/^MemTotal:/ {t = $2} /^MemAvailable:/ {a = $2} END {printf "%.1f", (t - a) / 1048576}' /proc/meminfo)"
+        awk -v u="$used" -v p="$(cat /run/mem_peak)" 'BEGIN {exit !(u > p)}' && echo "$used" > /run/mem_peak
+        (( ++i % 60 )) || echo "TRONKO_MEM $(date -u +%FT%TZ) used $used GiB, peak $(cat /run/mem_peak) GiB"
+    done
+) &
 
 mkdir -p /work/pointer
 git clone --quiet https://github.com/eDNA-Explorer/tronko.git /work/release
