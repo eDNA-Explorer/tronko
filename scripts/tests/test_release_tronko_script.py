@@ -41,6 +41,9 @@ fi
 for e in amb ann bwt pac sa bwt.2bit.64; do echo index > "$o/$p.fasta.$e"; done
 echo TRKB > "$o/reference_tree.trkb"
 echo '{"pipeline": "stand-in", "tree_tool": "veryfasttree"}' > "$o/build_metadata.json"
+echo "$o/RAxML_bestTree.partition0.reroot" > "$o/tree_list.txt"
+echo tree | gzip > "$o/reference_tree.txt.gz"
+cp "$o/${p}_taxonomy.txt" "$o/partition0_taxonomy.txt"
 """
 
 

@@ -319,8 +319,11 @@ PY
 
     if [ "$ASSIGNMENT_CHECK_READS_PER_QUERY" -ne 0 ]; then
         say "Assignment check"
-        rm -rf "$WORK/assignment_check"
-        run "${PY[@]}" "$REPO/scripts/assignment_check.py" --build-dir "$OUT" --marker "$MARKER" \
+        # The holdout references are rebuilt from the files a release publishes, laid
+        # out as a pull of it, so a published release is known to be enough for them.
+        rm -rf "$WORK/assignment_check" "$WORK/holdout_master"
+        run "${TOOL[@]}" holdout-master --marker "$MARKER" --build-dir "$OUT" --out "$WORK/holdout_master"
+        run "${PY[@]}" "$REPO/scripts/assignment_check.py" --build-dir "$WORK/holdout_master" --marker "$MARKER" \
             --inputs "$INPUT/inputs.json" --threads "$THREADS" --work "$WORK/assignment_check" \
             --communities "$ASSIGNMENT_CHECK_COMMUNITIES" --richness "$ASSIGNMENT_CHECK_SPECIES" \
             --reads-per-query "$ASSIGNMENT_CHECK_READS_PER_QUERY" --out "$OUT/assignment_check.json" 2>&1 | tee -a "$LOG"

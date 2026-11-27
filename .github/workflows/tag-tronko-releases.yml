@@ -15,8 +15,10 @@ on:
 permissions:
   contents: write
 
+# One run per push: a shared group keeps a single run waiting and cancels the
+# rest, which left releases untagged when several were merged in a row.
 concurrency:
-  group: tag-tronko-releases
+  group: tag-tronko-releases-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
