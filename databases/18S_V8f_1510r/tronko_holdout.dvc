@@ -1,0 +1,9 @@
+outs:
+- md5: 7748236be9ba5daacce214e50881794d.dir
+  size: 1038887447
+  nfiles: 4
+  hash: md5
+  path: tronko_holdout
+meta:
+  tronko_release_version: v1.0.0
+  rcrux_tag: 18S_V8f_1510r_v2.0.0
