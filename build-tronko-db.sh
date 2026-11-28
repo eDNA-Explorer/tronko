@@ -361,6 +361,19 @@ else
         fi
     done
 
+    # AncestralClust can leave sequences out of every cluster (2 of 177,254 for
+    # 18S_WANDA_AML2). Move them into the largest cluster so they stay in the
+    # database, as clusters too small for a tree are below.
+    largest=$(for f in "$AC_DIR"/*.fasta; do echo "$(grep -c '^>' "$f") $f"; done | sort -k1,1nr -k2 | sed -n 1p | cut -d' ' -f2-)
+    cat "$AC_DIR"/*.fasta | awk 'NR == FNR { if (/^>/) seen[$1]; next } /^>/ { keep = !($1 in seen) } keep' \
+        - "$CLUSTER_INPUT_FASTA" > "$CACHE_DIR/unclustered.fasta"
+    if [[ -s "$CACHE_DIR/unclustered.fasta" ]]; then
+        echo "  AncestralClust left $(grep -c '^>' "$CACHE_DIR/unclustered.fasta") seqs out of every cluster, moved into cluster $(basename "$largest" .fasta):"
+        grep '^>' "$CACHE_DIR/unclustered.fasta" | sed 's/^>/    /'
+        cat "$CACHE_DIR/unclustered.fasta" >> "$largest"
+    fi
+    rm "$CACHE_DIR/unclustered.fasta"
+
     # AncestralClust outputs {0..N-1}.fasta in the output directory.
     # We need to create matching taxonomy files for each cluster.
     echo "Splitting taxonomy by cluster..."
@@ -806,7 +819,10 @@ echo "================================================================"
 echo "  Total time:     ${TOTAL_TIME}s ($(( TOTAL_TIME / 60 ))m $(( TOTAL_TIME % 60 ))s)"
 echo "  Clusters:       $NUM_FINAL_CLUSTERS"
 echo "  Output files:"
-ls -lh "$OUTPUT_DIR"/ | grep -v '^total' | sed 's/^/    /'
+# Not the per-partition files: tens of thousands of lines push a later error out of
+# the release VM's 100 KiB console.
+ls -lh "$OUTPUT_DIR"/ | grep -vE '^total| (partition[0-9]+[._]|RAxML_bestTree\.)' | sed 's/^/    /'
+echo "    and $(ls "$OUTPUT_DIR" | grep -cE '^(partition[0-9]+[._]|RAxML_bestTree\.)') partition files"
 echo "================================================================"
 
 # Write build metadata
